@@ -15,7 +15,6 @@ import {
   fmtDate,
   fmtDur,
   fmtTime,
-  fromMin,
   canDoTaskOn,
   isDeadlineTask,
   isTimed,
@@ -38,7 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, Moon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -165,11 +164,6 @@ export default function Today() {
   );
 }
 
-function nextHalfHour() {
-  const d = new Date();
-  const m = d.getHours() * 60 + d.getMinutes();
-  return fromMin(Math.min(1410, Math.ceil((m + 1) / 30) * 30));
-}
 
 function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: number; length: number }[] }) {
   const categories = [

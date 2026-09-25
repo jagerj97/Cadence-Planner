@@ -18,12 +18,13 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
   },
   build: {
     outDir: path.resolve(import.meta.dirname, "android/app/src/main/assets/web"),
     emptyOutDir: true,
+    // One bundle loaded from inside the APK, so the web download-size warning doesn't apply.
+    chunkSizeWarningLimit: 1000,
     rollupOptions: { input: path.resolve(import.meta.dirname, "client/android.html") },
   },
 });

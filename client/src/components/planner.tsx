@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Item, InsertItem, Kind, Recurrence } from "@shared/schema";
 import { KINDS } from "@shared/schema";
@@ -35,7 +35,7 @@ import {
   ymd,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
-import { Pause, Play, Square, Plus, Trash2, Timer, X, Coffee, Link2 } from "lucide-react";
+import { Plus, Trash2, Timer, X, Link2 } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
@@ -59,22 +59,6 @@ export function chime(kind: "soft" | "done" = "soft") {
   } catch {
     /* audio unavailable */
   }
-}
-
-export function systemNotify(title: string, body: string) {
-  if (window.CadenceAndroid) {
-    window.CadenceAndroid.notify(title, body);
-    return true;
-  }
-  try {
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title, { body, icon: "./favicon.svg", tag: title + body });
-      return true;
-    }
-  } catch {
-    /* blocked in sandbox */
-  }
-  return false;
 }
 
 /* ============ theme ============ */
@@ -247,8 +231,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       setFocus(null);
       if (settings.sound) chime("done");
       if (f.mode === "focus") {
-        if (window.CadenceAndroid) window.CadenceAndroid.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
-        else systemNotify("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
+        window.CadenceAndroid?.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
         toast({
           title: "Nice work — session complete",
           description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused`,
@@ -262,8 +245,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           ),
         });
       } else {
-        if (window.CadenceAndroid) window.CadenceAndroid.finishFocus("Break's over", "Ready for the next block?");
-        else systemNotify("Break's over", "Ready for the next block?");
+        window.CadenceAndroid?.finishFocus("Break's over", "Ready for the next block?");
         toast({ title: "Break's over", description: "Ready for the next block?" });
       }
     }
@@ -276,8 +258,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   startFocusRef.current = startFocus;
   useEffect(() => {
     if (!items) return;
-    // Pop-ups off on Android: the phone's notification makes the sound, so don't chime in the app too.
-    const phoneOnly = !!window.CadenceAndroid && settings.inAppPopups === false;
+    // Pop-ups off: the phone's notification makes the sound, so don't chime in the app too.
+    const phoneOnly = settings.inAppPopups === false;
     const check = () => {
       const now = new Date();
       const nowM = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
@@ -296,7 +278,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             fired.current.add(akey);
             const mins = Math.max(1, Math.round(b.fullEnd - nowM));
             startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: mins });
-            systemNotify(`Timer started: ${b.item.title}`, `${fmtDur(mins)} on the clock`);
+            window.CadenceAndroid?.notify(`Timer started: ${b.item.title}`, `${fmtDur(mins)} on the clock`);
             if (settings.sound && !phoneOnly) chime("soft");
             toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock. Open Focus to pause or stop it.` });
           }
@@ -312,7 +294,6 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             const when = mins <= 0 ? "Starting now" : `Starts in ${fmtDur(mins)}`;
             const title = `${KIND_META[kindOf(b.item)].label}: ${b.item.title}`;
             const desc = `${when} · ${fmtTime(b.item.startTime)}${b.item.endTime ? "–" + fmtTime(b.item.endTime) : ""}`;
-            if (!window.CadenceAndroid) systemNotify(title, desc);
             if (settings.sound && !phoneOnly) chime("soft");
             const dur = Math.max(5, b.end - b.start);
             toast({
@@ -447,58 +428,6 @@ export const clock = (sec: number) => {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`;
 };
-
-function FocusDock() {
-  const { focus, elapsed, pauseFocus, resumeFocus, stopFocus, addFocusTime } = usePlanner();
-  if (!focus) return null;
-  const remaining = focus.plannedSec - elapsed;
-  const pct = Math.min(1, elapsed / focus.plannedSec);
-  const brk = focus.mode === "break";
-  const art = brk ? "hsl(var(--k-habit))" : "hsl(var(--k-focus))";
-  return (
-    <div
-      className="fixed inset-x-0 bottom-14 md:bottom-0 z-50 h-[72px] bg-card shadow-[0_-2px_6px_rgba(0,0,0,0.14)]"
-      data-testid="focus-dock"
-      role="timer"
-      aria-live="off"
-    >
-      {/* progress line, Play Music style */}
-      <div className="absolute inset-x-0 top-0 h-1 bg-muted" aria-hidden>
-        <div className="h-full bg-primary transition-[width] duration-1000 ease-linear" style={{ width: `${pct * 100}%` }} />
-        <div className="absolute top-1/2 h-3 w-3 -translate-y-1/2 -translate-x-1/2 rounded-full bg-primary shadow" style={{ left: `${pct * 100}%` }} />
-      </div>
-      <div className="flex h-full items-center gap-3 pl-0 pr-3 md:pr-6">
-        <div className="grid h-[72px] w-[72px] shrink-0 place-items-center text-white" style={{ background: `linear-gradient(135deg, ${art}, color-mix(in srgb, ${art} 60%, #000))` }}>
-          {brk ? <Coffee className="h-7 w-7" /> : <Timer className="h-7 w-7" />}
-        </div>
-        <div className="min-w-0 flex-1 md:flex-none md:w-64">
-          <div className="text-sm font-medium truncate">{brk ? "Break" : focus.title}</div>
-          <div className="text-xs text-muted-foreground truncate">{brk ? "Stretch, breathe, get water" : focus.runStart ? "Focusing" : "Paused"}</div>
-        </div>
-        <div className="flex items-center gap-1 md:mx-auto">
-          <button onClick={() => addFocusTime(5)} className="hidden sm:grid h-10 px-2 place-items-center rounded-full text-xs font-medium text-muted-foreground hover:bg-muted" aria-label="Add 5 minutes" data-testid="button-focus-add5">
-            +5 MIN
-          </button>
-          {focus.runStart ? (
-            <button onClick={pauseFocus} className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md" aria-label="Pause" data-testid="button-focus-pause">
-              <Pause className="h-5 w-5" fill="currentColor" />
-            </button>
-          ) : (
-            <button onClick={resumeFocus} className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md" aria-label="Resume" data-testid="button-focus-resume">
-              <Play className="h-5 w-5 ml-0.5" fill="currentColor" />
-            </button>
-          )}
-          <button onClick={() => stopFocus(false)} className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Stop" data-testid="button-focus-stop">
-            <Square className="h-4 w-4" fill="currentColor" />
-          </button>
-        </div>
-        <div className="font-mono text-lg md:text-xl tnum md:w-64 md:text-right" data-testid="text-focus-remaining">
-          {clock(remaining)}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ============ item editor ============ */
 type TimeMode = "timed" | "anytime" | "allday" | "deadline";
@@ -987,7 +916,3 @@ export function useNow(intervalMs = 30000) {
   return n;
 }
 
-export function useMemoItems() {
-  const q = useItems();
-  return useMemo(() => q.data ?? [], [q.data]);
-}

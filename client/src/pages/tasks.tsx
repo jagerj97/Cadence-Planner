@@ -170,7 +170,7 @@ export default function TasksPage() {
                     <>
                       <ul className="pb-1.5">
                         {shown.map((r) => (
-                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} items={items ?? []} />
+                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} />
                         ))}
                       </ul>
                       {older > 0 && (
@@ -192,7 +192,7 @@ export default function TasksPage() {
   );
 }
 
-function TaskRow({ r, items }: { r: Row; items: Item[] }) {
+function TaskRow({ r }: { r: Row }) {
   const { i, occ, done } = r;
   const { toggle } = useItemMutations();
   const { openDetails, startFocus } = usePlanner();

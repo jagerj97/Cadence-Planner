@@ -22,11 +22,16 @@ final class Notifications {
     private static final String PREFS = "cadence_alarms";
     private static final int FOCUS_CODE = 500001;
 
+    static void createChannel(Context context) {
+        context.getSystemService(NotificationManager.class)
+            .createNotificationChannel(new NotificationChannel(CHANNEL, "Cadence reminders", NotificationManager.IMPORTANCE_DEFAULT));
+    }
+
     static void show(Context context, String title, String body, int id) {
         if (Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Cadence reminders", NotificationManager.IMPORTANCE_DEFAULT));
+        createChannel(context);
         Intent launch = new Intent(context, MainActivity.class);
         PendingIntent pending = PendingIntent.getActivity(context, 0, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

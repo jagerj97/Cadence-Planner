@@ -16,23 +16,12 @@ import {
   X,
 } from "lucide-react";
 import { usePlanner, clock } from "./planner";
-import { fromMin, toMin, todayStr } from "@/lib/cal";
+import { fromMin, todayStr } from "@/lib/cal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Kind } from "@shared/schema";
 import { QuickAdd } from "@/pages/today";
 import { cn } from "@/lib/utils";
 
-export function Logo({ className = "h-7 w-7", onBar = false }: { className?: string; onBar?: boolean }) {
-  const bg = onBar ? "hsl(var(--appbar-fg))" : "hsl(var(--primary))";
-  const fg = onBar ? "hsl(var(--primary))" : "hsl(var(--primary-foreground))";
-  return (
-    <svg viewBox="0 0 32 32" className={className} aria-label="Cadence" role="img" fill="none">
-      <rect width="32" height="32" rx="7" fill={bg} />
-      <path d="M22.5 9.5A9 9 0 1 0 22.5 22.5" stroke={fg} strokeWidth="3" strokeLinecap="round" />
-      <circle cx="23" cy="16" r="2.4" fill={fg} />
-    </svg>
-  );
-}
 
 const NAV = [
   { href: "/", label: "Today", icon: Home, match: (l: string) => l === "/" || l.startsWith("/day") },
