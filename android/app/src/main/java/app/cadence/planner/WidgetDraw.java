@@ -76,9 +76,9 @@ final class WidgetDraw {
     }
 
     /** The Your day bar: a rounded strip split into free, routine, and planned minutes. */
-    static Bitmap dayBar(Context context, int widthDp, JSONArray spans, int[] colors) {
+    static Bitmap dayBar(Context context, int widthDp, int heightDp, JSONArray spans, int[] colors) {
         float d = density(context);
-        int w = Math.max(1, Math.round(widthDp * d)), h = Math.round(20 * d);
+        int w = Math.max(1, Math.round(widthDp * d)), h = Math.round(heightDp * d);
         Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Path clip = new Path();
@@ -111,60 +111,6 @@ final class WidgetDraw {
         path.lineTo(cx - s * 0.08f, cy + s * 0.26f);
         path.lineTo(cx + s * 0.34f, cy - s * 0.24f);
         canvas.drawPath(path, paint);
-    }
-
-    /** A task's checkbox (18px, rounded, filled with a check when done). */
-    static Bitmap taskMark(Context context, boolean done, int color, int checkColor) {
-        float d = density(context), size = 18 * d;
-        Bitmap bitmap = Bitmap.createBitmap(Math.round(size), Math.round(size), Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        float inset = 0.75f * d, r = 4 * d;
-        RectF box = new RectF(inset, inset, size - inset, size - inset);
-        if (done) {
-            paint.setColor(color);
-            canvas.drawRoundRect(box, r, r, paint);
-            check(canvas, size / 2, size / 2, size * 0.66f, checkColor, d);
-        } else {
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(1.5f * d);
-            paint.setColor(color);
-            canvas.drawRoundRect(box, r, r, paint);
-        }
-        return bitmap;
-    }
-
-    /** A habit's circle: empty, half (top-left half filled, like fillOf in the app), or done with a check. */
-    static Bitmap habitMark(Context context, int mark, int color, int checkColor) {
-        float d = density(context), size = 18 * d;
-        Bitmap bitmap = Bitmap.createBitmap(Math.round(size), Math.round(size), Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        float inset = 0.75f * d;
-        RectF oval = new RectF(inset, inset, size - inset, size - inset);
-        if (mark == 2) {
-            paint.setColor(color);
-            canvas.drawOval(oval, paint);
-            check(canvas, size / 2, size / 2, size * 0.66f, checkColor, d);
-            return bitmap;
-        }
-        if (mark == 1) {
-            canvas.save();
-            Path half = new Path();
-            half.moveTo(0, 0);
-            half.lineTo(size, 0);
-            half.lineTo(0, size);
-            half.close();
-            canvas.clipPath(half);
-            paint.setColor(color);
-            canvas.drawOval(oval, paint);
-            canvas.restore();
-        }
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(1.5f * d);
-        paint.setColor(color);
-        canvas.drawOval(oval, paint);
-        return bitmap;
     }
 
     private static String fit(TextPaint paint, String text, float width) {

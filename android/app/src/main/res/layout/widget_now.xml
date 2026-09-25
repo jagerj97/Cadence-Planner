@@ -33,8 +33,10 @@
         <TextView android:id="@+id/now_empty" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="12dp" android:textSize="15sp"
             android:text="Nothing scheduled right now — a good moment for a task." />
-        <View android:id="@+id/now_divider" android:layout_width="match_parent" android:layout_height="1dp"
-            android:layout_marginTop="12dp" />
+        <!-- Widgets can't use a plain View, so the divider is a one-pixel image. -->
+        <ImageView android:id="@+id/now_divider" android:layout_width="match_parent" android:layout_height="1dp"
+            android:layout_marginTop="12dp" android:src="@drawable/widget_line" android:scaleType="fitXY"
+            android:importantForAccessibility="no" />
         <LinearLayout android:id="@+id/now_next" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="12dp" android:orientation="horizontal" android:gravity="center_vertical">
             <ImageView android:id="@+id/now_next_dot" android:layout_width="8dp" android:layout_height="8dp"
