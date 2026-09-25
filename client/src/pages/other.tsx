@@ -354,7 +354,7 @@ export function FocusPage() {
               <div className="grid gap-4 w-full max-w-md">
                 <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="What are you focusing on?" className="h-11 text-base" data-testid="input-focus-label" />
                 <div className="flex gap-1.5" role="radiogroup" aria-label="Duration">
-                  {[15, 25, 45, 60, 90].map((m) => (
+                  {[10, 30, 60, 90].map((m) => (
                     <button
                       key={m}
                       role="radio"
