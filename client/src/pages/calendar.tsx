@@ -15,7 +15,6 @@ import {
   kindOf,
   parseYmd,
   recOf,
-  routineSchedules,
   startOfWeek,
   toMin,
   todayStr,
@@ -29,18 +28,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 const WEEK_HOUR = 48;
 
-type CalendarGroup = "habits" | "tasks" | "events" | "routines" | "focus";
+type CalendarGroup = "habits" | "tasks" | "events" | "focus";
 type CalendarVisibility = Record<CalendarGroup, boolean>;
-const ALL_VISIBLE: CalendarVisibility = { habits: false, tasks: true, events: true, routines: false, focus: true };
+const ALL_VISIBLE: CalendarVisibility = { habits: false, tasks: true, events: true, focus: true };
 let lastVisibility: CalendarVisibility = ALL_VISIBLE;
 
-function groupOf(item: Item): CalendarGroup {
+/** Routines (sleep and other background time) aren't shown on the calendar. */
+function groupOf(item: Item): CalendarGroup | null {
   switch (kindOf(item)) {
     case "habit": return "habits";
     case "task": return "tasks";
     case "event":
     case "meeting": return "events";
-    case "sleep": return "routines";
+    case "sleep": return null;
     case "focus": return "focus";
   }
 }
@@ -49,7 +49,6 @@ const FILTERS: { key: CalendarGroup; label: string; color: string }[] = [
   { key: "habits", label: "Habits", color: "hsl(var(--k-habit))" },
   { key: "tasks", label: "Tasks", color: "hsl(var(--k-task))" },
   { key: "events", label: "Events", color: "hsl(var(--k-event))" },
-  { key: "routines", label: "Routines", color: "hsl(var(--k-sleep))" },
   { key: "focus", label: "Focus", color: "hsl(var(--k-focus))" },
 ];
 
@@ -61,7 +60,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
   const [anchor, setAnchor] = useState(todayStr());
   const start = startOfWeek(anchor, settings.weekStartsOn);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const list = (items ?? []).filter((i) => visibility[groupOf(i)]);
+  const list = (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; });
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (scroller.current) scroller.current.scrollTop = 0;
@@ -146,7 +145,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                         items={list}
                         hourPx={WEEK_HOUR}
                         compact
-                        showRoutines={visibility.routines}
+                        showRoutines // routine bands always show in the week view (not in month view)
                         wakeMin={toMin(settings.wakeTime)}
                         bedMin={toMin(settings.bedTime)}
                       />
@@ -174,7 +173,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
   const first = parseYmd(month);
   const gridStart = startOfWeek(month, settings.weekStartsOn);
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
-  const list = (items ?? []).filter((i) => visibility[groupOf(i)]);
+  const list = (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; });
   const shift = (n: number) => {
     const next = ymd(new Date(first.getFullYear(), first.getMonth() + n, 1));
     setMonth(next);
@@ -223,10 +222,6 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                 .filter((b, index, blocks) => blocks.findIndex((other) => other.item.id === b.item.id) === index)
                 .map((b) => ({ i: b.item, t: b.continues === "before" || b.continues === "through" ? null : b.item.startTime }));
               const untimed = untimedForDay(list, d).map((i) => ({ i, t: null as string | null }));
-              const routines = visibility.routines
-                ? blocksForDay(routineSchedules(settings), d)
-                  .filter((b, index, blocks) => blocks.findIndex((other) => other.item.id === b.item.id) === index)
-                : [];
               const all = [...untimed, ...timed].sort(
                 (a, b) => Number(recOf(a.i).freq !== "none") - Number(recOf(b.i).freq !== "none") || Number(!a.i.allDay) - Number(!b.i.allDay) || (a.t || "").localeCompare(b.t || ""),
               );
@@ -246,21 +241,6 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                   >
                     {parseYmd(d).getDate()}
                   </button>
-                  {routines.slice(0, 2).map((b) => (
-                    <div
-                      key={b.item.id}
-                      role="img"
-                      onClick={(event) => event.stopPropagation()}
-                      aria-label={`${b.item.title} routine, ${fmtDate(d)}`}
-                      className="flex h-3.5 sm:h-auto items-center gap-0.5 rounded px-0.5 sm:px-1 text-left text-[9px] sm:text-xs leading-none min-w-0 select-none"
-                      style={{ background: `color-mix(in srgb, ${colorOf(b.item)} 13%, transparent)`, color: colorOf(b.item) }}
-                      data-testid={`routine-month-${d}-${b.item.id}`}
-                    >
-                      <span className="h-2.5 w-0.5 shrink-0 rounded-full" style={{ background: colorOf(b.item) }} />
-                      <span className="truncate">{b.item.title}</span>
-                    </div>
-                  ))}
-                  {routines.length > 2 && <span className="text-[10px] text-muted-foreground">+{routines.length - 2} routines</span>}
                   {all.slice(0, 3).map(({ i, t }) => (
                     <button
                       key={i.id + (t || "")}
