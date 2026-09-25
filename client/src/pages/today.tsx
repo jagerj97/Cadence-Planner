@@ -53,8 +53,16 @@ export default function Today() {
 
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!scroller.current) return;
-    scroller.current.scrollTop = 0; // days always start at 12am
+    const el = scroller.current;
+    if (!el) return;
+    if (!isToday) {
+      el.scrollTop = 0; // other days start at 12am
+      return;
+    }
+    // Center today on the current time once when the timeline opens; it doesn't follow the clock after that.
+    const d = new Date();
+    const nowY = 8 + ((d.getHours() * 60 + d.getMinutes()) / 60) * HOUR_PX; // 8px = the column's top padding
+    el.scrollTop = Math.max(0, nowY - el.clientHeight / 2);
   }, [day, isLoading]); // eslint-disable-line
 
   const blocks = useMemo(() => blocksForDay(list, day), [list, day]);
