@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+// The version shown to users comes from package.json. The build number (CI run number) must keep
+// rising so each APK installs as an update; it starts at 5 because 4 was the last hand-set code.
+def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).version
+def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '0') as int
+
 android {
     namespace 'app.cadence.planner'
     compileSdk 35
@@ -10,8 +15,8 @@ android {
         applicationId 'app.cadence.planner'
         minSdk 26
         targetSdk 35
-        versionCode 4
-        versionName '1.3'
+        versionCode 4 + Math.max(buildNumber, 1)
+        versionName appVersion
     }
 
     // One fixed signing key so every new build installs over the last one without erasing data.
