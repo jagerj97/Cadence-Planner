@@ -576,7 +576,6 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
         )}
         <form onSubmit={onSubmit} className="grid gap-4">
           <Input
-            autoFocus
             placeholder="What's the plan?"
             className="text-base h-11"
             {...register("title")}
