@@ -334,7 +334,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
 
 function TasksCard({ items, day }: { items: Item[]; day: string }) {
   const { toggle, update } = useItemMutations();
-  const { openEditor, startFocus } = usePlanner();
+  const { openEditor, openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
   const { toast } = useToast();
   const isToday = day === todayStr();
@@ -394,7 +394,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
                 >
                   {done && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                 </button>
-                <button onClick={() => openEditor(i, occ)} className="min-w-0 flex-1 text-left">
+                <button onClick={() => openDetails(i, occ)} className="min-w-0 flex-1 text-left">
                   <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
                   <div className="text-xs text-muted-foreground flex gap-1.5">
                     {overdue && <span className="text-destructive">Overdue</span>}
@@ -435,7 +435,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 function HabitsCard({ items, day }: { items: Item[]; day: string }) {
   const { cycle } = useItemMutations();
   const { settings } = useSettings();
-  const { openEditor } = usePlanner();
+  const { openEditor, openDetails } = usePlanner();
   const habits = orderHabits(items.filter((i) => kindOf(i) === "habit" && occursOn(i, day)), settings);
   const done = habits.filter((h) => completionsOf(h).has(day)).length;
   return (
@@ -472,7 +472,7 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
                 >
                   {isDone && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                 </button>
-                <button onClick={() => openEditor(h, day)} className="min-w-0 flex-1 text-left">
+                <button onClick={() => openDetails(h, day)} className="min-w-0 flex-1 text-left">
                   <div className={cn("text-sm fade-truncate", isDone && "text-muted-foreground")}>{h.title}</div>
                   <div className="text-xs text-muted-foreground">{isTimed(h) ? fmtTime(h.startTime, true) + " · " : ""}{recLabel(h)}</div>
                 </button>

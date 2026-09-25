@@ -27,6 +27,7 @@ import {
   fromMin,
   kindOf,
   colorOf,
+  recLabel,
   recOf,
   toMin,
   todayStr,
@@ -358,12 +359,16 @@ function ItemDetails({ details, onClose, onEdit }: {
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
           <div className="grid gap-3 text-sm">
             <div>
-              <div className="text-xs text-muted-foreground">{routine ? "Every day" : "Date"}</div>
+              <div className="text-xs text-muted-foreground">{routine ? "Every day" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
               <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
             </div>
             {i.startTime && <div>
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date && !routine ? " (ends later)" : ""}</div>
+            </div>}
+            {!routine && recOf(i).freq !== "none" && <div>
+              <div className="text-xs text-muted-foreground">Repeats</div>
+              <div>{recLabel(i)}</div>
             </div>}
             {i.kind === "task" && i.availableFrom && <div className="text-muted-foreground">Available from {fmtDate(i.availableFrom)} · due {fmtDate(i.date)}</div>}
             {i.location && <div className="break-words">{i.location}</div>}

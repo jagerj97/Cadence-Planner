@@ -79,7 +79,7 @@ export function HabitsPage() {
   const { data: items } = useItems();
   const { cycle } = useItemMutations();
   const saveOrder = useSaveSettings();
-  const { openEditor } = usePlanner();
+  const { openEditor, openDetails } = usePlanner();
   const { settings } = useSettings();
   const today = todayStr();
   const [span, setSpan] = useState(28);
@@ -146,7 +146,7 @@ export function HabitsPage() {
                       >
                         {hit && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
                       </button>
-                      <button onClick={() => openEditor(h)} className="min-w-0 flex-1 text-left">
+                      <button onClick={() => openDetails(h)} className="min-w-0 flex-1 text-left">
                         <div className={cn("text-sm font-medium truncate", hit && "text-muted-foreground")}>{h.title}</div>
                         <div className="text-xs text-muted-foreground truncate">
                           {due ? recLabel(h) : "Not today"}
@@ -198,7 +198,7 @@ export function HabitsPage() {
                       {habits.map((h) => (
                         <th key={h.id} className="h-20 md:h-36 align-bottom pb-2 font-medium" scope="col">
                           <button
-                            onClick={() => openEditor(h)}
+                            onClick={() => openDetails(h)}
                             className="mx-auto block max-h-16 md:max-h-32 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground hover:text-foreground [writing-mode:vertical-rl] rotate-180"
                             title={h.title}
                             data-testid={`header-habit-${h.id}`}

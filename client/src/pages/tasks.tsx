@@ -197,7 +197,7 @@ export default function TasksPage() {
 function TaskRow({ r, items }: { r: Row; items: Item[] }) {
   const { i, occ, done } = r;
   const { toggle, update } = useItemMutations();
-  const { openEditor, startFocus } = usePlanner();
+  const { openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
   const { toast } = useToast();
   const today = todayStr();
@@ -229,7 +229,7 @@ function TaskRow({ r, items }: { r: Row; items: Item[] }) {
       >
         {done && <Check className="h-3.5 w-3.5 text-background" strokeWidth={3} />}
       </button>
-      <button onClick={() => openEditor(i, occ)} className="min-w-0 flex-1 text-left">
+      <button onClick={() => openDetails(i, occ)} className="min-w-0 flex-1 text-left">
         <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
           <span className={cn(occ < today && !done && "text-destructive")}>
