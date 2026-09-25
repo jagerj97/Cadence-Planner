@@ -211,6 +211,31 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   };
   const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
 
+  // The Android timer notification can pause, resume, or stop the timer while the app is closed.
+  // Reload the saved timer when it does, or when the app comes back, and log any session it stopped.
+  useEffect(() => {
+    const bridge = window.CadenceAndroid;
+    if (!bridge) return;
+    const sync = () => {
+      try {
+        const stopped: FocusState | null = JSON.parse(bridge.takeFocusStop?.() || "null");
+        if (stopped) logSession(stopped, stopped.accSec, false);
+      } catch { /* ignore */ }
+      try {
+        const saved: FocusState | null = JSON.parse(bridge.getFocus() || "null");
+        setFocus((current) => (JSON.stringify(current) === JSON.stringify(saved) ? current : saved));
+      } catch { /* ignore */ }
+    };
+    const onVisible = () => document.visibilityState === "visible" && sync();
+    sync();
+    window.addEventListener("cadence-focus-changed", sync);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("cadence-focus-changed", sync);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [logSession]);
+
   // completion
   const doneRef = useRef<string | null>(null);
   useEffect(() => {

@@ -96,6 +96,7 @@ final class Notifications {
             if (intent.getIntExtra("id", 1) == FOCUS_CODE) {
                 SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 prefs.edit().putLong("firedFocusAt", prefs.getLong("focusAt", 0)).apply();
+                context.getSystemService(NotificationManager.class).cancel(FocusTimer.NOTIFICATION_ID);
             }
             show(context, intent.getStringExtra("title"), intent.getStringExtra("body"), intent.getIntExtra("id", 1));
         }
@@ -105,6 +106,7 @@ final class Notifications {
         @Override public void onReceive(Context context, Intent intent) {
             SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             scheduleItems(context, prefs.getString("items", "[]"));
+            FocusTimer.update(context);
             long focusAt = prefs.getLong("focusAt", 0);
             if (focusAt > System.currentTimeMillis()) set(context, FOCUS_CODE, focusAt,
                 prefs.getString("focusTitle", "Focus session complete"),

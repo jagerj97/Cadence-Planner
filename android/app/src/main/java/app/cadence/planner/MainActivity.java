@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        FocusTimer.activity = new java.lang.ref.WeakReference<>(this);
         Window window = getWindow();
         // Android 15 enforces edge-to-edge. Inset the container, not the WebView's
         // document, so fixed headers and bottom navigation stay inside the safe area.
@@ -212,6 +213,11 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** A timer notification button changed the saved timer; have the web app reload it. */
+    void focusChanged() {
+        runOnUiThread(() -> browser.evaluateJavascript("window.dispatchEvent(new Event('cadence-focus-changed'))", null));
+    }
+
     @Override public void onRequestPermissionsResult(int code, @NonNull String[] permissions, @NonNull int[] grants) {
         super.onRequestPermissionsResult(code, permissions, grants);
         if (code == PERMISSION_LOCATION && pendingLocation != null) {
@@ -223,6 +229,7 @@ public class MainActivity extends Activity {
             if (anyGranted(grants)) fetchLocation(); else sendLocationError("denied");
         }
         if (code == PERMISSION_NOTIFY) {
+            FocusTimer.update(this);
             browser.evaluateJavascript("window.dispatchEvent(new Event('cadence-notification-permission'))", null);
         }
     }
@@ -298,6 +305,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (FocusTimer.activity.get() == this) FocusTimer.activity = new java.lang.ref.WeakReference<>(null);
         browser.removeJavascriptInterface("CadenceAndroid");
         browser.destroy();
         super.onDestroy();
@@ -462,8 +470,13 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public void saveFocus(String json) {
-            if (json != null && json.length() < 10000)
-                getSharedPreferences("cadence_focus", MODE_PRIVATE).edit().putString("state", json).apply();
+            if (json == null || json.length() >= 10000) return;
+            getSharedPreferences("cadence_focus", MODE_PRIVATE).edit().putString("state", json).apply();
+            FocusTimer.update(MainActivity.this);
+        }
+
+        @JavascriptInterface public String takeFocusStop() {
+            return FocusTimer.takeStopped(MainActivity.this);
         }
     }
 }

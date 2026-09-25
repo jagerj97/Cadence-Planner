@@ -19,6 +19,8 @@ export interface AndroidBridge {
   finishFocus(title: string, body: string): void;
   getFocus(): string;
   saveFocus(json: string): void;
+  /** A session stopped from the timer notification, waiting to be logged (JSON or "null"). Older builds lack it. */
+  takeFocusStop?(): string;
 }
 declare global {
   interface Window { CadenceAndroid?: AndroidBridge; }
