@@ -10,13 +10,6 @@
             android:orientation="horizontal" android:gravity="center_vertical">
             <TextView android:id="@+id/now_heading" android:layout_width="0dp" android:layout_height="wrap_content"
                 android:layout_weight="1" android:text="Right now" android:textSize="15sp" android:textStyle="bold" />
-            <FrameLayout android:layout_width="wrap_content" android:layout_height="wrap_content">
-                <ImageView android:id="@+id/now_pill" android:layout_width="match_parent" android:layout_height="match_parent"
-                    android:src="@drawable/widget_pill" android:scaleType="fitXY" android:importantForAccessibility="no" />
-                <TextView android:id="@+id/now_clock" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:paddingStart="10dp" android:paddingEnd="10dp" android:paddingTop="4dp" android:paddingBottom="4dp"
-                    android:textSize="13sp" />
-            </FrameLayout>
         </LinearLayout>
         <LinearLayout android:id="@+id/now_current" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="12dp" android:orientation="horizontal" android:gravity="center_vertical">

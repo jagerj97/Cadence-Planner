@@ -94,11 +94,6 @@ final class PanelWidgets {
         return r == 0 ? h12 + " " + suffix : String.format(Locale.US, "%d:%02d %s", h12, r, suffix);
     }
 
-    static String clock(int minutes) {
-        int m = ((minutes % 1440) + 1440) % 1440, h = m / 60, r = m % 60;
-        return String.format(Locale.US, "%d:%02d %s", h % 12 == 0 ? 12 : h % 12, r, h < 12 ? "AM" : "PM");
-    }
-
     static String duration(int minutes) {
         int m = Math.max(0, minutes), h = m / 60, r = m % 60;
         return h == 0 ? r + "m" : r == 0 ? h + "h" : h + "h " + r + "m";
@@ -154,9 +149,6 @@ final class PanelWidgets {
         paintCard(v, theme, theme.nowCard, theme.nowBorder);
         int now = nowMinutes();
         v.setTextColor(R.id.now_heading, theme.foreground);
-        v.setTextViewText(R.id.now_clock, clock(now));
-        v.setTextColor(R.id.now_clock, theme.mutedForeground);
-        v.setInt(R.id.now_pill, "setColorFilter", theme.dark ? 0x1affffff : 0xb3ffffff);
         v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800001, null));
 
         JSONObject current = null, next = null;
