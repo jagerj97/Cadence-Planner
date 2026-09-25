@@ -4,7 +4,7 @@ import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
 import { usePlanner, useNow, Ring } from "@/components/planner";
-import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
+import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
 import {
   KIND_META,
   addDays,
@@ -27,11 +27,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { fillOf } from "@/pages/other";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { dayBreakdown, habitRowsFor, taskRowsFor } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft } from "lucide-react";
+import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, type TodayPanel } from "@/lib/today";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -44,6 +46,8 @@ export default function Today() {
   const now = useNow(30000);
   const list = items ?? [];
 
+  const hidden = new Set(settings.hiddenTodayPanels ?? []);
+  const shows = (panel: TodayPanel) => !hidden.has(panel);
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scroller.current;
@@ -56,7 +60,7 @@ export default function Today() {
     // 8px is the column's top padding; the extra 16px keeps that hour's label readable above it.
     const hourY = 8 + new Date().getHours() * HOUR_PX;
     el.scrollTop = Math.max(0, hourY - 16);
-  }, [day, isLoading]); // eslint-disable-line
+  }, [day, isLoading, shows("schedule")]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
 
@@ -85,9 +89,9 @@ export default function Today() {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
           <section className="flex flex-col min-h-0 gap-3" aria-label="Day timeline">
-            {isToday && <NowCard items={list} now={now} onStart={startFocus} />}
-            <DayBreakdown totals={breakdown.totals} spans={breakdown.spans} />
-            {allDay.length > 0 && (
+            {isToday && shows("now") && <NowCard items={list} now={now} onStart={startFocus} />}
+            {shows("day") && <DayBreakdown totals={breakdown.totals} spans={breakdown.spans} />}
+            {shows("schedule") && allDay.length > 0 && (
               <div className="flex flex-wrap gap-1.5" aria-label="All-day">
                 {allDay.map((i) => (
                   <button
@@ -102,7 +106,7 @@ export default function Today() {
                 ))}
               </div>
             )}
-            <div className="relative flex-1 min-h-[420px] card-md overflow-hidden">
+            {shows("schedule") && <div className="relative flex-1 min-h-[420px] card-md overflow-hidden">
               {isLoading ? (
                 <div className="p-4 grid gap-3">
                   {[0, 1, 2, 3].map((k) => (
@@ -122,16 +126,20 @@ export default function Today() {
                   </div>
                 </div>
               )}
-            </div>
-            <p className="text-xs text-muted-foreground hidden md:block">
+            </div>}
+            {shows("schedule") && <p className="text-xs text-muted-foreground hidden md:block">
               Click an empty slot to add · hold a block briefly, then drag to move or resize
-            </p>
+            </p>}
           </section>
 
           {/* right rail */}
           <aside className="grid grid-cols-1 content-start gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 pb-4" aria-label="Day details">
-            <TasksCard items={list} day={day} />
-            <HabitsCard items={list} day={day} />
+            {shows("tasks") && <TasksCard items={list} day={day} />}
+            {shows("habits") && <HabitsCard items={list} day={day} />}
+            {TODAY_PANELS.every((p) => !shows(p.id)) && (
+              <p className="text-sm text-muted-foreground text-center">All Today panels are hidden.</p>
+            )}
+            <CustomizeToday hidden={hidden} />
           </aside>
         </div>
       </div>
@@ -139,6 +147,44 @@ export default function Today() {
   );
 }
 
+
+function CustomizeToday({ hidden }: { hidden: Set<string> }) {
+  const [open, setOpen] = useState(false);
+  const save = useSaveSettings();
+  const toggle = (panel: TodayPanel, shown: boolean) => {
+    const next = new Set(hidden);
+    if (shown) next.delete(panel); else next.add(panel);
+    save.mutate({ hiddenTodayPanels: TODAY_PANELS.map((p) => p.id).filter((id) => next.has(id)) });
+  };
+  return (
+    <>
+      <div className="flex justify-center">
+        <Button variant="ghost" size="sm" className="h-8 rounded-full px-4 text-xs text-muted-foreground" onClick={() => setOpen(true)} data-testid="button-customize-today">
+          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Customize Today tabs
+        </Button>
+      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm" data-testid="dialog-customize-today">
+          <DialogHeader className="text-left">
+            <DialogTitle>Customize Today</DialogTitle>
+            <DialogDescription>Choose which panels show on your Today page.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            {TODAY_PANELS.map((p) => (
+              <label key={p.id} className="flex items-center justify-between gap-4">
+                <span>
+                  <span className="block text-sm font-medium">{p.label}</span>
+                  <span className="block text-xs text-muted-foreground">{p.hint}</span>
+                </span>
+                <Switch checked={!hidden.has(p.id)} onCheckedChange={(v) => toggle(p.id, v)} data-testid={`switch-today-${p.id}`} />
+              </label>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: number; length: number }[] }) {
   const categories = [
@@ -154,7 +200,7 @@ function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: 
       </div>
       <div className="grid grid-cols-3 gap-1 text-center sm:text-left">
         {[1, 2, 0].map((category) => <div key={category} className="min-w-0" data-testid={`stat-${categories[category].label.toLowerCase().replace(" ", "-")}`}>
-          <div className="flex items-center justify-center sm:justify-start gap-1 text-[11px] text-muted-foreground">
+          <div className="flex items-center justify-center sm:justify-start gap-1 text-[12px] text-muted-foreground">
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: categories[category].dot }} />{categories[category].label}
           </div>
           <div className="font-semibold text-sm tnum">{fmtDur(totals[category])}</div>

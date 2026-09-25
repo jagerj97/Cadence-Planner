@@ -943,7 +943,7 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routine settings" hint="Background time ranges on every day, including past days. These are not events." defaultOpen>
+          <Section title="Routine settings" hint="Background time ranges on every day, including past days. These are not events.">
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>

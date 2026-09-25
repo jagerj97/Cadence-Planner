@@ -91,6 +91,7 @@ export type Settings = {
   colorTheme: ColorTheme;
   appearanceTheme: "light" | "dark";
   habitOrder: number[];
+  hiddenTodayPanels: string[]; // Today page panels the user turned off (see TODAY_PANELS)
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -112,4 +113,5 @@ export const DEFAULT_SETTINGS: Settings = {
   colorTheme: "orange",
   appearanceTheme: "light",
   habitOrder: [],
+  hiddenTodayPanels: [],
 };

@@ -107,10 +107,10 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                         aria-label={fmtDate(d, { weekday: "long", month: "short", day: "numeric" })}
                         data-testid={`link-day-${d}`}
                       >
-                        <span className="text-[10px] sm:text-xs text-muted-foreground"><span className="sm:hidden">{DAY_SHORT[parseYmd(d).getDay()].slice(0, 1)}</span><span className="hidden sm:inline">{DAY_SHORT[parseYmd(d).getDay()]}</span></span>
+                        <span className="text-[11px] sm:text-xs text-muted-foreground"><span className="sm:hidden">{DAY_SHORT[parseYmd(d).getDay()].slice(0, 1)}</span><span className="hidden sm:inline">{DAY_SHORT[parseYmd(d).getDay()]}</span></span>
                         <span
                           className={cn(
-                            "text-[11px] sm:text-sm font-semibold tnum",
+                            "text-[12px] sm:text-sm font-semibold tnum",
                             today && "rounded-full bg-primary text-primary-foreground px-1 sm:px-1.5",
                           )}
                         >
@@ -130,7 +130,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                             <span className="hidden sm:inline">{i.title}</span>
                           </button>
                         ))}
-                        {untimed.length > 2 && <span className="text-[9px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{untimed.length - 2}<span className="hidden sm:inline"> more</span></span>}
+                        {untimed.length > 2 && <span className="text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{untimed.length - 2}<span className="hidden sm:inline"> more</span></span>}
                       </div>
                     </div>
                   );
@@ -210,7 +210,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
         <div className="card-md flex overflow-hidden min-w-0 h-full flex-col">
           <div className="grid grid-cols-7 border-b">
             {weekdays.map((w) => (
-              <div key={w} className="min-w-0 px-0 sm:px-2 py-2 text-center sm:text-left text-[10px] sm:text-xs font-medium text-muted-foreground">
+              <div key={w} className="min-w-0 px-0 sm:px-2 py-2 text-center sm:text-left text-[11px] sm:text-xs font-medium text-muted-foreground">
                 <span className="sm:hidden">{w.slice(0, 1)}</span><span className="hidden sm:inline">{w}</span>
               </div>
             ))}
@@ -239,7 +239,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                   <button
                     onClick={() => nav(today ? "/" : `/day/${d}`)}
                     className={cn(
-                      "self-center sm:self-start text-[11px] sm:text-xs font-semibold tnum rounded-full h-5 min-w-5 sm:h-6 sm:min-w-6 px-0.5 sm:px-1.5 hover-elevate",
+                      "self-center sm:self-start text-[12px] sm:text-xs font-semibold tnum rounded-full h-5 min-w-5 sm:h-6 sm:min-w-6 px-0.5 sm:px-1.5 hover-elevate",
                       today ? "bg-primary text-primary-foreground" : inMonth ? "" : "text-muted-foreground",
                     )}
                     aria-label={fmtDate(d)}
@@ -252,7 +252,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                       role="img"
                       onClick={(event) => event.stopPropagation()}
                       aria-label={`${b.item.title} routine, ${fmtDate(d)}`}
-                      className="flex h-3.5 sm:h-auto items-center gap-0.5 rounded px-0.5 sm:px-1 text-left text-[8px] sm:text-xs leading-none min-w-0 select-none"
+                      className="flex h-3.5 sm:h-auto items-center gap-0.5 rounded px-0.5 sm:px-1 text-left text-[9px] sm:text-xs leading-none min-w-0 select-none"
                       style={{ background: `color-mix(in srgb, ${colorOf(b.item)} 13%, transparent)`, color: colorOf(b.item) }}
                       data-testid={`routine-month-${d}-${b.item.id}`}
                     >
@@ -260,13 +260,13 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                       <span className="truncate">{b.item.title}</span>
                     </div>
                   ))}
-                  {routines.length > 2 && <span className="text-[9px] text-muted-foreground">+{routines.length - 2} routines</span>}
+                  {routines.length > 2 && <span className="text-[10px] text-muted-foreground">+{routines.length - 2} routines</span>}
                   {all.slice(0, 3).map(({ i, t }) => (
                     <button
                       key={i.id + (t || "")}
                       onClick={() => openDetails(i, d)}
                       aria-label={`${i.title}${t ? `, ${fmtTime(t, true)}` : ""}`}
-                      className="flex h-3.5 sm:h-auto items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[8px] sm:text-xs leading-none sm:leading-normal hover-elevate min-w-0 overflow-hidden"
+                      className="flex h-3.5 sm:h-auto items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[9px] sm:text-xs leading-none sm:leading-normal hover-elevate min-w-0 overflow-hidden"
                       style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
                     >
                       <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: colorOf(i) }} />
@@ -275,7 +275,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                     </button>
                   ))}
                   {all.length > 3 && (
-                    <button onClick={() => nav(`/day/${d}`)} className="text-center sm:text-left text-[9px] sm:text-xs text-muted-foreground px-0.5 sm:px-1 hover:text-foreground">
+                    <button onClick={() => nav(`/day/${d}`)} className="text-center sm:text-left text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1 hover:text-foreground">
                       +{all.length - 3}<span className="hidden sm:inline"> more</span>
                     </button>
                   )}
@@ -291,7 +291,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
 
 /* ---------- Calendar tab: swaps between week and month ---------- */
 type CalView = "week" | "month";
-let lastView: CalView = "week"; // remembered while the app is open
+let lastView: CalView = "month"; // remembered while the app is open
 export function CalendarPage() {
   const [loc] = useLocation();
   const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : lastView));
@@ -318,7 +318,7 @@ export function CalendarPage() {
             aria-pressed={on}
             onClick={() => flip(key)}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[11px] sm:text-xs font-medium transition-opacity",
+              "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[12px] sm:text-xs font-medium transition-opacity",
               on ? "text-foreground" : "bg-card text-muted-foreground opacity-55",
             )}
             style={on ? { background: `color-mix(in srgb, ${color} 12%, hsl(var(--card)))`, borderColor: `color-mix(in srgb, ${color} 35%, hsl(var(--border)))` } : undefined}

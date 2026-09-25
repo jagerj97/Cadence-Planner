@@ -159,9 +159,9 @@ public class CadenceWidget extends AppWidgetProvider {
 
     static String time(int minutes) {
         int m = ((minutes % 1440) + 1440) % 1440, h = m / 60, r = m % 60;
-        String suffix = h < 12 ? "am" : "pm";
+        String suffix = h < 12 ? "AM" : "PM";
         int h12 = h % 12 == 0 ? 12 : h % 12;
-        return r == 0 ? h12 + suffix : String.format(Locale.US, "%d:%02d%s", h12, r, suffix);
+        return r == 0 ? h12 + " " + suffix : String.format(Locale.US, "%d:%02d %s", h12, r, suffix);
     }
 
     static String duration(int minutes) {

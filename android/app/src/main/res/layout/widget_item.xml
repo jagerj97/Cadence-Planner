@@ -5,7 +5,7 @@
     android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="4dp" android:paddingBottom="4dp">
     <TextView android:id="@+id/item_mark"
         android:layout_width="22dp" android:layout_height="wrap_content"
-        android:textSize="15sp" android:visibility="gone" />
+        android:textSize="16sp" android:visibility="gone" />
     <ImageView android:id="@+id/item_dot"
         android:layout_width="10dp" android:layout_height="10dp" android:layout_marginEnd="12dp"
         android:layout_marginStart="2dp" android:src="@drawable/widget_dot" />
@@ -14,13 +14,13 @@
         <TextView android:id="@+id/item_title"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:maxLines="1" android:ellipsize="end"
-            android:textSize="14sp" android:textColor="@color/widget_text" />
+            android:textSize="15sp" android:textColor="@color/widget_text" />
         <TextView android:id="@+id/item_sub"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:maxLines="1" android:ellipsize="end"
-            android:textSize="12sp" android:textColor="@color/widget_muted" />
+            android:textSize="13sp" android:textColor="@color/widget_muted" />
     </LinearLayout>
     <TextView android:id="@+id/item_right"
         android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_marginStart="8dp" android:textSize="12sp" android:textColor="@color/widget_muted" />
+        android:layout_marginStart="8dp" android:textSize="13sp" android:textColor="@color/widget_muted" />
 </LinearLayout>

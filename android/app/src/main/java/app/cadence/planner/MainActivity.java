@@ -13,6 +13,8 @@ import android.os.Looper;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.SafeBrowsingResponse;
@@ -26,7 +28,6 @@ import android.webkit.WebViewClient;
 import android.webkit.SslErrorHandler;
 import android.net.http.SslError;
 import android.widget.FrameLayout;
-import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -362,15 +363,28 @@ public class MainActivity extends Activity {
     }
 
     public class Bridge {
+        /**
+         * Plays haptics through the vibrator rather than View.performHapticFeedback, which Android skips
+         * whenever the system "touch feedback" setting is off. Cadence's own Haptic feedback setting
+         * decides (the web app only calls this when it's on).
+         */
         @JavascriptInterface public void haptic(String kind) {
-            runOnUiThread(() -> {
-                int effect;
-                if ("hold".equals(kind)) effect = HapticFeedbackConstants.LONG_PRESS;
-                else if ("complete".equals(kind)) effect = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.CONFIRM : HapticFeedbackConstants.CONTEXT_CLICK;
-                else if ("warn".equals(kind)) effect = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.REJECT : HapticFeedbackConstants.LONG_PRESS;
-                else effect = HapticFeedbackConstants.CLOCK_TICK;
-                browser.performHapticFeedback(effect);
-            });
+            Vibrator vibrator = getSystemService(Vibrator.class);
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            VibrationEffect effect;
+            if (Build.VERSION.SDK_INT >= 29) {
+                int id = "hold".equals(kind) ? VibrationEffect.EFFECT_HEAVY_CLICK
+                    : "complete".equals(kind) || "warn".equals(kind) ? VibrationEffect.EFFECT_DOUBLE_CLICK
+                    : VibrationEffect.EFFECT_TICK;
+                effect = VibrationEffect.createPredefined(id);
+            } else {
+                long[] timings = "hold".equals(kind) ? new long[] { 0, 25 }
+                    : "complete".equals(kind) ? new long[] { 0, 12, 60, 18 }
+                    : "warn".equals(kind) ? new long[] { 0, 30, 50, 30 }
+                    : new long[] { 0, 8 };
+                effect = VibrationEffect.createWaveform(timings, -1);
+            }
+            vibrator.vibrate(effect);
         }
 
         @JavascriptInterface public void requestLocation() {

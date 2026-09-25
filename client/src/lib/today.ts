@@ -5,6 +5,16 @@ import {
 
 /** What the Today page (and the home screen widget) show for a day. */
 
+/** Panels on the Today page that can be hidden from "Customize Today tabs". */
+export const TODAY_PANELS = [
+  { id: "now", label: "Right now", hint: "What's happening now and next" },
+  { id: "day", label: "Your day", hint: "How your day splits between routines, plans, and free time" },
+  { id: "schedule", label: "Schedule", hint: "All-day items and the timeline" },
+  { id: "tasks", label: "Tasks", hint: "Today's tasks" },
+  { id: "habits", label: "Habits", hint: "Today's habits" },
+] as const;
+export type TodayPanel = (typeof TODAY_PANELS)[number]["id"];
+
 export type TaskRow = { i: Item; occ: string; overdue: boolean; done: boolean };
 
 /** Today's tasks: overdue ones first on the current day, then open before done, high priority, and time. */

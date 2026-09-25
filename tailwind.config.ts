@@ -5,6 +5,16 @@ export default {
   content: ["./client/android.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
+      // About 1px larger than Tailwind's defaults at each size, for easier reading on a phone.
+      fontSize: {
+        xs: ["0.8125rem", { lineHeight: "1.125rem" }],
+        sm: ["0.9375rem", { lineHeight: "1.375rem" }],
+        base: ["1.0625rem", { lineHeight: "1.625rem" }],
+        lg: ["1.1875rem", { lineHeight: "1.75rem" }],
+        xl: ["1.3125rem", { lineHeight: "1.875rem" }],
+        "2xl": ["1.5625rem", { lineHeight: "2rem" }],
+        "5xl": ["3.125rem", { lineHeight: "1" }],
+      },
       borderRadius: { lg: ".5625rem", md: ".375rem", sm: ".25rem", xs: ".1875rem" },
       boxShadow: { xs: "0 1px 2px 0 rgb(0 0 0 / .05)" },
       colors: {
