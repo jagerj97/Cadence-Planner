@@ -59,10 +59,10 @@ export default function Today() {
       el.scrollTop = 0; // other days start at 12am
       return;
     }
-    // Center today on the current time once when the timeline opens; it doesn't follow the clock after that.
-    const d = new Date();
-    const nowY = 8 + ((d.getHours() * 60 + d.getMinutes()) / 60) * HOUR_PX; // 8px = the column's top padding
-    el.scrollTop = Math.max(0, nowY - el.clientHeight / 2);
+    // Start today at the current hour when the timeline opens (it doesn't follow the clock after that).
+    // 8px is the column's top padding; the extra 16px keeps that hour's label readable above it.
+    const hourY = 8 + new Date().getHours() * HOUR_PX;
+    el.scrollTop = Math.max(0, hourY - 16);
   }, [day, isLoading]); // eslint-disable-line
 
   const blocks = useMemo(() => blocksForDay(list, day), [list, day]);
