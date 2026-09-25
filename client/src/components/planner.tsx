@@ -351,13 +351,10 @@ function ItemDetails({ details, onClose, onEdit }: {
     <Dialog open={!!details} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md" data-testid="dialog-item-details">
         {i && <>
-          <DialogHeader className="pr-20 text-left">
+          <DialogHeader className="pr-8 text-left">
             <DialogTitle className="text-lg leading-snug">{i.title}</DialogTitle>
             <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
           </DialogHeader>
-          <Button variant="outline" size="sm" className="absolute right-12 top-4" onClick={onEdit} data-testid="button-detail-edit">
-            {routine ? "Edit routine" : "Edit"}
-          </Button>
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
           <div className="grid gap-3 text-sm">
             <div>
@@ -372,6 +369,11 @@ function ItemDetails({ details, onClose, onEdit }: {
             {i.location && <div className="break-words">{i.location}</div>}
             {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground">{i.notes}</p>}
             {routine && <p className="text-xs text-muted-foreground">A routine is a background guide, not a calendar event.</p>}
+          </div>
+          <div className="flex justify-center">
+            <Button variant="outline" size="sm" className="h-8 rounded-full px-5 text-xs" onClick={onEdit} data-testid="button-detail-edit">
+              {routine ? "Edit routine" : "Edit"}
+            </Button>
           </div>
         </>}
       </DialogContent>
