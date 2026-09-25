@@ -172,10 +172,7 @@ function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: 
   ];
   return (
     <div className="card-md p-4 grid gap-3" data-testid="card-day-breakdown">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Your day</h2>
-        <span className="text-xs text-muted-foreground">24 hours</span>
-      </div>
+      <h2 className="text-sm font-semibold">Your day</h2>
       <div className="flex h-5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`Routines ${fmtDur(totals[1])}, planned ${fmtDur(totals[2])}, free ${fmtDur(totals[0])}`}>
         {spans.map((span, index) => <div key={index} style={{ width: `${span.length / 1440 * 100}%`, background: categories[span.category].color }} />)}
       </div>
