@@ -1,0 +1,56 @@
+name: Build Cadence APK
+
+# Builds whenever code is pushed to main, or on demand from the Actions tab ("Run workflow").
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Build the app's web files
+        run: |
+          npm ci
+          npm run build:android:web
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build the APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../Cadence.apk
+
+      - name: Keep the APK with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cadence-apk
+          path: Cadence.apk
+
+      # A release gives a direct download link you can open on your phone.
+      - name: Publish a release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Cadence build ${{ github.run_number }}
+          body: Built from commit ${{ github.sha }}. Download Cadence.apk below and open it on your phone to install.
+          files: Cadence.apk
+          make_latest: true
