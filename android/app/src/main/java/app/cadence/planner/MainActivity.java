@@ -465,6 +465,10 @@ public class MainActivity extends Activity {
             FocusTimer.update(MainActivity.this);
         }
 
+        @JavascriptInterface public void updateWidget(String json) {
+            if (json != null && json.length() < 500000) CadenceWidget.saveSnapshot(MainActivity.this, json);
+        }
+
         @JavascriptInterface public String takeFocusStop() {
             return FocusTimer.takeStopped(MainActivity.this);
         }

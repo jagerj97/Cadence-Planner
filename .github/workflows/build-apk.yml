@@ -44,12 +44,13 @@ jobs:
           name: Cadence-apk
           path: Cadence.apk
 
-      # A release gives a direct download link you can open on your phone.
+      # A release gives a direct download link you can open on your phone. It's named after the
+      # version in package.json; pushing again without bumping it replaces that version's APK.
       - name: Publish a release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Cadence v${{ env.APP_VERSION }} (build ${{ github.run_number }})
-          body: Version ${{ env.APP_VERSION }}, built from commit ${{ github.sha }}. Download Cadence.apk below and open it on your phone to install.
+          tag_name: v${{ env.APP_VERSION }}
+          name: Cadence v${{ env.APP_VERSION }}
+          body: Built from commit ${{ github.sha }}. Download Cadence.apk below and open it on your phone to install.
           files: Cadence.apk
           make_latest: true

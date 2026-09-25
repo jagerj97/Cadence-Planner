@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.Icon;
 import android.os.Build;
+import android.os.Bundle;
 
 import org.json.JSONObject;
 
@@ -25,7 +26,10 @@ import java.util.Locale;
  * (plannedSec, accSec, runStart, ...), so the buttons work even when the app is closed.
  */
 final class FocusTimer {
-    static final String CHANNEL = "cadence_timer";
+    // Normal importance (so it sits with the alerting notifications, like the Clock timer) but silent.
+    // A channel's importance can't be raised after creation, hence a new id for the old low one.
+    static final String CHANNEL = "cadence_timer_live";
+    private static final String OLD_CHANNEL = "cadence_timer";
     static final int NOTIFICATION_ID = 500002;
     private static final String PREFS = "cadence_focus";
     static final String ACTION_PAUSE = "app.cadence.planner.TIMER_PAUSE";
@@ -54,6 +58,10 @@ final class FocusTimer {
         return state.isNull("runStart") ? acc : acc + (now - state.optLong("runStart", now)) / 1000.0;
     }
 
+    private static String clip(String text) {
+        return text.length() > 120 ? text.substring(0, 119) + "…" : text;
+    }
+
     private static String clock(long seconds) {
         seconds = Math.max(0, seconds);
         long h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60;
@@ -64,7 +72,17 @@ final class FocusTimer {
         Intent intent = new Intent(context, ActionReceiver.class).setAction(action);
         PendingIntent pending = PendingIntent.getBroadcast(context, code, intent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_notification), label, pending).build();
+        return new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_timer), label, pending).build();
+    }
+
+    private static void createChannel(NotificationManager manager) {
+        if (manager.getNotificationChannel(OLD_CHANNEL) != null) manager.deleteNotificationChannel(OLD_CHANNEL);
+        NotificationChannel channel = new NotificationChannel(CHANNEL, "Running timer", NotificationManager.IMPORTANCE_DEFAULT);
+        channel.setDescription("The countdown for a running focus or break timer");
+        channel.setSound(null, null);
+        channel.enableVibration(false);
+        channel.setShowBadge(false);
+        manager.createNotificationChannel(channel);
     }
 
     /** Shows, refreshes, or removes the notification to match the saved timer. */
@@ -83,30 +101,42 @@ final class FocusTimer {
             manager.cancel(NOTIFICATION_ID);
             return;
         }
-        manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Running timer", NotificationManager.IMPORTANCE_LOW));
+        createChannel(manager);
 
         boolean isBreak = "break".equals(state.optString("mode"));
-        String title = isBreak ? "Break" : state.optString("title", "Focus");
+        String kind = isBreak ? "Break" : "Focus";
+        String task = isBreak ? "" : state.optString("title", "");
+        String left = clock(Math.round(remaining));
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         if (launch != null) launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         PendingIntent open = launch == null ? null
             : PendingIntent.getActivity(context, NOTIFICATION_ID, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
+        // Android 16+ promotes this to a Live Update: a status bar chip with the countdown. These are the
+        // extras Notification.Builder.setRequestPromotedOngoing / setShortCriticalText write (API 36);
+        // older versions ignore them. Promotion also needs an ongoing, titled, non-colorized notification.
+        Bundle live = new Bundle();
+        live.putBoolean("android.requestPromotedOngoing", true);
+        if (!running) live.putString("android.shortCriticalText", left); // the chip shows the countdown while running
+
         Notification.Builder notification = new Notification.Builder(context, CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification).setColor(Color.rgb(214, 96, 57))
-            .setContentTitle(title.substring(0, Math.min(100, title.length())))
+            .setSmallIcon(R.drawable.ic_timer).setColor(Color.rgb(214, 96, 57))
             .setCategory(Notification.CATEGORY_STOPWATCH)
             .setOngoing(true).setOnlyAlertOnce(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setContentIntent(open);
+            .setContentIntent(open)
+            .addExtras(live);
         if (running) {
             long endAt = now + Math.round(remaining * 1000);
-            notification.setContentText(isBreak ? "Break time left" : "Focus time left")
+            String ends = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(endAt));
+            notification.setContentTitle(kind)
+                .setContentText(clip((task.isEmpty() ? "" : task + " · ") + "Ends at " + ends))
                 .setWhen(endAt).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
                 .setTimeoutAfter(Math.round(remaining * 1000) + 1000)
                 .addAction(action(context, "Pause", ACTION_PAUSE, 1));
         } else {
-            notification.setContentText("Paused · " + clock(Math.round(remaining)) + " left")
+            notification.setContentTitle(kind + " paused")
+                .setContentText(clip((task.isEmpty() ? "" : task + " · ") + left + " left"))
                 .setShowWhen(false)
                 .addAction(action(context, "Resume", ACTION_RESUME, 2));
         }

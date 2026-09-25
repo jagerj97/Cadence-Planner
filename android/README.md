@@ -4,9 +4,9 @@ This Android project wraps Cadence's React interface (in `../client`) in a WebVi
 
 ## Builds and releases
 
-Every push to `main` runs `.github/workflows/build-apk.yml`, which builds the web interface, builds a signed release APK, and publishes it as a GitHub release (`build-N`) that can be downloaded and installed on a phone. Every build is signed with the same key (`app/cadence.keystore`), so each new APK installs over the last one and keeps its data. Android 8.0 or newer is required.
+Every push to `main` runs `.github/workflows/build-apk.yml`, which builds the web interface, builds a signed release APK, and publishes it as a GitHub release named after the version (for example `v1.3.1-beta`) that can be downloaded and installed on a phone. Every build is signed with the same key (`app/cadence.keystore`), so each new APK installs over the last one and keeps its data. Android 8.0 or newer is required.
 
-The version shown in Settings comes from `version` in the root `package.json`; the CI run number is the build number and the APK's `versionCode`. To bump the version, run `npm version <x.y.z> --no-git-tag-version` from the repository root.
+The version shown in Settings and on the release comes from `version` in the root `package.json`. Bump it for each release with `npm version <x.y.z-beta> --no-git-tag-version` from the repository root; pushing without a bump replaces that version's APK. The CI run number is used only as the APK's internal `versionCode`.
 
 ## Building locally
 
@@ -20,4 +20,5 @@ From the repository root, run `npm ci` and `npm run build:android:web`, which wr
 - Use **Calendar links > Export** to save your planner to an `.ics` file. A subscribe-to-Cadence URL isn't available because a phone-only database can't serve a calendar feed to other devices.
 - Grant notification permission in Settings. Items can have several reminders; Cadence schedules the soonest 128 reminder notifications over the next 31 days and reschedules them whenever the app opens or items change. Scheduled alerts are restored after a reboot, and Android may deliver them a little late under battery optimization.
 - A running focus or break timer shows an ongoing notification with a live countdown and Pause/Resume and Stop buttons, which work even while the app is closed (`FocusTimer.java`).
+- The **Cadence · Today** home screen widget shows Right now, Your day, Schedule, Tasks, and Habits from a week-long snapshot the app saves whenever your plan changes, so it stays current while the app is closed. Choose its panels when you add it, or later from its gear icon (`CadenceWidget.java`, `WidgetConfigActivity.java`).
 - **Settings > In-app pop-ups** turns off the app's own pop-ups so reminders arrive only as phone notifications. Errors still show in the app.

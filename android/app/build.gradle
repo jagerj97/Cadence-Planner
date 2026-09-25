@@ -2,8 +2,8 @@ plugins {
     id 'com.android.application'
 }
 
-// The version shown to users comes from package.json. The build number (CI run number) must keep
-// rising so each APK installs as an update; it starts at 5 because 4 was the last hand-set code.
+// The version shown to users comes from package.json. Android also needs a versionCode that rises
+// with every APK so each installs as an update; that's the CI run number, and it isn't shown.
 def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).version
 def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '0') as int
 
