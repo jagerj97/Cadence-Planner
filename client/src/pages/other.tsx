@@ -1120,6 +1120,11 @@ export function SettingsPage() {
                 </SelectContent>
               </Select>
             </Field>
+            <Row label="In-app pop-ups" hint={window.CadenceAndroid
+              ? "Show reminders and confirmations inside Cadence. Turn off to get reminders only as phone notifications, like a calendar app. Errors always show."
+              : "Show reminders and confirmations inside Cadence. Errors always show."}>
+              <Switch checked={draft.inAppPopups !== false} onCheckedChange={(v) => setDraft({ ...draft, inAppPopups: v })} data-testid="switch-in-app-popups" />
+            </Row>
             <Row label="Play a sound" hint="Soft chime for reminders and when a timer ends">
               <Switch checked={draft.sound} onCheckedChange={(v) => setDraft({ ...draft, sound: v })} data-testid="switch-sound" />
             </Row>

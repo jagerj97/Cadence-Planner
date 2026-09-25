@@ -251,6 +251,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   startFocusRef.current = startFocus;
   useEffect(() => {
     if (!items) return;
+    // Pop-ups off on Android: the phone's notification makes the sound, so don't chime in the app too.
+    const phoneOnly = !!window.CadenceAndroid && settings.inAppPopups === false;
     const check = () => {
       const now = new Date();
       const nowM = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
@@ -270,7 +272,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             const mins = Math.max(1, Math.round(b.fullEnd - nowM));
             startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: mins });
             systemNotify(`Timer started: ${b.item.title}`, `${fmtDur(mins)} on the clock`);
-            if (settings.sound) chime("soft");
+            if (settings.sound && !phoneOnly) chime("soft");
             toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock. Open Focus to pause or stop it.` });
           }
         }
@@ -286,7 +288,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             const title = `${KIND_META[kindOf(b.item)].label}: ${b.item.title}`;
             const desc = `${when} · ${fmtTime(b.item.startTime)}${b.item.endTime ? "–" + fmtTime(b.item.endTime) : ""}`;
             if (!window.CadenceAndroid) systemNotify(title, desc);
-            if (settings.sound) chime("soft");
+            if (settings.sound && !phoneOnly) chime("soft");
             const dur = Math.max(5, b.end - b.start);
             toast({
               title,
@@ -309,7 +311,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     check();
     const t = setInterval(check, 15000);
     return () => clearInterval(t);
-  }, [items, settings.sound, toast]);
+  }, [items, settings.sound, settings.inAppPopups, toast]);
 
   const value: Ctx = {
     theme,

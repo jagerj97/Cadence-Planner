@@ -102,6 +102,7 @@ export type Settings = {
   focusMinutes: number;
   breakMinutes: number;
   sound: boolean;
+  inAppPopups: boolean; // false = alerts only as system notifications (errors still show)
   haptics: boolean;
   weekStartsOn: 0 | 1;
   lat: number;
@@ -122,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
   focusMinutes: 30,
   breakMinutes: 5,
   sound: true,
+  inAppPopups: true,
   haptics: true,
   weekStartsOn: 0,
   lat: 39.7029,
