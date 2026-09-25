@@ -175,7 +175,8 @@ public class MainActivity extends Activity {
     }
 
     private void applyAppearance(boolean dark) {
-        int bar = dark ? Color.rgb(47, 50, 55) : Color.rgb(225, 227, 229);
+        // The status bar strip matches the app bar, which uses the page background (--background).
+        int bar = dark ? Color.rgb(31, 27, 25) : Color.rgb(249, 247, 245);
         int bottom = dark ? Color.rgb(44, 40, 38) : Color.WHITE;
         content.setBackgroundColor(bottom);
         browser.setBackgroundColor(bottom);

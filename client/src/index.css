@@ -359,8 +359,9 @@
 }
 
 /* ---------- Material (Play Music) flavour ---------- */
-:root { --appbar: 210 8% 89%; --appbar-fg: 220 12% 21%; }
-.dark { --appbar: 220 7% 20%; --appbar-fg: 0 0% 94%; }
+/* The top bar shares the page background (a hairline border separates it). */
+:root { --appbar: var(--background); --appbar-fg: var(--foreground); }
+.dark { --appbar: var(--background); --appbar-fg: var(--foreground); }
 .card-md {
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border) / .62);
