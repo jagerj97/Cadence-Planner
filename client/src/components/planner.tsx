@@ -225,7 +225,6 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         toast({
           title: "Nice work — session complete",
           description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused`,
-          duration: 20000,
           action: (
             <ToastAction
               altText="Take a break"
@@ -238,7 +237,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       } else {
         if (window.CadenceAndroid) window.CadenceAndroid.finishFocus("Break's over", "Ready for the next block?");
         else systemNotify("Break's over", "Ready for the next block?");
-        toast({ title: "Break's over", description: "Ready for the next block?", duration: 10000 });
+        toast({ title: "Break's over", description: "Ready for the next block?" });
       }
     }
   }, [elapsed, focus, logSession, settings, startFocus, toast]);
@@ -270,7 +269,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: mins });
             systemNotify(`Timer started: ${b.item.title}`, `${fmtDur(mins)} on the clock`);
             if (settings.sound) chime("soft");
-            toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock. Open Focus to pause or stop it.`, duration: 15000 });
+            toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock. Open Focus to pause or stop it.` });
           }
         }
         const r = b.item.reminder;
@@ -290,7 +289,6 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           toast({
             title,
             description: desc,
-            duration: 60000,
             action:
               kindOf(b.item) !== "sleep" && !b.item.autoTimer ? (
                 <ToastAction
