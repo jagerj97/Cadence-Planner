@@ -6,11 +6,9 @@ import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   addDays,
   completionsOf,
-  findFreeSlot,
   fmtDate,
   fmtDur,
   fmtTime,
-  fromMin,
   isDeadlineTask,
   isTimed,
   kindOf,
@@ -26,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Plus, Check, CalendarClock, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag } from "lucide-react";
+import { Plus, Check, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag } from "lucide-react";
 
 type Row = { i: Item; occ: string; done: boolean };
 type Filter = "today" | "upcoming" | "open" | "done";
@@ -196,26 +194,14 @@ export default function TasksPage() {
 
 function TaskRow({ r, items }: { r: Row; items: Item[] }) {
   const { i, occ, done } = r;
-  const { toggle, update } = useItemMutations();
+  const { toggle } = useItemMutations();
   const { openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
-  const { toast } = useToast();
   const today = todayStr();
 
   const dateLabel =
     occ === today ? "Today" : occ === addDays(today, 1) ? "Tomorrow" : occ === addDays(today, -1) ? "Yesterday" : fmtDate(occ, { weekday: "short", month: "short", day: "numeric" });
 
-  const schedule = () => {
-    const nm = new Date().getHours() * 60 + new Date().getMinutes();
-    const from = Math.max(nm, toMin(settings.wakeTime));
-    const slot = findFreeSlot(items, today, 30, from, toMin(settings.bedTime));
-    if (slot == null) {
-      toast({ title: "No free 30-minute slot left today", description: "Open the task to pick another day." });
-      return;
-    }
-    update.mutate({ id: i.id, date: today, endDate: today, startTime: fromMin(slot), endTime: fromMin(slot + 30) });
-    toast({ title: "Scheduled", description: `${i.title} · today ${fmtTime(slot, true)}–${fmtTime(slot + 30, true)}` });
-  };
   const dur = isTimed(i) ? ((toMin(i.endTime) - toMin(i.startTime) + 1440) % 1440) || 30 : settings.focusMinutes;
 
   return (
@@ -257,11 +243,6 @@ function TaskRow({ r, items }: { r: Row; items: Item[] }) {
       </button>
       {!done && (
         <div className="flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
-          {!isTimed(i) && !isDeadlineTask(i) && (
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={schedule} aria-label="Find a time today" title="Find a time today" data-testid={`button-schedule-${i.id}`}>
-              <CalendarClock className="h-4 w-4" />
-            </Button>
-          )}
           <Button
             size="icon"
             variant="ghost"

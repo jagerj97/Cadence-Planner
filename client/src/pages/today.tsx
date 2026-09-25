@@ -12,7 +12,6 @@ import {
   blocksForDay,
   colorOf,
   completionsOf,
-  findFreeSlot,
   fmtDate,
   fmtDur,
   fmtTime,
@@ -39,7 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Plus, Check, CalendarClock, Flame, Play, Sparkles, CornerDownLeft, Moon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, Moon } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -333,10 +332,9 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
 }
 
 function TasksCard({ items, day }: { items: Item[]; day: string }) {
-  const { toggle, update } = useItemMutations();
+  const { toggle } = useItemMutations();
   const { openEditor, openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
-  const { toast } = useToast();
   const isToday = day === todayStr();
   const tasks = items.filter((i) => kindOf(i) === "task" && (appearsOn(i, day) || canDoTaskOn(i, day)));
   const overdue = isToday
@@ -354,17 +352,6 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
   });
   const left = rows.filter((r) => !completionsOf(r.i).has(r.occ)).length;
 
-  const schedule = (i: Item) => {
-    const nm = new Date().getHours() * 60 + new Date().getMinutes();
-    const from = Math.max(isToday ? nm : 0, toMin(settings.wakeTime));
-    const slot = findFreeSlot(items, day, 30, from, toMin(settings.bedTime));
-    if (slot == null) {
-      toast({ title: "No free 30-minute slot left", description: "Try tomorrow, or drag something around." });
-      return;
-    }
-    update.mutate({ id: i.id, date: day, endDate: day, startTime: fromMin(slot), endTime: fromMin(slot + 30) });
-    toast({ title: "Scheduled", description: `${i.title} · ${fmtTime(slot, true)}–${fmtTime(slot + 30, true)}` });
-  };
 
   return (
     <div className="card-md" data-testid="card-tasks">
@@ -406,11 +393,6 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
                 </button>
                 {!done && (
                   <div className="flex opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-                    {!isTimed(i) && !isDeadlineTask(i) && (
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => schedule(i)} aria-label="Find a time" data-testid={`button-schedule-${i.id}`}>
-                        <CalendarClock className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
                     <Button
                       size="icon"
                       variant="ghost"
