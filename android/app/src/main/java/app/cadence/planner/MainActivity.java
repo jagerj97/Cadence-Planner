@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         FocusTimer.activity = new java.lang.ref.WeakReference<>(this);
+        readLaunchAction(getIntent());
         Window window = getWindow();
         // Android 15 enforces edge-to-edge. Inset the container, not the WebView's
         // document, so fixed headers and bottom navigation stay inside the safe area.
@@ -211,7 +212,32 @@ public class MainActivity extends Activity {
 
     /** A timer notification button changed the saved timer; have the web app reload it. */
     void focusChanged() {
-        runOnUiThread(() -> browser.evaluateJavascript("window.dispatchEvent(new Event('cadence-focus-changed'))", null));
+        dispatchToPage("cadence-focus-changed");
+    }
+
+    /** The open activity, if any (for notification and widget buttons that need to tell the page). */
+    static MainActivity current() {
+        return FocusTimer.activity.get();
+    }
+
+    /** Fires a window event in the web app, e.g. so it picks up a widget tap. */
+    void dispatchToPage(String event) {
+        runOnUiThread(() -> browser.evaluateJavascript("window.dispatchEvent(new Event('" + event + "'))", null));
+    }
+
+    /** What a widget's + button asked for ("add-task" / "add-habit"); the page reads it via takeLaunchAction. */
+    private volatile String launchAction = "";
+
+    private void readLaunchAction(Intent intent) {
+        String add = intent == null ? null : intent.getStringExtra(PanelWidgets.EXTRA_ADD);
+        if ("add-task".equals(add) || "add-habit".equals(add)) launchAction = add;
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        readLaunchAction(intent);
+        if (!launchAction.isEmpty()) dispatchToPage("cadence-launch-action");
     }
 
     @Override public void onRequestPermissionsResult(int code, @NonNull String[] permissions, @NonNull int[] grants) {
@@ -480,7 +506,17 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public void updateWidget(String json) {
-            if (json != null && json.length() < 500000) CadenceWidget.saveSnapshot(MainActivity.this, json);
+            if (json != null && json.length() < 1000000) PanelWidgets.saveSnapshot(MainActivity.this, json);
+        }
+
+        @JavascriptInterface public String takeWidgetActions() {
+            return PanelWidgets.takeActions(MainActivity.this);
+        }
+
+        @JavascriptInterface public String takeLaunchAction() {
+            String action = launchAction;
+            launchAction = "";
+            return action;
         }
 
         @JavascriptInterface public String takeFocusStop() {

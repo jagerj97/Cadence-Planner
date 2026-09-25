@@ -1,0 +1,53 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/card_border" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card_border" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="vertical" android:padding="16dp" android:gravity="center_vertical">
+        <TextView android:id="@+id/day_heading" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Your day" android:textSize="15sp" android:textStyle="bold" />
+        <ImageView android:id="@+id/day_bar" android:layout_width="match_parent" android:layout_height="20dp"
+            android:layout_marginTop="12dp" android:scaleType="fitXY" android:contentDescription="Your day" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:orientation="horizontal">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical" android:gravity="center_horizontal">
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView android:id="@+id/day_dot_routine" android:layout_width="8dp" android:layout_height="8dp"
+                    android:src="@drawable/widget_dot" android:importantForAccessibility="no" />
+                <TextView android:id="@+id/day_label_routine" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp" android:text="Routines" android:textSize="13sp" />
+            </LinearLayout>
+            <TextView android:id="@+id/day_value_routine" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:textSize="17sp" android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical" android:gravity="center_horizontal">
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView android:id="@+id/day_dot_planned" android:layout_width="8dp" android:layout_height="8dp"
+                    android:src="@drawable/widget_dot" android:importantForAccessibility="no" />
+                <TextView android:id="@+id/day_label_planned" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp" android:text="Planned" android:textSize="13sp" />
+            </LinearLayout>
+            <TextView android:id="@+id/day_value_planned" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:textSize="17sp" android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical" android:gravity="center_horizontal">
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView android:id="@+id/day_dot_free" android:layout_width="8dp" android:layout_height="8dp"
+                    android:src="@drawable/widget_dot" android:importantForAccessibility="no" />
+                <TextView android:id="@+id/day_label_free" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp" android:text="Free time" android:textSize="13sp" />
+            </LinearLayout>
+            <TextView android:id="@+id/day_value_free" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:textSize="17sp" android:textStyle="bold" />
+        </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

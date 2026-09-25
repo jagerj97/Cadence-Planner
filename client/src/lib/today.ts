@@ -5,7 +5,7 @@ import {
 
 /** What the Today page (and the home screen widget) show for a day. */
 
-/** Panels on the Today page that can be hidden from "Customize Today tabs". */
+/** Cards on the Today page that can be hidden and reordered from "Customize cards". */
 export const TODAY_PANELS = [
   { id: "now", label: "Right now", hint: "What's happening now and next" },
   { id: "day", label: "Your day", hint: "How your day splits between routines, plans, and free time" },

@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS, IMPORT_KINDS } from "@shared/schema";
 import type { Feed, InsertItem, Item, JournalEntry, Session, Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
+import { queryClient } from "./queryClient";
 import { addDays, blocksForDay, fmtDur, parseYmd, remindersOf, todayStr } from "./cal";
 
 export interface AndroidBridge {
@@ -24,6 +25,10 @@ export interface AndroidBridge {
   takeFocusStop?(): string;
   /** Hands the home screen widget a snapshot of the Today page (see widget.ts). Older builds lack it. */
   updateWidget?(json: string): void;
+  /** Task and habit taps made on the widgets, waiting for the app (JSON array). Older builds lack it. */
+  takeWidgetActions?(): string;
+  /** What a widget button asked the app to do when it opened it ("add-task", "add-habit"), or "". */
+  takeLaunchAction?(): string;
 }
 declare global {
   interface Window { CadenceAndroid?: AndroidBridge; }
@@ -433,5 +438,23 @@ export function installAndroidApi() {
       return fail(cause instanceof Error ? cause.message : "Local database unavailable", 500);
     }
   };
-  void dbReady.then(refreshNotifications).catch(() => {});
+  void dbReady.then(applyWidgetActions).then(refreshNotifications).catch(() => {});
+  // Android pokes the app when a widget is tapped while it's running.
+  window.addEventListener("cadence-widget-actions", () => { void applyWidgetActions().then(refreshNotifications).catch(() => {}); });
+}
+
+/**
+ * Replays task and habit taps made on the home screen widgets. Both are flips (toggle done, or
+ * cycle a habit through half and done), so replaying them in order gives the state the widget showed.
+ */
+async function applyWidgetActions() {
+  let actions: { op?: string; id?: number; date?: string }[] = [];
+  try { actions = JSON.parse(window.CadenceAndroid?.takeWidgetActions?.() || "[]"); } catch { return; }
+  if (!Array.isArray(actions) || !actions.length) return;
+  for (const action of actions) {
+    if ((action.op === "toggle" || action.op === "cycle") && Number.isInteger(action.id) && typeof action.date === "string") {
+      await localApi("POST", `/api/items/${action.id}/${action.op}`, { date: action.date }).catch(() => {});
+    }
+  }
+  await queryClient.invalidateQueries({ queryKey: ["/api/items"] });
 }

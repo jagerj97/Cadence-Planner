@@ -28,12 +28,13 @@ import { Button } from "@/components/ui/button";
 import { fillOf } from "@/pages/other";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { SortableList } from "@/components/sortable";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal, ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -141,7 +142,7 @@ export default function Today() {
             {shows("tasks") && <div style={at("tasks")}><TasksCard items={list} day={day} /></div>}
             {shows("habits") && <div style={at("habits")}><HabitsCard items={list} day={day} /></div>}
             {TODAY_PANELS.every((p) => !shows(p.id)) && (
-              <p className="text-sm text-muted-foreground text-center" style={{ order: 98 }}>All Today panels are hidden.</p>
+              <p className="text-sm text-muted-foreground text-center" style={{ order: 98 }}>All cards are hidden.</p>
             )}
             <div className="pb-4 lg:pb-0" style={{ order: 99 }}><CustomizeToday hidden={hidden} order={panelOrder} /></div>
           </aside>
@@ -155,11 +156,7 @@ export default function Today() {
 function CustomizeToday({ hidden, order }: { hidden: Set<string>; order: TodayPanel[] }) {
   const [open, setOpen] = useState(false);
   const save = useSaveSettings();
-  const move = (index: number, by: -1 | 1) => {
-    const next = [...order];
-    [next[index], next[index + by]] = [next[index + by], next[index]];
-    save.mutate({ todayPanelOrder: next });
-  };
+
   const toggle = (panel: TodayPanel, shown: boolean) => {
     const next = new Set(hidden);
     if (shown) next.delete(panel); else next.add(panel);
@@ -169,41 +166,33 @@ function CustomizeToday({ hidden, order }: { hidden: Set<string>; order: TodayPa
     <>
       <div className="flex justify-center">
         <Button variant="ghost" size="sm" className="h-8 rounded-full px-4 text-xs text-muted-foreground" onClick={() => setOpen(true)} data-testid="button-customize-today">
-          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Customize Today tabs
+          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Customize cards
         </Button>
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-sm" data-testid="dialog-customize-today">
           <DialogHeader className="text-left">
-            <DialogTitle>Customize Today</DialogTitle>
-            <DialogDescription>Choose which panels show on your Today page, and their order.</DialogDescription>
+            <DialogTitle>Customize cards</DialogTitle>
+            <DialogDescription>Choose which cards show on your Today page. Hold a card and drag to reorder.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4">
-            {order.map((id, index) => {
+          <SortableList
+            items={order}
+            onReorder={(next) => save.mutate({ todayPanelOrder: next })}
+            className="grid gap-1"
+            render={(id) => {
               const p = TODAY_PANELS.find((panel) => panel.id === id)!;
               return (
-                <div key={p.id} className="flex items-center gap-2">
-                  <div className="flex flex-col">
-                    <Button size="icon" variant="ghost" className="h-6 w-7" disabled={index === 0 || save.isPending}
-                      onClick={() => move(index, -1)} aria-label={`Move ${p.label} up`} data-testid={`button-today-up-${p.id}`}>
-                      <ChevronUp className="h-4 w-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-6 w-7" disabled={index === order.length - 1 || save.isPending}
-                      onClick={() => move(index, 1)} aria-label={`Move ${p.label} down`} data-testid={`button-today-down-${p.id}`}>
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <label className="flex flex-1 items-center justify-between gap-4">
-                    <span>
-                      <span className="block text-sm font-medium">{p.label}</span>
-                      <span className="block text-xs text-muted-foreground">{p.hint}</span>
-                    </span>
-                    <Switch checked={!hidden.has(p.id)} onCheckedChange={(v) => toggle(p.id, v)} data-testid={`switch-today-${p.id}`} />
-                  </label>
+                <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-today-${p.id}`}>
+                  <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{p.label}</span>
+                    <span className="block text-xs text-muted-foreground">{p.hint}</span>
+                  </span>
+                  <Switch checked={!hidden.has(p.id)} onCheckedChange={(v) => toggle(p.id, v)} aria-label={`Show ${p.label}`} data-testid={`switch-today-${p.id}`} />
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
         </DialogContent>
       </Dialog>
     </>

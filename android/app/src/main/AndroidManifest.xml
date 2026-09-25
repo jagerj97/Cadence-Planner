@@ -25,22 +25,53 @@
         </activity>
         <receiver android:name=".Notifications$AlarmReceiver" android:exported="false" />
         <receiver android:name=".FocusTimer$ActionReceiver" android:exported="false" />
-        <receiver android:name=".CadenceWidget" android:exported="false" android:label="@string/widget_label">
+        <!-- Home screen widgets, one per Today card (PanelWidgets.java) -->
+        <receiver android:name=".PanelWidgets$Now" android:exported="false" android:label="@string/widget_now_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cadence_widget_info" />
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_now" />
         </receiver>
-        <service android:name=".CadenceWidget$RowsService" android:exported="false"
-            android:permission="android.permission.BIND_REMOTEVIEWS" />
-        <activity android:name=".WidgetConfigActivity" android:exported="true"
-            android:theme="@style/CadenceWidgetConfig" android:excludeFromRecents="true" android:taskAffinity="">
+        <receiver android:name=".PanelWidgets$Day" android:exported="false" android:label="@string/widget_day_label">
             <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
-        </activity>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_day" />
+        </receiver>
+        <receiver android:name=".PanelWidgets$Schedule" android:exported="false" android:label="@string/widget_schedule_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_schedule" />
+        </receiver>
+        <receiver android:name=".PanelWidgets$Tasks" android:exported="false" android:label="@string/widget_tasks_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_tasks" />
+        </receiver>
+        <receiver android:name=".PanelWidgets$Habits" android:exported="false" android:label="@string/widget_habits_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_habits" />
+        </receiver>
+        <receiver android:name=".PanelWidgets$TickReceiver" android:exported="false" />
+        <receiver android:name=".PanelWidgets$ItemReceiver" android:exported="false" />
+        <service android:name=".PanelWidgets$RowService" android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <service android:name=".PanelWidgets$StripService" android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
         <receiver android:name=".Notifications$BootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

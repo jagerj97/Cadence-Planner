@@ -1,0 +1,51 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/card_border" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card_border" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="vertical" android:padding="16dp" android:gravity="center_vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/now_heading" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:text="Right now" android:textSize="15sp" android:textStyle="bold" />
+            <FrameLayout android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <ImageView android:id="@+id/now_pill" android:layout_width="match_parent" android:layout_height="match_parent"
+                    android:src="@drawable/widget_pill" android:scaleType="fitXY" android:importantForAccessibility="no" />
+                <TextView android:id="@+id/now_clock" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="10dp" android:paddingEnd="10dp" android:paddingTop="4dp" android:paddingBottom="4dp"
+                    android:textSize="13sp" />
+            </FrameLayout>
+        </LinearLayout>
+        <LinearLayout android:id="@+id/now_current" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:id="@+id/now_ring" android:layout_width="48dp" android:layout_height="48dp"
+                android:layout_marginEnd="12dp" android:importantForAccessibility="no" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView android:id="@+id/now_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:maxLines="1" android:ellipsize="end" android:textSize="17sp" android:textStyle="bold" />
+                <TextView android:id="@+id/now_sub" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:maxLines="1" android:ellipsize="end" android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/now_empty" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:textSize="15sp"
+            android:text="Nothing scheduled right now — a good moment for a task." />
+        <View android:id="@+id/now_divider" android:layout_width="match_parent" android:layout_height="1dp"
+            android:layout_marginTop="12dp" />
+        <LinearLayout android:id="@+id/now_next" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:id="@+id/now_next_dot" android:layout_width="8dp" android:layout_height="8dp"
+                android:src="@drawable/widget_dot" android:importantForAccessibility="no" />
+            <TextView android:id="@+id/now_next_label" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginStart="8dp" android:text="Next" android:textSize="15sp" />
+            <TextView android:id="@+id/now_next_title" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:layout_marginStart="8dp" android:maxLines="1" android:ellipsize="end"
+                android:textSize="15sp" android:fontFamily="sans-serif-medium" />
+            <TextView android:id="@+id/now_next_when" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginStart="8dp" android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

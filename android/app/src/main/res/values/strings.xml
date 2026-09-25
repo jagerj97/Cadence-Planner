@@ -1,4 +1,12 @@
 <resources>
-    <string name="widget_label">Cadence · Today</string>
-    <string name="widget_description">Your day at a glance: what\'s happening now, your schedule, tasks, and habits</string>
+    <string name="widget_now_label">Right now</string>
+    <string name="widget_now_description">What\'s happening now and what\'s next</string>
+    <string name="widget_day_label">Your day</string>
+    <string name="widget_day_description">How your day splits between routines, plans, and free time</string>
+    <string name="widget_schedule_label">Schedule</string>
+    <string name="widget_schedule_description">Today\'s timeline, starting at the current hour</string>
+    <string name="widget_tasks_label">Tasks</string>
+    <string name="widget_tasks_description">Today\'s tasks. Tap a checkbox to complete one.</string>
+    <string name="widget_habits_label">Habits</string>
+    <string name="widget_habits_description">Today\'s habits. Tap a circle to mark one half or fully done.</string>
 </resources>
