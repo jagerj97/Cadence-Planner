@@ -12,7 +12,8 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:label="Cadence"
-        android:icon="@drawable/ic_cadence"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/CadenceTheme">
         <activity
             android:name=".MainActivity"

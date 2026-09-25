@@ -1,0 +1,4 @@
+<resources>
+    <!-- Behind the cat on the home screen icon -->
+    <color name="ic_launcher_background">#E66B0A</color>
+</resources>
