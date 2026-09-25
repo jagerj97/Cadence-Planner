@@ -1,7 +1,7 @@
 <resources>
     <style name="CadenceTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">#F5F5F4</item>
+        <item name="android:statusBarColor">#F9F7F5</item>
         <item name="android:navigationBarColor">#F5F5F4</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowActionModeOverlay">true</item>

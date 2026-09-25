@@ -156,6 +156,15 @@ export function Shell({ children }: { children: ReactNode }) {
         >
           {inSettings ? <X className="h-6 w-6 -rotate-90" /> : <SettingsIcon className="h-6 w-6" />}
         </button>
+        {/* Cadence, sitting on the bar's bottom edge */}
+        <img
+          src="./cadence-sitting.svg"
+          alt=""
+          aria-hidden
+          draggable={false}
+          className="pointer-events-none absolute bottom-0 left-1/2 h-10 md:h-12 w-auto -translate-x-1/2 select-none"
+          data-testid="img-cadence-appbar"
+        />
         <AddMenu />
       </header>
 
