@@ -195,6 +195,18 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   };
   const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
 
+  // A widget's + button opens the app to add a task or habit.
+  useEffect(() => {
+    const run = () => {
+      const action = window.CadenceAndroid?.takeLaunchAction?.() || "";
+      if (action === "add-task") openEditor({ date: todayStr(), kind: "task" });
+      if (action === "add-habit") openEditor({ date: todayStr(), kind: "habit", recurrence: '{"freq":"daily"}' });
+    };
+    run();
+    window.addEventListener("cadence-launch-action", run);
+    return () => window.removeEventListener("cadence-launch-action", run);
+  }, [openEditor]);
+
   // The Android timer notification can pause, resume, or stop the timer while the app is closed.
   // Reload the saved timer when it does, or when the app comes back, and log any session it stopped.
   useEffect(() => {

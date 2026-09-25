@@ -1,6 +1,0 @@
-<resources>
-    <color name="widget_bg">#232427</color>
-    <color name="widget_text">#EDEDED</color>
-    <color name="widget_muted">#A3A7AB</color>
-    <color name="widget_divider">#24FFFFFF</color>
-</resources>

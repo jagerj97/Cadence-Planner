@@ -13,6 +13,8 @@ import android.os.Looper;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.SafeBrowsingResponse;
@@ -26,7 +28,6 @@ import android.webkit.WebViewClient;
 import android.webkit.SslErrorHandler;
 import android.net.http.SslError;
 import android.widget.FrameLayout;
-import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -67,6 +68,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         FocusTimer.activity = new java.lang.ref.WeakReference<>(this);
+        readLaunchAction(getIntent());
         Window window = getWindow();
         // Android 15 enforces edge-to-edge. Inset the container, not the WebView's
         // document, so fixed headers and bottom navigation stay inside the safe area.
@@ -210,7 +212,32 @@ public class MainActivity extends Activity {
 
     /** A timer notification button changed the saved timer; have the web app reload it. */
     void focusChanged() {
-        runOnUiThread(() -> browser.evaluateJavascript("window.dispatchEvent(new Event('cadence-focus-changed'))", null));
+        dispatchToPage("cadence-focus-changed");
+    }
+
+    /** The open activity, if any (for notification and widget buttons that need to tell the page). */
+    static MainActivity current() {
+        return FocusTimer.activity.get();
+    }
+
+    /** Fires a window event in the web app, e.g. so it picks up a widget tap. */
+    void dispatchToPage(String event) {
+        runOnUiThread(() -> browser.evaluateJavascript("window.dispatchEvent(new Event('" + event + "'))", null));
+    }
+
+    /** What a widget's + button asked for ("add-task" / "add-habit"); the page reads it via takeLaunchAction. */
+    private volatile String launchAction = "";
+
+    private void readLaunchAction(Intent intent) {
+        String add = intent == null ? null : intent.getStringExtra(PanelWidgets.EXTRA_ADD);
+        if ("add-task".equals(add) || "add-habit".equals(add)) launchAction = add;
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        readLaunchAction(intent);
+        if (!launchAction.isEmpty()) dispatchToPage("cadence-launch-action");
     }
 
     @Override public void onRequestPermissionsResult(int code, @NonNull String[] permissions, @NonNull int[] grants) {
@@ -362,15 +389,28 @@ public class MainActivity extends Activity {
     }
 
     public class Bridge {
+        /**
+         * Plays haptics through the vibrator rather than View.performHapticFeedback, which Android skips
+         * whenever the system "touch feedback" setting is off. Cadence's own Haptic feedback setting
+         * decides (the web app only calls this when it's on).
+         */
         @JavascriptInterface public void haptic(String kind) {
-            runOnUiThread(() -> {
-                int effect;
-                if ("hold".equals(kind)) effect = HapticFeedbackConstants.LONG_PRESS;
-                else if ("complete".equals(kind)) effect = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.CONFIRM : HapticFeedbackConstants.CONTEXT_CLICK;
-                else if ("warn".equals(kind)) effect = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.REJECT : HapticFeedbackConstants.LONG_PRESS;
-                else effect = HapticFeedbackConstants.CLOCK_TICK;
-                browser.performHapticFeedback(effect);
-            });
+            Vibrator vibrator = getSystemService(Vibrator.class);
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            VibrationEffect effect;
+            if (Build.VERSION.SDK_INT >= 29) {
+                int id = "hold".equals(kind) ? VibrationEffect.EFFECT_HEAVY_CLICK
+                    : "complete".equals(kind) || "warn".equals(kind) ? VibrationEffect.EFFECT_DOUBLE_CLICK
+                    : VibrationEffect.EFFECT_TICK;
+                effect = VibrationEffect.createPredefined(id);
+            } else {
+                long[] timings = "hold".equals(kind) ? new long[] { 0, 25 }
+                    : "complete".equals(kind) ? new long[] { 0, 12, 60, 18 }
+                    : "warn".equals(kind) ? new long[] { 0, 30, 50, 30 }
+                    : new long[] { 0, 8 };
+                effect = VibrationEffect.createWaveform(timings, -1);
+            }
+            vibrator.vibrate(effect);
         }
 
         @JavascriptInterface public void requestLocation() {
@@ -466,7 +506,17 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public void updateWidget(String json) {
-            if (json != null && json.length() < 500000) CadenceWidget.saveSnapshot(MainActivity.this, json);
+            if (json != null && json.length() < 1000000) PanelWidgets.saveSnapshot(MainActivity.this, json);
+        }
+
+        @JavascriptInterface public String takeWidgetActions() {
+            return PanelWidgets.takeActions(MainActivity.this);
+        }
+
+        @JavascriptInterface public String takeLaunchAction() {
+            String action = launchAction;
+            launchAction = "";
+            return action;
         }
 
         @JavascriptInterface public String takeFocusStop() {

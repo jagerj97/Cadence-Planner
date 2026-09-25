@@ -175,7 +175,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <Link
               key={n.href}
               href={n.href}
-              className={cn("flex-1 min-w-0 flex flex-col items-center gap-0.5 py-2 text-[11px]", on || timer ? "text-primary font-semibold" : "text-muted-foreground")}
+              className={cn("flex-1 min-w-0 flex flex-col items-center gap-0.5 py-2 text-[12px]", on || timer ? "text-primary font-semibold" : "text-muted-foreground")}
               aria-current={on ? "page" : undefined}
               data-testid={`link-mnav-${n.label.toLowerCase()}`}
             >
@@ -195,7 +195,7 @@ export function PageHeader({ title, sub, children }: { title: ReactNode; sub?: R
   return (
     <header className="grid gap-3 px-4 md:px-6 pt-5 md:pt-7 pb-1">
       <div className="min-w-0">
-        <h1 className="text-[25px] md:text-[30px] font-semibold tracking-tight leading-tight truncate" data-testid="text-page-title">
+        <h1 className="text-[26px] md:text-[31px] font-semibold tracking-tight leading-tight truncate" data-testid="text-page-title">
           {title}
         </h1>
         {sub && <div className="text-sm text-muted-foreground">{sub}</div>}

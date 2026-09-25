@@ -4,7 +4,7 @@ import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
 import { usePlanner, useNow, Ring } from "@/components/planner";
-import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
+import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
 import {
   KIND_META,
   addDays,
@@ -27,11 +27,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { fillOf } from "@/pages/other";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { SortableList } from "@/components/sortable";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { dayBreakdown, habitRowsFor, taskRowsFor } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft } from "lucide-react";
+import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -44,6 +47,12 @@ export default function Today() {
   const now = useNow(30000);
   const list = items ?? [];
 
+  const hidden = new Set(settings.hiddenTodayPanels ?? []);
+  const shows = (panel: TodayPanel) => !hidden.has(panel);
+  const panelOrder = todayPanelOrder(settings.todayPanelOrder);
+  // On phones the two columns below dissolve (display: contents) into one list in this order;
+  // on wide screens each column keeps the same relative order.
+  const at = (panel: TodayPanel) => ({ order: panelOrder.indexOf(panel) });
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scroller.current;
@@ -56,7 +65,7 @@ export default function Today() {
     // 8px is the column's top padding; the extra 16px keeps that hour's label readable above it.
     const hourY = 8 + new Date().getHours() * HOUR_PX;
     el.scrollTop = Math.max(0, hourY - 16);
-  }, [day, isLoading]); // eslint-disable-line
+  }, [day, isLoading, shows("schedule")]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
 
@@ -84,11 +93,11 @@ export default function Today() {
       <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
-          <section className="flex flex-col min-h-0 gap-3" aria-label="Day timeline">
-            {isToday && <NowCard items={list} now={now} onStart={startFocus} />}
-            <DayBreakdown totals={breakdown.totals} spans={breakdown.spans} />
-            {allDay.length > 0 && (
-              <div className="flex flex-wrap gap-1.5" aria-label="All-day">
+          <section className="contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3" aria-label="Day timeline">
+            {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
+            {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
+            {shows("schedule") && allDay.length > 0 && (
+              <div className="flex flex-wrap gap-1.5" style={at("schedule")} aria-label="All-day">
                 {allDay.map((i) => (
                   <button
                     key={i.id}
@@ -102,7 +111,7 @@ export default function Today() {
                 ))}
               </div>
             )}
-            <div className="relative flex-1 min-h-[420px] card-md overflow-hidden">
+            {shows("schedule") && <div className="relative flex-1 min-h-[420px] card-md overflow-hidden" style={at("schedule")}>
               {isLoading ? (
                 <div className="p-4 grid gap-3">
                   {[0, 1, 2, 3].map((k) => (
@@ -122,16 +131,20 @@ export default function Today() {
                   </div>
                 </div>
               )}
-            </div>
-            <p className="text-xs text-muted-foreground hidden md:block">
+            </div>}
+            {shows("schedule") && <p className="text-xs text-muted-foreground hidden md:block" style={at("schedule")}>
               Click an empty slot to add · hold a block briefly, then drag to move or resize
-            </p>
+            </p>}
           </section>
 
           {/* right rail */}
-          <aside className="grid grid-cols-1 content-start gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 pb-4" aria-label="Day details">
-            <TasksCard items={list} day={day} />
-            <HabitsCard items={list} day={day} />
+          <aside className="contents lg:grid lg:grid-cols-1 lg:content-start lg:gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 lg:pb-4" aria-label="Day details">
+            {shows("tasks") && <div style={at("tasks")}><TasksCard items={list} day={day} /></div>}
+            {shows("habits") && <div style={at("habits")}><HabitsCard items={list} day={day} /></div>}
+            {TODAY_PANELS.every((p) => !shows(p.id)) && (
+              <p className="text-sm text-muted-foreground text-center" style={{ order: 98 }}>All cards are hidden.</p>
+            )}
+            <div className="pb-4 lg:pb-0" style={{ order: 99 }}><CustomizeToday hidden={hidden} order={panelOrder} /></div>
           </aside>
         </div>
       </div>
@@ -139,6 +152,52 @@ export default function Today() {
   );
 }
 
+
+function CustomizeToday({ hidden, order }: { hidden: Set<string>; order: TodayPanel[] }) {
+  const [open, setOpen] = useState(false);
+  const save = useSaveSettings();
+
+  const toggle = (panel: TodayPanel, shown: boolean) => {
+    const next = new Set(hidden);
+    if (shown) next.delete(panel); else next.add(panel);
+    save.mutate({ hiddenTodayPanels: TODAY_PANELS.map((p) => p.id).filter((id) => next.has(id)) });
+  };
+  return (
+    <>
+      <div className="flex justify-center">
+        <Button variant="ghost" size="sm" className="h-8 rounded-full px-4 text-xs text-muted-foreground" onClick={() => setOpen(true)} data-testid="button-customize-today">
+          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Customize cards
+        </Button>
+      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm" data-testid="dialog-customize-today">
+          <DialogHeader className="text-left">
+            <DialogTitle>Customize cards</DialogTitle>
+            <DialogDescription>Choose which cards show on your Today page. Hold a card and drag to reorder.</DialogDescription>
+          </DialogHeader>
+          <SortableList
+            items={order}
+            onReorder={(next) => save.mutate({ todayPanelOrder: next })}
+            className="grid gap-1"
+            render={(id) => {
+              const p = TODAY_PANELS.find((panel) => panel.id === id)!;
+              return (
+                <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-today-${p.id}`}>
+                  <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{p.label}</span>
+                    <span className="block text-xs text-muted-foreground">{p.hint}</span>
+                  </span>
+                  <Switch checked={!hidden.has(p.id)} onCheckedChange={(v) => toggle(p.id, v)} aria-label={`Show ${p.label}`} data-testid={`switch-today-${p.id}`} />
+                </div>
+              );
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: number; length: number }[] }) {
   const categories = [
@@ -154,7 +213,7 @@ function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: 
       </div>
       <div className="grid grid-cols-3 gap-1 text-center sm:text-left">
         {[1, 2, 0].map((category) => <div key={category} className="min-w-0" data-testid={`stat-${categories[category].label.toLowerCase().replace(" ", "-")}`}>
-          <div className="flex items-center justify-center sm:justify-start gap-1 text-[11px] text-muted-foreground">
+          <div className="flex items-center justify-center sm:justify-start gap-1 text-[12px] text-muted-foreground">
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: categories[category].dot }} />{categories[category].label}
           </div>
           <div className="font-semibold text-sm tnum">{fmtDur(totals[category])}</div>

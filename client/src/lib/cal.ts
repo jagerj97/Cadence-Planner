@@ -78,7 +78,7 @@ export function fmtTime(t: string | number | null | undefined, short = false) {
   const h = Math.floor(m / 60) % 24, mm = Math.round(m % 60);
   const ap = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 === 0 ? 12 : h % 12;
-  if (short) return mm === 0 ? `${h12}${ap.toLowerCase()}` : `${h12}:${pad(mm)}${ap.toLowerCase()}`;
+  if (short) return mm === 0 ? `${h12} ${ap}` : `${h12}:${pad(mm)} ${ap}`;
   return `${h12}:${pad(mm)} ${ap}`;
 }
 export function fmtDur(min: number) {

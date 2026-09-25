@@ -130,13 +130,13 @@ export default function TasksPage() {
                 aria-selected={filter === k}
                 onClick={() => setFilter(k)}
                 className={cn(
-                  "flex-1 sm:flex-none min-w-0 min-h-12 flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 rounded-[15px] px-1.5 sm:px-3 py-1.5 text-[12px] sm:text-sm leading-tight transition-colors",
+                  "flex-1 sm:flex-none min-w-0 min-h-12 flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 rounded-[15px] px-1.5 sm:px-3 py-1.5 text-[13px] sm:text-sm leading-tight transition-colors",
                   filter === k ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover-elevate",
                 )}
                 data-testid={`tab-tasks-${k}`}
               >
                 {l}
-                <span className={cn("text-[11px] sm:text-xs tnum", filter === k ? "opacity-80" : "opacity-70")}>{counts[k]}</span>
+                <span className={cn("text-[12px] sm:text-xs tnum", filter === k ? "opacity-80" : "opacity-70")}>{counts[k]}</span>
               </button>
             ))}
           </div>

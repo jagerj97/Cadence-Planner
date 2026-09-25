@@ -31,7 +31,7 @@ export function HourLabels({ hourPx = HOUR_PX, narrow = false }: { hourPx?: numb
   return (
     <div className={cn("relative shrink-0 select-none", narrow ? "w-9 sm:w-14" : "w-14")} style={{ height: hourPx * 24 }} aria-hidden>
       {Array.from({ length: 24 }, (_, h) => (
-        <div key={h} className={cn("absolute -translate-y-1/2 text-muted-foreground tnum", narrow ? "right-0.5 sm:right-2 text-[9px] sm:text-xs" : "right-2 text-xs")} style={{ top: h * hourPx }}>
+        <div key={h} className={cn("absolute -translate-y-1/2 text-muted-foreground tnum", narrow ? "right-0.5 sm:right-2 text-[10px] sm:text-xs" : "right-2 text-xs")} style={{ top: h * hourPx }}>
           {h === 0 ? "" : fmtTime(h * 60, true)}
         </div>
       ))}
@@ -199,7 +199,7 @@ export function DayColumn({
             borderColor: colorOf(b.item),
           }}
         >
-          <span className="block max-w-full truncate text-[9px] sm:text-xs font-medium" style={{ color: colorOf(b.item) }}>
+          <span className="block max-w-full truncate text-[10px] sm:text-xs font-medium" style={{ color: colorOf(b.item) }}>
             {b.item.title}
           </span>
         </div>

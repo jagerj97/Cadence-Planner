@@ -5,6 +5,23 @@ import {
 
 /** What the Today page (and the home screen widget) show for a day. */
 
+/** Cards on the Today page that can be hidden and reordered from "Customize cards". */
+export const TODAY_PANELS = [
+  { id: "now", label: "Right now", hint: "What's happening now and next" },
+  { id: "day", label: "Your day", hint: "How your day splits between routines, plans, and free time" },
+  { id: "schedule", label: "Schedule", hint: "All-day items and the timeline" },
+  { id: "tasks", label: "Tasks", hint: "Today's tasks" },
+  { id: "habits", label: "Habits", hint: "Today's habits" },
+] as const;
+export type TodayPanel = (typeof TODAY_PANELS)[number]["id"];
+
+/** Every panel in the user's order; ones they haven't placed keep their default position at the end. */
+export function todayPanelOrder(saved: string[] | undefined): TodayPanel[] {
+  const ids = TODAY_PANELS.map((p) => p.id) as TodayPanel[];
+  const placed = (saved ?? []).filter((id): id is TodayPanel => (ids as string[]).includes(id));
+  return [...new Set([...placed, ...ids])];
+}
+
 export type TaskRow = { i: Item; occ: string; overdue: boolean; done: boolean };
 
 /** Today's tasks: overdue ones first on the current day, then open before done, high priority, and time. */

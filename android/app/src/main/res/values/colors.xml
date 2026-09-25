@@ -1,7 +1,4 @@
 <resources>
-    <!-- Home screen widget (light); values-night has the dark versions. -->
-    <color name="widget_bg">#FAFAF9</color>
-    <color name="widget_text">#1F2328</color>
-    <color name="widget_muted">#6B7075</color>
-    <color name="widget_divider">#1A000000</color>
+    <!-- Behind the cat on the home screen icon -->
+    <color name="ic_launcher_background">#FFF4E8</color>
 </resources>

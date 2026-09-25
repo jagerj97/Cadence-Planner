@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { haptic } from "@/lib/haptics";
+import { SortableList } from "@/components/sortable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS } from "@shared/schema";
 import type { ColorTheme, ImportKind, Routine, Settings } from "@shared/schema";
@@ -56,8 +57,6 @@ import {
   Sunrise,
   Sunset,
   ChevronDown,
-  ArrowUp,
-  ArrowDown,
 } from "lucide-react";
 
 /* ====================== HABITS ====================== */
@@ -78,16 +77,13 @@ export function HabitsPage() {
   const [span, setSpan] = useState(28);
   const habits = orderHabits((items ?? []).filter((i) => kindOf(i) === "habit"), settings);
   const dueNow = habits.filter((h) => occursOn(h, today));
-  // Reorders within the habits shown today, swapping with the nearest visible neighbor.
-  const moveHabit = async (id: number, direction: -1 | 1) => {
-    const order = habits.map((h) => h.id);
-    const visible = dueNow.map((h) => h.id);
-    const at = visible.indexOf(id), neighbor = visible[at + direction];
-    if (at < 0 || neighbor == null) return;
-    const from = order.indexOf(id), to = order.indexOf(neighbor);
-    [order[from], order[to]] = [order[to], order[from]];
-    await saveOrder.mutateAsync({ habitOrder: order });
+  // Today's habits are reordered by dragging; habits not due today keep their slots in the full order.
+  const reorderToday = (visible: number[]) => {
+    const due = new Set(visible);
+    const queue = [...visible];
+    saveOrder.mutate({ habitOrder: habits.map((h) => (due.has(h.id) ? queue.shift()! : h.id)) });
   };
+  const habitById = new Map(habits.map((h) => [h.id, h]));
   const doneToday = dueNow.filter((h) => completionsOf(h).has(today)).length;
   // newest first, like writing down the page
   const first = habits.reduce((m, h) => (h.date < m ? h.date : m), today);
@@ -118,14 +114,19 @@ export function HabitsPage() {
               {dueNow.length === 0 && (
                 <p className="px-4 pb-4 text-sm text-muted-foreground" data-testid="text-no-habits-today">No habits scheduled today.</p>
               )}
-              <ul className="pb-2">
-                {dueNow.map((h) => {
+              <SortableList
+                as="ul"
+                className="pb-2"
+                items={dueNow.map((h) => h.id)}
+                onReorder={reorderToday}
+                render={(id: number) => {
+                  const h = habitById.get(id)!;
                   const due = occursOn(h, today);
                   const mk = markOf(h, today);
                   const hit = mk === 2;
                   const st = streakOf(h, today);
                   return (
-                    <li key={h.id} className="flex items-center gap-3 px-4 py-2.5" data-testid={`row-habit-${h.id}`}>
+                    <div className="flex items-center gap-3 px-4 py-2.5" data-testid={`row-habit-${h.id}`}>
                       <button
                         onClick={() => due && cycle.mutate({ id: h.id, date: today })}
                         disabled={!due}
@@ -155,20 +156,10 @@ export function HabitsPage() {
                           best {bestStreak(h, today)} · {Math.round(rateOf(h, today) * 100)}%
                         </div>
                       </div>
-                      <div className="flex shrink-0 flex-col" aria-label={`Reorder ${h.title}`}>
-                        <Button size="icon" variant="ghost" className="h-6 w-7" disabled={dueNow[0]?.id === h.id || saveOrder.isPending}
-                          onClick={() => moveHabit(h.id, -1)} aria-label={`Move ${h.title} up`} data-testid={`button-habit-up-${h.id}`}>
-                          <ArrowUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-6 w-7" disabled={dueNow[dueNow.length - 1]?.id === h.id || saveOrder.isPending}
-                          onClick={() => moveHabit(h.id, 1)} aria-label={`Move ${h.title} down`} data-testid={`button-habit-down-${h.id}`}>
-                          <ArrowDown className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </li>
+                    </div>
                   );
-                })}
-              </ul>
+                }}
+              />
             </section>
 
             {/* tracker: days run down the page, one narrow column per habit */}
@@ -818,7 +809,7 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
         </Button>
       </div>
       <Dialog open={!!candidate} onOpenChange={(open) => { if (!open && !busy) setCandidate(null); }}>
-        <DialogContent className="max-w-md rounded-2xl">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Replace data on this phone?</DialogTitle>
             <DialogDescription>
@@ -943,7 +934,7 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routine settings" hint="Background time ranges on every day, including past days. These are not events." defaultOpen>
+          <Section title="Routine settings" hint="Background time ranges on every day, including past days. These are not events.">
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>

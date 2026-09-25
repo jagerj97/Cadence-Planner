@@ -19,7 +19,7 @@ const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "nu
 function Body({ text, onTag }: { text: string; onTag: (t: string) => void }) {
   const parts = text.split(/((?:^|\s)#[\p{L}\p{N}_-]+)/gu);
   return (
-    <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+    <p className="text-[16px] leading-relaxed whitespace-pre-wrap break-words">
       {parts.map((p, i) => {
         const m = p.match(/^(\s?)#([\p{L}\p{N}_-]+)$/u);
         if (!m) return <span key={i}>{p}</span>;
@@ -172,7 +172,7 @@ function Composer({
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         }}
         placeholder="Jot something down. Use #hashtags to tag it."
-        className="min-h-[96px] resize-y text-[15px] leading-relaxed"
+        className="min-h-[96px] resize-y text-[16px] leading-relaxed"
         data-testid="input-journal-body"
       />
       <div className="flex flex-wrap items-center gap-2">
