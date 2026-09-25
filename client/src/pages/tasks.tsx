@@ -44,6 +44,7 @@ export default function TasksPage() {
   const { data: items, isLoading } = useItems();
   const { openEditor } = usePlanner();
   const [filter, setFilter] = useState<Filter>("today");
+  const [showOlder, setShowOlder] = useState(false);
   const today = todayStr();
   const tasks = (items ?? []).filter((i) => kindOf(i) === "task");
 
@@ -163,11 +164,27 @@ export default function TasksPage() {
                   {g.label}
                   <span className="text-xs font-normal text-muted-foreground tnum">{g.rows.length}</span>
                 </h2>
-                <ul className="pb-1.5">
-                  {g.rows.map((r) => (
-                    <TaskRow key={`${r.i.id}:${r.occ}`} r={r} items={items ?? []} />
-                  ))}
-                </ul>
+                {(() => {
+                  // Completed tasks dated more than a week ago stay hidden until "Show older" is tapped.
+                  const older = g.key === "done" ? g.rows.filter((r) => r.occ < addDays(today, -7)).length : 0;
+                  const shown = older && !showOlder ? g.rows.slice(0, g.rows.length - older) : g.rows;
+                  return (
+                    <>
+                      <ul className="pb-1.5">
+                        {shown.map((r) => (
+                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} items={items ?? []} />
+                        ))}
+                      </ul>
+                      {older > 0 && (
+                        <button type="button" aria-expanded={showOlder} onClick={() => setShowOlder((v) => !v)}
+                          className="w-full border-t px-4 py-2.5 text-center text-xs font-medium text-muted-foreground hover:bg-muted/40"
+                          data-testid="button-tasks-show-older">
+                          {showOlder ? "Show less" : `Show older (${older})`}
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </section>
             ))
           )}
