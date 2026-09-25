@@ -6,11 +6,9 @@ import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   addDays,
   completionsOf,
-  findFreeSlot,
   fmtDate,
   fmtDur,
   fmtTime,
-  fromMin,
   isDeadlineTask,
   isTimed,
   kindOf,
@@ -26,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Plus, Check, CalendarClock, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag } from "lucide-react";
+import { Plus, Check, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag } from "lucide-react";
 
 type Row = { i: Item; occ: string; done: boolean };
 type Filter = "today" | "upcoming" | "open" | "done";
@@ -44,6 +42,7 @@ export default function TasksPage() {
   const { data: items, isLoading } = useItems();
   const { openEditor } = usePlanner();
   const [filter, setFilter] = useState<Filter>("today");
+  const [showOlder, setShowOlder] = useState(false);
   const today = todayStr();
   const tasks = (items ?? []).filter((i) => kindOf(i) === "task");
 
@@ -114,7 +113,7 @@ export default function TasksPage() {
         </Button>
       </PageHeader>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
-        <div className="max-w-3xl grid gap-4">
+        <div className="max-w-3xl grid grid-cols-1 gap-4">
           <TaskQuickAdd />
           <div className="flex gap-1 card-md rounded-[20px] p-1 w-full sm:w-fit" role="tablist" aria-label="Filter tasks">
             {(
@@ -163,11 +162,27 @@ export default function TasksPage() {
                   {g.label}
                   <span className="text-xs font-normal text-muted-foreground tnum">{g.rows.length}</span>
                 </h2>
-                <ul className="pb-1.5">
-                  {g.rows.map((r) => (
-                    <TaskRow key={`${r.i.id}:${r.occ}`} r={r} items={items ?? []} />
-                  ))}
-                </ul>
+                {(() => {
+                  // Completed tasks dated more than a week ago stay hidden until "Show older" is tapped.
+                  const older = g.key === "done" ? g.rows.filter((r) => r.occ < addDays(today, -7)).length : 0;
+                  const shown = older && !showOlder ? g.rows.slice(0, g.rows.length - older) : g.rows;
+                  return (
+                    <>
+                      <ul className="pb-1.5">
+                        {shown.map((r) => (
+                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} items={items ?? []} />
+                        ))}
+                      </ul>
+                      {older > 0 && (
+                        <button type="button" aria-expanded={showOlder} onClick={() => setShowOlder((v) => !v)}
+                          className="w-full border-t px-4 py-2.5 text-center text-xs font-medium text-muted-foreground hover:bg-muted/40"
+                          data-testid="button-tasks-show-older">
+                          {showOlder ? "Show less" : `Show older (${older})`}
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </section>
             ))
           )}
@@ -179,26 +194,14 @@ export default function TasksPage() {
 
 function TaskRow({ r, items }: { r: Row; items: Item[] }) {
   const { i, occ, done } = r;
-  const { toggle, update } = useItemMutations();
-  const { openEditor, startFocus } = usePlanner();
+  const { toggle } = useItemMutations();
+  const { openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
-  const { toast } = useToast();
   const today = todayStr();
 
   const dateLabel =
     occ === today ? "Today" : occ === addDays(today, 1) ? "Tomorrow" : occ === addDays(today, -1) ? "Yesterday" : fmtDate(occ, { weekday: "short", month: "short", day: "numeric" });
 
-  const schedule = () => {
-    const nm = new Date().getHours() * 60 + new Date().getMinutes();
-    const from = Math.max(nm, toMin(settings.wakeTime));
-    const slot = findFreeSlot(items, today, 30, from, toMin(settings.bedTime));
-    if (slot == null) {
-      toast({ title: "No free 30-minute slot left today", description: "Open the task to pick another day." });
-      return;
-    }
-    update.mutate({ id: i.id, date: today, endDate: today, startTime: fromMin(slot), endTime: fromMin(slot + 30) });
-    toast({ title: "Scheduled", description: `${i.title} · today ${fmtTime(slot, true)}–${fmtTime(slot + 30, true)}` });
-  };
   const dur = isTimed(i) ? ((toMin(i.endTime) - toMin(i.startTime) + 1440) % 1440) || 30 : settings.focusMinutes;
 
   return (
@@ -212,8 +215,8 @@ function TaskRow({ r, items }: { r: Row; items: Item[] }) {
       >
         {done && <Check className="h-3.5 w-3.5 text-background" strokeWidth={3} />}
       </button>
-      <button onClick={() => openEditor(i, occ)} className="min-w-0 flex-1 text-left">
-        <div className={cn("text-sm truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
+      <button onClick={() => openDetails(i, occ)} className="min-w-0 flex-1 text-left">
+        <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
           <span className={cn(occ < today && !done && "text-destructive")}>
             {isDeadlineTask(i) ? `Due ${dateLabel}` : i.endDate && i.endDate > i.date && recOf(i).freq === "none"
@@ -240,11 +243,6 @@ function TaskRow({ r, items }: { r: Row; items: Item[] }) {
       </button>
       {!done && (
         <div className="flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
-          {!isTimed(i) && !isDeadlineTask(i) && (
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={schedule} aria-label="Find a time today" title="Find a time today" data-testid={`button-schedule-${i.id}`}>
-              <CalendarClock className="h-4 w-4" />
-            </Button>
-          )}
           <Button
             size="icon"
             variant="ghost"

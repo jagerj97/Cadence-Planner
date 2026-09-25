@@ -81,7 +81,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="h-11 w-full rounded-lg border bg-background px-3 outline-none focus:ring-2 focus:ring-primary"
-              autoFocus
               required
             />
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

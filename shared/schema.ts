@@ -118,7 +118,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bedTime: "23:00",
   dayStartHour: 6,
   defaultReminder: 10,
-  focusMinutes: 25,
+  focusMinutes: 30,
   breakMinutes: 5,
   sound: true,
   haptics: true,

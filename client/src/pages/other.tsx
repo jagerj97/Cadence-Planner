@@ -79,7 +79,7 @@ export function HabitsPage() {
   const { data: items } = useItems();
   const { cycle } = useItemMutations();
   const saveOrder = useSaveSettings();
-  const { openEditor } = usePlanner();
+  const { openEditor, openDetails } = usePlanner();
   const { settings } = useSettings();
   const today = todayStr();
   const [span, setSpan] = useState(28);
@@ -146,7 +146,7 @@ export function HabitsPage() {
                       >
                         {hit && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
                       </button>
-                      <button onClick={() => openEditor(h)} className="min-w-0 flex-1 text-left">
+                      <button onClick={() => openDetails(h)} className="min-w-0 flex-1 text-left">
                         <div className={cn("text-sm font-medium truncate", hit && "text-muted-foreground")}>{h.title}</div>
                         <div className="text-xs text-muted-foreground truncate">
                           {due ? recLabel(h) : "Not today"}
@@ -198,7 +198,7 @@ export function HabitsPage() {
                       {habits.map((h) => (
                         <th key={h.id} className="h-20 md:h-36 align-bottom pb-2 font-medium" scope="col">
                           <button
-                            onClick={() => openEditor(h)}
+                            onClick={() => openDetails(h)}
                             className="mx-auto block max-h-16 md:max-h-32 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground hover:text-foreground [writing-mode:vertical-rl] rotate-180"
                             title={h.title}
                             data-testid={`header-habit-${h.id}`}
@@ -354,7 +354,7 @@ export function FocusPage() {
               <div className="grid gap-4 w-full max-w-md">
                 <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="What are you focusing on?" className="h-11 text-base" data-testid="input-focus-label" />
                 <div className="flex gap-1.5" role="radiogroup" aria-label="Duration">
-                  {[15, 25, 45, 60, 90].map((m) => (
+                  {[10, 30, 60, 90].map((m) => (
                     <button
                       key={m}
                       role="radio"
@@ -894,6 +894,10 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
   );
 }
 
+// Injected at build time by vite.android.config.ts; the web dev build doesn't define them.
+const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+const APP_BUILD = typeof __APP_BUILD__ !== "undefined" ? __APP_BUILD__ : "";
+
 export function SettingsPage() {
   const { settings, isLoading } = useSettings();
   const save = useSaveSettings();
@@ -1016,7 +1020,7 @@ export function SettingsPage() {
             </Button>}
       </PageHeader>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
-        <div className="grid gap-4 max-w-3xl">
+        <div className="grid grid-cols-1 gap-4 max-w-3xl">
           <Section title="You">
             <Field label="Your name">
               <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} data-testid="input-name" />
@@ -1166,7 +1170,7 @@ export function SettingsPage() {
           <Section title="Focus timer">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Default focus (min)">
-                <Input type="number" min={5} max={180} value={draft.focusMinutes} onChange={(e) => setDraft({ ...draft, focusMinutes: Number(e.target.value) || 25 })} data-testid="input-focus-min" />
+                <Input type="number" min={5} max={180} value={draft.focusMinutes} onChange={(e) => setDraft({ ...draft, focusMinutes: Number(e.target.value) || 30 })} data-testid="input-focus-min" />
               </Field>
               <Field label="Break (min)">
                 <Input type="number" min={1} max={60} value={draft.breakMinutes} onChange={(e) => setDraft({ ...draft, breakMinutes: Number(e.target.value) || 5 })} data-testid="input-break-min" />
@@ -1223,6 +1227,9 @@ export function SettingsPage() {
               }} data-testid="switch-dark" />
             </Row>
           </Section>
+          <p className="pt-2 text-center text-xs text-muted-foreground tnum" data-testid="text-app-version">
+            Cadence v{APP_VERSION}{APP_BUILD && ` · build ${APP_BUILD}`}
+          </p>
         </div>
       </div>
     </>

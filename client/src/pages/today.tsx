@@ -12,7 +12,6 @@ import {
   blocksForDay,
   colorOf,
   completionsOf,
-  findFreeSlot,
   fmtDate,
   fmtDur,
   fmtTime,
@@ -39,7 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Plus, Check, CalendarClock, Flame, Play, Sparkles, CornerDownLeft, Moon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, Moon } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -54,8 +53,16 @@ export default function Today() {
 
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!scroller.current) return;
-    scroller.current.scrollTop = 0; // days always start at 12am
+    const el = scroller.current;
+    if (!el) return;
+    if (!isToday) {
+      el.scrollTop = 0; // other days start at 12am
+      return;
+    }
+    // Start today at the current hour when the timeline opens (it doesn't follow the clock after that).
+    // 8px is the column's top padding; the extra 16px keeps that hour's label readable above it.
+    const hourY = 8 + new Date().getHours() * HOUR_PX;
+    el.scrollTop = Math.max(0, hourY - 16);
   }, [day, isLoading]); // eslint-disable-line
 
   const blocks = useMemo(() => blocksForDay(list, day), [list, day]);
@@ -101,7 +108,7 @@ export default function Today() {
       </PageHeader>
 
       <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
           <section className="flex flex-col min-h-0 gap-3" aria-label="Day timeline">
             {isToday && <NowCard items={list} now={now} onStart={startFocus} />}
@@ -148,7 +155,7 @@ export default function Today() {
           </section>
 
           {/* right rail */}
-          <aside className="grid content-start gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 pb-4" aria-label="Day details">
+          <aside className="grid grid-cols-1 content-start gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 pb-4" aria-label="Day details">
             <TasksCard items={list} day={day} />
             <HabitsCard items={list} day={day} />
           </aside>
@@ -172,10 +179,7 @@ function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: 
   ];
   return (
     <div className="card-md p-4 grid gap-3" data-testid="card-day-breakdown">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Your day</h2>
-        <span className="text-xs text-muted-foreground">24 hours</span>
-      </div>
+      <h2 className="text-sm font-semibold">Your day</h2>
       <div className="flex h-5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`Routines ${fmtDur(totals[1])}, planned ${fmtDur(totals[2])}, free ${fmtDur(totals[0])}`}>
         {spans.map((span, index) => <div key={index} style={{ width: `${span.length / 1440 * 100}%`, background: categories[span.category].color }} />)}
       </div>
@@ -229,7 +233,6 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          autoFocus={appbar}
           placeholder="Type it — “Gym 6-7pm every mon wed fri”"
           className={cn("border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
           aria-label="Quick add"
@@ -299,7 +302,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
             </span>
           </div>
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-base truncate" data-testid="text-now-title">
+            <div className="font-semibold text-base fade-truncate" data-testid="text-now-title">
               {current.item.title}
             </div>
             <div className="text-xs text-muted-foreground tnum">
@@ -326,7 +329,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
         <div className="flex items-center gap-2 border-t border-orange-200/70 dark:border-white/10 pt-3 text-sm">
           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: colorOf(next.item) }} />
           <span className="text-muted-foreground">Next</span>
-          <span className="font-medium truncate flex-1">{next.item.title}</span>
+          <span className="font-medium fade-truncate flex-1">{next.item.title}</span>
           <span className="text-xs text-muted-foreground tnum shrink-0">
             {fmtTime(next.start, true)} · in {fmtDur(next.start - nm)}
           </span>
@@ -337,10 +340,9 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
 }
 
 function TasksCard({ items, day }: { items: Item[]; day: string }) {
-  const { toggle, update } = useItemMutations();
-  const { openEditor, startFocus } = usePlanner();
+  const { toggle } = useItemMutations();
+  const { openEditor, openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
-  const { toast } = useToast();
   const isToday = day === todayStr();
   const tasks = items.filter((i) => kindOf(i) === "task" && (appearsOn(i, day) || canDoTaskOn(i, day)));
   const overdue = isToday
@@ -358,17 +360,6 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
   });
   const left = rows.filter((r) => !completionsOf(r.i).has(r.occ)).length;
 
-  const schedule = (i: Item) => {
-    const nm = new Date().getHours() * 60 + new Date().getMinutes();
-    const from = Math.max(isToday ? nm : 0, toMin(settings.wakeTime));
-    const slot = findFreeSlot(items, day, 30, from, toMin(settings.bedTime));
-    if (slot == null) {
-      toast({ title: "No free 30-minute slot left", description: "Try tomorrow, or drag something around." });
-      return;
-    }
-    update.mutate({ id: i.id, date: day, endDate: day, startTime: fromMin(slot), endTime: fromMin(slot + 30) });
-    toast({ title: "Scheduled", description: `${i.title} · ${fmtTime(slot, true)}–${fmtTime(slot + 30, true)}` });
-  };
 
   return (
     <div className="card-md" data-testid="card-tasks">
@@ -398,8 +389,8 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
                 >
                   {done && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                 </button>
-                <button onClick={() => openEditor(i, occ)} className="min-w-0 flex-1 text-left">
-                  <div className={cn("text-sm truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
+                <button onClick={() => openDetails(i, occ)} className="min-w-0 flex-1 text-left">
+                  <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
                   <div className="text-xs text-muted-foreground flex gap-1.5">
                     {overdue && <span className="text-destructive">Overdue</span>}
                     {isDeadlineTask(i) && <span>Due {fmtDate(i.date, { month: "short", day: "numeric" })}</span>}
@@ -410,11 +401,6 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
                 </button>
                 {!done && (
                   <div className="flex opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-                    {!isTimed(i) && !isDeadlineTask(i) && (
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => schedule(i)} aria-label="Find a time" data-testid={`button-schedule-${i.id}`}>
-                        <CalendarClock className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -439,7 +425,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 function HabitsCard({ items, day }: { items: Item[]; day: string }) {
   const { cycle } = useItemMutations();
   const { settings } = useSettings();
-  const { openEditor } = usePlanner();
+  const { openEditor, openDetails } = usePlanner();
   const habits = orderHabits(items.filter((i) => kindOf(i) === "habit" && occursOn(i, day)), settings);
   const done = habits.filter((h) => completionsOf(h).has(day)).length;
   return (
@@ -476,8 +462,8 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
                 >
                   {isDone && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                 </button>
-                <button onClick={() => openEditor(h, day)} className="min-w-0 flex-1 text-left">
-                  <div className={cn("text-sm truncate", isDone && "text-muted-foreground")}>{h.title}</div>
+                <button onClick={() => openDetails(h, day)} className="min-w-0 flex-1 text-left">
+                  <div className={cn("text-sm fade-truncate", isDone && "text-muted-foreground")}>{h.title}</div>
                   <div className="text-xs text-muted-foreground">{isTimed(h) ? fmtTime(h.startTime, true) + " · " : ""}{recLabel(h)}</div>
                 </button>
                 {streak > 0 && (

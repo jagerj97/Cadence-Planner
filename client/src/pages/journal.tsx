@@ -90,7 +90,6 @@ function TagPicker({ taken, onAdd }: { taken: string[]; onAdd: (t: string) => vo
         <div className="flex items-center gap-1.5 border-b px-3">
           <Hash className="h-4 w-4 text-muted-foreground" />
           <input
-            autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
@@ -135,7 +134,6 @@ function Composer({
   submitLabel,
   onSubmit,
   onCancel,
-  autoFocus,
   busy,
 }: {
   initial?: string;
@@ -143,14 +141,14 @@ function Composer({
   submitLabel: string;
   onSubmit: (body: string, tags: string[]) => Promise<unknown> | void;
   onCancel?: () => void;
-  autoFocus?: boolean;
   busy?: boolean;
 }) {
   const [body, setBody] = useState(initial);
   const [extra, setExtra] = useState<string[]>(initialTags.filter((t) => !hashtagsIn(initial).includes(t)));
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    const f = () => ref.current?.focus();
+    // Bring the composer into view; the keyboard waits until the user taps it.
+    const f = () => ref.current?.scrollIntoView({ block: "center", behavior: "smooth" });
     window.addEventListener("cadence:journal-compose", f);
     return () => window.removeEventListener("cadence:journal-compose", f);
   }, []);
@@ -173,7 +171,6 @@ function Composer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         }}
-        autoFocus={autoFocus}
         placeholder="Jot something down. Use #hashtags to tag it."
         className="min-h-[96px] resize-y text-[15px] leading-relaxed"
         data-testid="input-journal-body"
@@ -239,7 +236,6 @@ function EntryCard({ e, onTag, showDate }: { e: JournalEntry; onTag: (t: string)
           initial={e.body}
           initialTags={tags}
           submitLabel="Save"
-          autoFocus
           busy={update.isPending}
           onCancel={() => setEditing(false)}
           onSubmit={async (body, t) => {

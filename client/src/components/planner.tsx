@@ -27,6 +27,7 @@ import {
   fromMin,
   kindOf,
   colorOf,
+  recLabel,
   recOf,
   toMin,
   todayStr,
@@ -225,7 +226,6 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         toast({
           title: "Nice work — session complete",
           description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused`,
-          duration: 20000,
           action: (
             <ToastAction
               altText="Take a break"
@@ -238,7 +238,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       } else {
         if (window.CadenceAndroid) window.CadenceAndroid.finishFocus("Break's over", "Ready for the next block?");
         else systemNotify("Break's over", "Ready for the next block?");
-        toast({ title: "Break's over", description: "Ready for the next block?", duration: 10000 });
+        toast({ title: "Break's over", description: "Ready for the next block?" });
       }
     }
   }, [elapsed, focus, logSession, settings, startFocus, toast]);
@@ -270,7 +270,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: mins });
             systemNotify(`Timer started: ${b.item.title}`, `${fmtDur(mins)} on the clock`);
             if (settings.sound) chime("soft");
-            toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock. Open Focus to pause or stop it.`, duration: 15000 });
+            toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock. Open Focus to pause or stop it.` });
           }
         }
         const r = b.item.reminder;
@@ -290,7 +290,6 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           toast({
             title,
             description: desc,
-            duration: 60000,
             action:
               kindOf(b.item) !== "sleep" && !b.item.autoTimer ? (
                 <ToastAction
@@ -353,27 +352,33 @@ function ItemDetails({ details, onClose, onEdit }: {
     <Dialog open={!!details} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md" data-testid="dialog-item-details">
         {i && <>
-          <DialogHeader className="pr-20 text-left">
+          <DialogHeader className="pr-8 text-left">
             <DialogTitle className="text-lg leading-snug">{i.title}</DialogTitle>
             <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
           </DialogHeader>
-          <Button variant="outline" size="sm" className="absolute right-12 top-4" onClick={onEdit} data-testid="button-detail-edit">
-            {routine ? "Edit routine" : "Edit"}
-          </Button>
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
           <div className="grid gap-3 text-sm">
             <div>
-              <div className="text-xs text-muted-foreground">{routine ? "Every day" : "Date"}</div>
+              <div className="text-xs text-muted-foreground">{routine ? "Every day" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
               <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
             </div>
             {i.startTime && <div>
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date && !routine ? " (ends later)" : ""}</div>
             </div>}
+            {!routine && recOf(i).freq !== "none" && <div>
+              <div className="text-xs text-muted-foreground">Repeats</div>
+              <div>{recLabel(i)}</div>
+            </div>}
             {i.kind === "task" && i.availableFrom && <div className="text-muted-foreground">Available from {fmtDate(i.availableFrom)} · due {fmtDate(i.date)}</div>}
             {i.location && <div className="break-words">{i.location}</div>}
             {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground">{i.notes}</p>}
             {routine && <p className="text-xs text-muted-foreground">A routine is a background guide, not a calendar event.</p>}
+          </div>
+          <div className="flex justify-center">
+            <Button variant="outline" size="sm" className="h-8 rounded-full px-5 text-xs" onClick={onEdit} data-testid="button-detail-edit">
+              {routine ? "Edit routine" : "Edit"}
+            </Button>
           </div>
         </>}
       </DialogContent>
@@ -578,7 +583,6 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
         )}
         <form onSubmit={onSubmit} className="grid gap-4">
           <Input
-            autoFocus
             placeholder="What's the plan?"
             className="text-base h-11"
             {...register("title")}
