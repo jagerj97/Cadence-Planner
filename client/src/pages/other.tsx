@@ -1020,7 +1020,7 @@ export function SettingsPage() {
             </Button>}
       </PageHeader>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
-        <div className="grid gap-4 max-w-3xl">
+        <div className="grid grid-cols-1 gap-4 max-w-3xl">
           <Section title="You">
             <Field label="Your name">
               <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} data-testid="input-name" />

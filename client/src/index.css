@@ -236,6 +236,14 @@
  * need to be distinguished from eachother visually.
  */
 @layer utilities {
+  /* One line of text that fades out at the right edge instead of pushing its container wider */
+  .fade-truncate {
+    overflow: hidden;
+    white-space: nowrap;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
+
   /* Hide ugly search cancel button in Chrome until we can style it properly */
   input[type='search']::-webkit-search-cancel-button {
     @apply hidden;

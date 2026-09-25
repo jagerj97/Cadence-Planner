@@ -101,7 +101,7 @@ export default function Today() {
       </PageHeader>
 
       <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
           <section className="flex flex-col min-h-0 gap-3" aria-label="Day timeline">
             {isToday && <NowCard items={list} now={now} onStart={startFocus} />}
@@ -148,7 +148,7 @@ export default function Today() {
           </section>
 
           {/* right rail */}
-          <aside className="grid content-start gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 pb-4" aria-label="Day details">
+          <aside className="grid grid-cols-1 content-start gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 pb-4" aria-label="Day details">
             <TasksCard items={list} day={day} />
             <HabitsCard items={list} day={day} />
           </aside>
@@ -295,7 +295,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
             </span>
           </div>
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-base truncate" data-testid="text-now-title">
+            <div className="font-semibold text-base fade-truncate" data-testid="text-now-title">
               {current.item.title}
             </div>
             <div className="text-xs text-muted-foreground tnum">
@@ -322,7 +322,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
         <div className="flex items-center gap-2 border-t border-orange-200/70 dark:border-white/10 pt-3 text-sm">
           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: colorOf(next.item) }} />
           <span className="text-muted-foreground">Next</span>
-          <span className="font-medium truncate flex-1">{next.item.title}</span>
+          <span className="font-medium fade-truncate flex-1">{next.item.title}</span>
           <span className="text-xs text-muted-foreground tnum shrink-0">
             {fmtTime(next.start, true)} · in {fmtDur(next.start - nm)}
           </span>
@@ -395,7 +395,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
                   {done && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                 </button>
                 <button onClick={() => openEditor(i, occ)} className="min-w-0 flex-1 text-left">
-                  <div className={cn("text-sm truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
+                  <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
                   <div className="text-xs text-muted-foreground flex gap-1.5">
                     {overdue && <span className="text-destructive">Overdue</span>}
                     {isDeadlineTask(i) && <span>Due {fmtDate(i.date, { month: "short", day: "numeric" })}</span>}
@@ -473,7 +473,7 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
                   {isDone && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                 </button>
                 <button onClick={() => openEditor(h, day)} className="min-w-0 flex-1 text-left">
-                  <div className={cn("text-sm truncate", isDone && "text-muted-foreground")}>{h.title}</div>
+                  <div className={cn("text-sm fade-truncate", isDone && "text-muted-foreground")}>{h.title}</div>
                   <div className="text-xs text-muted-foreground">{isTimed(h) ? fmtTime(h.startTime, true) + " · " : ""}{recLabel(h)}</div>
                 </button>
                 {streak > 0 && (

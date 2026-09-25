@@ -115,7 +115,7 @@ export default function TasksPage() {
         </Button>
       </PageHeader>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
-        <div className="max-w-3xl grid gap-4">
+        <div className="max-w-3xl grid grid-cols-1 gap-4">
           <TaskQuickAdd />
           <div className="flex gap-1 card-md rounded-[20px] p-1 w-full sm:w-fit" role="tablist" aria-label="Filter tasks">
             {(
@@ -230,7 +230,7 @@ function TaskRow({ r, items }: { r: Row; items: Item[] }) {
         {done && <Check className="h-3.5 w-3.5 text-background" strokeWidth={3} />}
       </button>
       <button onClick={() => openEditor(i, occ)} className="min-w-0 flex-1 text-left">
-        <div className={cn("text-sm truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
+        <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
           <span className={cn(occ < today && !done && "text-destructive")}>
             {isDeadlineTask(i) ? `Due ${dateLabel}` : i.endDate && i.endDate > i.date && recOf(i).freq === "none"
