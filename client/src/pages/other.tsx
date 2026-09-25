@@ -1170,7 +1170,7 @@ export function SettingsPage() {
           <Section title="Focus timer">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Default focus (min)">
-                <Input type="number" min={5} max={180} value={draft.focusMinutes} onChange={(e) => setDraft({ ...draft, focusMinutes: Number(e.target.value) || 25 })} data-testid="input-focus-min" />
+                <Input type="number" min={5} max={180} value={draft.focusMinutes} onChange={(e) => setDraft({ ...draft, focusMinutes: Number(e.target.value) || 30 })} data-testid="input-focus-min" />
               </Field>
               <Field label="Break (min)">
                 <Input type="number" min={1} max={60} value={draft.breakMinutes} onChange={(e) => setDraft({ ...draft, breakMinutes: Number(e.target.value) || 5 })} data-testid="input-break-min" />
