@@ -22,11 +22,16 @@ final class Notifications {
     private static final String PREFS = "cadence_alarms";
     private static final int FOCUS_CODE = 500001;
 
+    static void createChannel(Context context) {
+        context.getSystemService(NotificationManager.class)
+            .createNotificationChannel(new NotificationChannel(CHANNEL, "Cadence reminders", NotificationManager.IMPORTANCE_DEFAULT));
+    }
+
     static void show(Context context, String title, String body, int id) {
         if (Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Cadence reminders", NotificationManager.IMPORTANCE_DEFAULT));
+        createChannel(context);
         Intent launch = new Intent(context, MainActivity.class);
         PendingIntent pending = PendingIntent.getActivity(context, 0, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -96,6 +101,7 @@ final class Notifications {
             if (intent.getIntExtra("id", 1) == FOCUS_CODE) {
                 SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 prefs.edit().putLong("firedFocusAt", prefs.getLong("focusAt", 0)).apply();
+                context.getSystemService(NotificationManager.class).cancel(FocusTimer.NOTIFICATION_ID);
             }
             show(context, intent.getStringExtra("title"), intent.getStringExtra("body"), intent.getIntExtra("id", 1));
         }
@@ -105,6 +111,7 @@ final class Notifications {
         @Override public void onReceive(Context context, Intent intent) {
             SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             scheduleItems(context, prefs.getString("items", "[]"));
+            FocusTimer.update(context);
             long focusAt = prefs.getLong("focusAt", 0);
             if (focusAt > System.currentTimeMillis()) set(context, FOCUS_CODE, focusAt,
                 prefs.getString("focusTitle", "Focus session complete"),

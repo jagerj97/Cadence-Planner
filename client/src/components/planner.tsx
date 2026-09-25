@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Item, InsertItem, Kind, Recurrence } from "@shared/schema";
 import { KINDS } from "@shared/schema";
@@ -29,12 +29,13 @@ import {
   colorOf,
   recLabel,
   recOf,
+  remindersOf,
   toMin,
   todayStr,
   ymd,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
-import { Pause, Play, Square, Plus, Trash2, Timer, X, Coffee, Link2 } from "lucide-react";
+import { Plus, Trash2, Timer, X, Link2 } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
@@ -58,22 +59,6 @@ export function chime(kind: "soft" | "done" = "soft") {
   } catch {
     /* audio unavailable */
   }
-}
-
-export function systemNotify(title: string, body: string) {
-  if (window.CadenceAndroid) {
-    window.CadenceAndroid.notify(title, body);
-    return true;
-  }
-  try {
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title, { body, icon: "./favicon.svg", tag: title + body });
-      return true;
-    }
-  } catch {
-    /* blocked in sandbox */
-  }
-  return false;
 }
 
 /* ============ theme ============ */
@@ -210,6 +195,31 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   };
   const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
 
+  // The Android timer notification can pause, resume, or stop the timer while the app is closed.
+  // Reload the saved timer when it does, or when the app comes back, and log any session it stopped.
+  useEffect(() => {
+    const bridge = window.CadenceAndroid;
+    if (!bridge) return;
+    const sync = () => {
+      try {
+        const stopped: FocusState | null = JSON.parse(bridge.takeFocusStop?.() || "null");
+        if (stopped) logSession(stopped, stopped.accSec, false);
+      } catch { /* ignore */ }
+      try {
+        const saved: FocusState | null = JSON.parse(bridge.getFocus() || "null");
+        setFocus((current) => (JSON.stringify(current) === JSON.stringify(saved) ? current : saved));
+      } catch { /* ignore */ }
+    };
+    const onVisible = () => document.visibilityState === "visible" && sync();
+    sync();
+    window.addEventListener("cadence-focus-changed", sync);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("cadence-focus-changed", sync);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [logSession]);
+
   // completion
   const doneRef = useRef<string | null>(null);
   useEffect(() => {
@@ -221,8 +231,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       setFocus(null);
       if (settings.sound) chime("done");
       if (f.mode === "focus") {
-        if (window.CadenceAndroid) window.CadenceAndroid.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
-        else systemNotify("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
+        window.CadenceAndroid?.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
         toast({
           title: "Nice work — session complete",
           description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused`,
@@ -236,8 +245,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           ),
         });
       } else {
-        if (window.CadenceAndroid) window.CadenceAndroid.finishFocus("Break's over", "Ready for the next block?");
-        else systemNotify("Break's over", "Ready for the next block?");
+        window.CadenceAndroid?.finishFocus("Break's over", "Ready for the next block?");
         toast({ title: "Break's over", description: "Ready for the next block?" });
       }
     }
@@ -250,6 +258,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   startFocusRef.current = startFocus;
   useEffect(() => {
     if (!items) return;
+    // Pop-ups off: the phone's notification makes the sound, so don't chime in the app too.
+    const phoneOnly = settings.inAppPopups === false;
     const check = () => {
       const now = new Date();
       const nowM = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
@@ -268,46 +278,46 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             fired.current.add(akey);
             const mins = Math.max(1, Math.round(b.fullEnd - nowM));
             startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: mins });
-            systemNotify(`Timer started: ${b.item.title}`, `${fmtDur(mins)} on the clock`);
-            if (settings.sound) chime("soft");
+            window.CadenceAndroid?.notify(`Timer started: ${b.item.title}`, `${fmtDur(mins)} on the clock`);
+            if (settings.sound && !phoneOnly) chime("soft");
             toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock. Open Focus to pause or stop it.` });
           }
         }
-        const r = b.item.reminder;
-        if (r == null || (r === 0 && b.item.autoTimer)) continue;
-        const startAbs = b.start + offset;
-        const fireAt = startAbs - r;
-        const key = `${b.key}:${r}`;
-        if (nowM >= fireAt && nowM < fireAt + 2 && !fired.current.has(key)) {
-          fired.current.add(key);
-          const mins = Math.round(startAbs - nowM);
-          const when = mins <= 0 ? "Starting now" : `Starts in ${fmtDur(mins)}`;
-          const title = `${KIND_META[kindOf(b.item)].label}: ${b.item.title}`;
-          const desc = `${when} · ${fmtTime(b.item.startTime)}${b.item.endTime ? "–" + fmtTime(b.item.endTime) : ""}`;
-          if (!window.CadenceAndroid) systemNotify(title, desc);
-          if (settings.sound) chime("soft");
-          const dur = Math.max(5, b.end - b.start);
-          toast({
-            title,
-            description: desc,
-            action:
-              kindOf(b.item) !== "sleep" && !b.item.autoTimer ? (
-                <ToastAction
-                  altText="Start focus timer"
-                  data-testid="button-toast-start-focus"
-                  onClick={() => startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: dur })}
-                >
-                  Start timer
-                </ToastAction>
-              ) : undefined,
-          });
+        for (const r of remindersOf(b.item)) {
+          if (r === 0 && b.item.autoTimer) continue;
+          const startAbs = b.start + offset;
+          const fireAt = startAbs - r;
+          const key = `${b.key}:${r}`;
+          if (nowM >= fireAt && nowM < fireAt + 2 && !fired.current.has(key)) {
+            fired.current.add(key);
+            const mins = Math.round(startAbs - nowM);
+            const when = mins <= 0 ? "Starting now" : `Starts in ${fmtDur(mins)}`;
+            const title = `${KIND_META[kindOf(b.item)].label}: ${b.item.title}`;
+            const desc = `${when} · ${fmtTime(b.item.startTime)}${b.item.endTime ? "–" + fmtTime(b.item.endTime) : ""}`;
+            if (settings.sound && !phoneOnly) chime("soft");
+            const dur = Math.max(5, b.end - b.start);
+            toast({
+              title,
+              description: desc,
+              action:
+                kindOf(b.item) !== "sleep" && !b.item.autoTimer ? (
+                  <ToastAction
+                    altText="Start focus timer"
+                    data-testid="button-toast-start-focus"
+                    onClick={() => startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: dur })}
+                  >
+                    Start timer
+                  </ToastAction>
+                ) : undefined,
+            });
+          }
         }
       }
     };
     check();
     const t = setInterval(check, 15000);
     return () => clearInterval(t);
-  }, [items, settings.sound, toast]);
+  }, [items, settings.sound, settings.inAppPopups, toast]);
 
   const value: Ctx = {
     theme,
@@ -366,6 +376,10 @@ function ItemDetails({ details, onClose, onEdit }: {
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date && !routine ? " (ends later)" : ""}</div>
             </div>}
+            {!routine && i.startTime && remindersOf(i).length > 0 && <div>
+              <div className="text-xs text-muted-foreground">{remindersOf(i).length > 1 ? "Reminders" : "Reminder"}</div>
+              <div className="first-letter:uppercase">{remindersOf(i).map((m) => (REMINDERS.find((r) => r.v === String(m))?.l ?? `${fmtDur(m)} before`).toLowerCase()).join(", ")}</div>
+            </div>}
             {!routine && recOf(i).freq !== "none" && <div>
               <div className="text-xs text-muted-foreground">Repeats</div>
               <div>{recLabel(i)}</div>
@@ -415,58 +429,6 @@ export const clock = (sec: number) => {
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`;
 };
 
-function FocusDock() {
-  const { focus, elapsed, pauseFocus, resumeFocus, stopFocus, addFocusTime } = usePlanner();
-  if (!focus) return null;
-  const remaining = focus.plannedSec - elapsed;
-  const pct = Math.min(1, elapsed / focus.plannedSec);
-  const brk = focus.mode === "break";
-  const art = brk ? "hsl(var(--k-habit))" : "hsl(var(--k-focus))";
-  return (
-    <div
-      className="fixed inset-x-0 bottom-14 md:bottom-0 z-50 h-[72px] bg-card shadow-[0_-2px_6px_rgba(0,0,0,0.14)]"
-      data-testid="focus-dock"
-      role="timer"
-      aria-live="off"
-    >
-      {/* progress line, Play Music style */}
-      <div className="absolute inset-x-0 top-0 h-1 bg-muted" aria-hidden>
-        <div className="h-full bg-primary transition-[width] duration-1000 ease-linear" style={{ width: `${pct * 100}%` }} />
-        <div className="absolute top-1/2 h-3 w-3 -translate-y-1/2 -translate-x-1/2 rounded-full bg-primary shadow" style={{ left: `${pct * 100}%` }} />
-      </div>
-      <div className="flex h-full items-center gap-3 pl-0 pr-3 md:pr-6">
-        <div className="grid h-[72px] w-[72px] shrink-0 place-items-center text-white" style={{ background: `linear-gradient(135deg, ${art}, color-mix(in srgb, ${art} 60%, #000))` }}>
-          {brk ? <Coffee className="h-7 w-7" /> : <Timer className="h-7 w-7" />}
-        </div>
-        <div className="min-w-0 flex-1 md:flex-none md:w-64">
-          <div className="text-sm font-medium truncate">{brk ? "Break" : focus.title}</div>
-          <div className="text-xs text-muted-foreground truncate">{brk ? "Stretch, breathe, get water" : focus.runStart ? "Focusing" : "Paused"}</div>
-        </div>
-        <div className="flex items-center gap-1 md:mx-auto">
-          <button onClick={() => addFocusTime(5)} className="hidden sm:grid h-10 px-2 place-items-center rounded-full text-xs font-medium text-muted-foreground hover:bg-muted" aria-label="Add 5 minutes" data-testid="button-focus-add5">
-            +5 MIN
-          </button>
-          {focus.runStart ? (
-            <button onClick={pauseFocus} className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md" aria-label="Pause" data-testid="button-focus-pause">
-              <Pause className="h-5 w-5" fill="currentColor" />
-            </button>
-          ) : (
-            <button onClick={resumeFocus} className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md" aria-label="Resume" data-testid="button-focus-resume">
-              <Play className="h-5 w-5 ml-0.5" fill="currentColor" />
-            </button>
-          )}
-          <button onClick={() => stopFocus(false)} className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Stop" data-testid="button-focus-stop">
-            <Square className="h-4 w-4" fill="currentColor" />
-          </button>
-        </div>
-        <div className="font-mono text-lg md:text-xl tnum md:w-64 md:text-right" data-testid="text-focus-remaining">
-          {clock(remaining)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ============ item editor ============ */
 type TimeMode = "timed" | "anytime" | "allday" | "deadline";
 type FormVals = {
@@ -483,6 +445,7 @@ type FormVals = {
   days: number[];
   until: string;
   reminder: string;
+  extraReminders: string[];
   priority: string;
   autoTimer: boolean;
   location: string;
@@ -553,6 +516,8 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       endTime: f.timeMode === "timed" ? f.endTime || fromMin(toMin(f.startTime) + 30) : null,
       recurrence: JSON.stringify(r),
       reminder: f.timeMode === "deadline" || f.reminder === "none" ? null : Number(f.reminder),
+      extraReminders: JSON.stringify(f.timeMode === "deadline" || f.reminder === "none" ? []
+        : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
       autoTimer: f.timeMode === "timed" && f.kind !== "sleep" && f.autoTimer,
       location: f.location,
@@ -724,7 +689,10 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             </div>
             <div className="grid gap-1.5">
               <Label>Reminder</Label>
-              <Select value={v.reminder} onValueChange={(x) => setValue("reminder", x)}>
+              <Select value={v.reminder} onValueChange={(x) => {
+                setValue("reminder", x);
+                if (x === "none") setValue("extraReminders", []);
+              }}>
                 <SelectTrigger data-testid="select-reminder">
                   <SelectValue />
                 </SelectTrigger>
@@ -738,6 +706,42 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
               </Select>
             </div>
           </div>}
+
+          {v.timeMode !== "deadline" && v.reminder !== "none" && (
+            <div className="grid gap-2">
+              {v.extraReminders.length > 0 && <Label>Also remind me</Label>}
+              {v.extraReminders.map((extra, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Select value={extra} onValueChange={(x) => setValue("extraReminders", v.extraReminders.map((e, k) => (k === index ? x : e)))}>
+                    <SelectTrigger className="flex-1" aria-label={`Reminder ${index + 2}`} data-testid={`select-extra-reminder-${index}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REMINDERS.filter((r) => r.v !== "none").map((r) => (
+                        <SelectItem key={r.v} value={r.v}>
+                          {r.l}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
+                    onClick={() => setValue("extraReminders", v.extraReminders.filter((_, k) => k !== index))}
+                    aria-label={`Remove reminder ${index + 2}`} data-testid={`button-remove-reminder-${index}`}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <button type="button" className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary hover:underline"
+                onClick={() => {
+                  const used = new Set([v.reminder, ...v.extraReminders]);
+                  const next = REMINDERS.find((r) => r.v !== "none" && !used.has(r.v))?.v ?? "0";
+                  setValue("extraReminders", [...v.extraReminders, next]);
+                }}
+                data-testid="button-add-reminder">
+                <Plus className="h-3.5 w-3.5" /> Add another reminder
+              </button>
+            </div>
+          )}
 
           {v.timeMode !== "deadline" && v.freq === "weekly" && (
             <div className="flex gap-1.5" aria-label="Days of week">
@@ -895,6 +899,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     days: r.days || [],
     until: r.until || "",
     reminder: i.reminder == null ? (i.title ? "none" : defReminder == null ? "none" : String(defReminder)) : String(i.reminder),
+    extraReminders: i.reminder == null ? [] : remindersOf(i as Item).filter((n) => n !== i.reminder).map(String),
     priority: i.priority || "normal",
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
@@ -911,7 +916,3 @@ export function useNow(intervalMs = 30000) {
   return n;
 }
 
-export function useMemoItems() {
-  const q = useItems();
-  return useMemo(() => q.data ?? [], [q.data]);
-}

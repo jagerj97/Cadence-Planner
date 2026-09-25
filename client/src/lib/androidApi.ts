@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS, IMPORT_KINDS } from "@shared/schema";
 import type { Feed, InsertItem, Item, JournalEntry, Session, Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
-import { addDays, blocksForDay, parseYmd, todayStr } from "./cal";
+import { addDays, blocksForDay, fmtDur, parseYmd, remindersOf, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -19,6 +19,8 @@ export interface AndroidBridge {
   finishFocus(title: string, body: string): void;
   getFocus(): string;
   saveFocus(json: string): void;
+  /** A session stopped from the timer notification, waiting to be logged (JSON or "null"). Older builds lack it. */
+  takeFocusStop?(): string;
 }
 declare global {
   interface Window { CadenceAndroid?: AndroidBridge; }
@@ -114,14 +116,16 @@ async function refreshNotifications() {
     const date = addDays(todayStr(), offset);
     for (const block of blocksForDay(items, date)) {
       const item = block.item;
-      if (block.continues === "before" || item.reminder == null || !item.startTime || item.kind === "sleep") continue;
-      const at = parseYmd(date).getTime() + (block.start - item.reminder) * 60000;
-      if (at <= now || at > now + 31 * 86400000) continue;
-      reminders.push({
-        at,
-        title: `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ${item.title}`,
-        body: item.reminder === 0 ? "Starting now" : `Starts in ${item.reminder} min`,
-      });
+      if (block.continues === "before" || !item.startTime || item.kind === "sleep") continue;
+      for (const minutes of remindersOf(item)) {
+        const at = parseYmd(date).getTime() + (block.start - minutes) * 60000;
+        if (at <= now || at > now + 31 * 86400000) continue;
+        reminders.push({
+          at,
+          title: `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ${item.title}`,
+          body: minutes === 0 ? "Starting now" : `Starts in ${fmtDur(minutes)}`,
+        });
+      }
     }
   }
   reminders.sort((a, b) => a.at - b.at);
@@ -331,7 +335,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             if (old) {
               seen.add(old.id);
               await put("items", { ...old, ...fresh, id: old.id, kind: old.kind, color: old.color,
-                completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, priority: old.priority,
+                completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && old.availableFrom ? {
                   availableFrom: old.availableFrom, startTime: null, endTime: null, endDate: null, allDay: false,
                 } : {}) });

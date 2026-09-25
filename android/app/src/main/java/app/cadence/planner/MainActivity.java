@@ -2,8 +2,6 @@ package app.cadence.planner;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -32,9 +30,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.app.PendingIntent;
 import androidx.annotation.NonNull;
-import androidx.core.app.NotificationCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -55,8 +51,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MainActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final int PICK_FILE = 20, SAVE_ICS = 21, PERMISSION_LOCATION = 22, PERMISSION_NOTIFY = 23, SAVE_BACKUP = 24;
-    private static final String CHANNEL = "cadence_reminders";
-    private final AtomicInteger notificationIds = new AtomicInteger(1);
+    // On-demand notifications get their own ids so they never replace a scheduled reminder (1..128).
+    private final AtomicInteger notificationIds = new AtomicInteger(600000);
     private WebView browser;
     private FrameLayout content;
     private View topInset;
@@ -70,13 +66,13 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        FocusTimer.activity = new java.lang.ref.WeakReference<>(this);
         Window window = getWindow();
         // Android 15 enforces edge-to-edge. Inset the container, not the WebView's
         // document, so fixed headers and bottom navigation stay inside the safe area.
         WindowCompat.setDecorFitsSystemWindows(window, false);
         if (Build.VERSION.SDK_INT >= 29) window.setNavigationBarContrastEnforced(false);
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Cadence reminders", NotificationManager.IMPORTANCE_DEFAULT));
+        Notifications.createChannel(this);
 
         browser = new WebView(this);
         content = new FrameLayout(this);
@@ -212,6 +208,11 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** A timer notification button changed the saved timer; have the web app reload it. */
+    void focusChanged() {
+        runOnUiThread(() -> browser.evaluateJavascript("window.dispatchEvent(new Event('cadence-focus-changed'))", null));
+    }
+
     @Override public void onRequestPermissionsResult(int code, @NonNull String[] permissions, @NonNull int[] grants) {
         super.onRequestPermissionsResult(code, permissions, grants);
         if (code == PERMISSION_LOCATION && pendingLocation != null) {
@@ -223,6 +224,7 @@ public class MainActivity extends Activity {
             if (anyGranted(grants)) fetchLocation(); else sendLocationError("denied");
         }
         if (code == PERMISSION_NOTIFY) {
+            FocusTimer.update(this);
             browser.evaluateJavascript("window.dispatchEvent(new Event('cadence-notification-permission'))", null);
         }
     }
@@ -298,6 +300,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (FocusTimer.activity.get() == this) FocusTimer.activity = new java.lang.ref.WeakReference<>(null);
         browser.removeJavascriptInterface("CadenceAndroid");
         browser.destroy();
         super.onDestroy();
@@ -430,15 +433,10 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public void notify(String title, String body) {
-            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
-            Intent launch = new Intent(MainActivity.this, MainActivity.class);
-            PendingIntent pending = PendingIntent.getActivity(MainActivity.this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            NotificationCompat.Builder notification = new NotificationCompat.Builder(MainActivity.this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_notification).setColor(Color.rgb(214, 96, 57))
-                .setContentTitle(title == null ? "Cadence" : title.substring(0, Math.min(100, title.length())))
-                .setContentText(body == null ? "" : body.substring(0, Math.min(200, body.length())))
-                .setAutoCancel(true).setContentIntent(pending);
-            getSystemService(NotificationManager.class).notify(notificationIds.getAndIncrement(), notification.build());
+            Notifications.show(MainActivity.this,
+                title == null ? "Cadence" : title.substring(0, Math.min(100, title.length())),
+                body == null ? "" : body.substring(0, Math.min(200, body.length())),
+                notificationIds.getAndIncrement());
         }
 
         @JavascriptInterface public void scheduleReminders(String json) {
@@ -462,8 +460,13 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public void saveFocus(String json) {
-            if (json != null && json.length() < 10000)
-                getSharedPreferences("cadence_focus", MODE_PRIVATE).edit().putString("state", json).apply();
+            if (json == null || json.length() >= 10000) return;
+            getSharedPreferences("cadence_focus", MODE_PRIVATE).edit().putString("state", json).apply();
+            FocusTimer.update(MainActivity.this);
+        }
+
+        @JavascriptInterface public String takeFocusStop() {
+            return FocusTimer.takeStopped(MainActivity.this);
         }
     }
 }

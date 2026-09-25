@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shell";
 import { usePlanner, Ring, clock, chime } from "@/components/planner";
 import { TZ, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
-import { API_BASE, apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   DAY_SHORT,
   KIND_META,
@@ -41,7 +40,6 @@ import { SiGooglecalendar, SiApple } from "react-icons/si";
 import {
   Plus,
   Flame,
-  Trophy,
   Check,
   Play,
   Pause,
@@ -53,16 +51,13 @@ import {
   Link2,
   Bell,
   Timer,
-  Calendar as CalIcon,
   AlertCircle,
-  ExternalLink,
   MapPin,
   Sunrise,
   Sunset,
   ChevronDown,
   ArrowUp,
   ArrowDown,
-  Copy,
 } from "lucide-react";
 
 /* ====================== HABITS ====================== */
@@ -73,8 +68,6 @@ export function fillOf(mk: 0 | 1 | 2, color: string, angle = 135) {
   if (mk === 1) return `linear-gradient(${angle}deg, ${color} 50%, transparent 50%)`;
   return "transparent";
 }
-// Play Music-style "album art" colours for habit cards
-const ART = ["#F4511E", "#8E24AA", "#1E88E5", "#00897B", "#43A047", "#FB8C00", "#3949AB", "#D81B60", "#6D4C41", "#00ACC1"];
 export function HabitsPage() {
   const { data: items } = useItems();
   const { cycle } = useItemMutations();
@@ -504,10 +497,6 @@ function ImportTypePicker({ id, value, onChange }: {
 }
 
 export function CalendarLinks() {
-  const isAndroid = !!window.CadenceAndroid;
-  const { data: subscription, isLoading: loadingSubscription } = useQuery<{ path: string }>({
-    queryKey: ["/api/calendar-link"], enabled: !isAndroid,
-  });
   const { data: feeds } = useFeeds();
   const { data: items } = useItems();
   const { toast } = useToast();
@@ -575,8 +564,6 @@ export function CalendarLinks() {
   };
 
   const localCount = (items ?? []).filter((i) => !i.source.startsWith("feed:")).length;
-  const exportUrl = `${API_BASE}/api/export.ics?tz=${encodeURIComponent(TZ)}`;
-  const exportAllUrl = `${exportUrl}&feeds=1`;
   const exportOnDevice = async (includeFeeds: boolean) => {
     try {
       const url = `/api/export.ics?tz=${encodeURIComponent(TZ)}${includeFeeds ? "&feeds=1" : ""}`;
@@ -585,45 +572,12 @@ export function CalendarLinks() {
       toast({ title: "Could not export calendar", variant: "destructive" });
     }
   };
-  const subscriptionUrl = subscription ? `${window.location.origin}${API_BASE}${subscription.path}` : "";
-  const [rotating, setRotating] = useState(false);
-  const rotateLink = async () => {
-    setRotating(true);
-    try {
-      const next = await (await apiRequest("POST", "/api/calendar-link/rotate")).json();
-      queryClient.setQueryData(["/api/calendar-link"], next);
-      toast({ title: "Subscription link changed", description: "The previous link no longer works." });
-    } catch {
-      toast({ title: "Could not rotate link", variant: "destructive" });
-    } finally { setRotating(false); }
-  };
-
   return (
     <>
-          {isAndroid ? <section className="card-md p-5 grid gap-2">
+          <section className="card-md p-5 grid gap-2">
             <h2 className="text-sm font-semibold">Your calendar stays on this phone</h2>
             <p className="text-sm text-muted-foreground">You can import subscribed calendars and save an iCal file below. A phone-only calendar cannot provide a public subscription URL that Google Calendar can reach.</p>
-          </section> : <section className="card-md p-5 grid gap-3 content-start">
-            <div className="flex items-center gap-2">
-              <Link2 className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Subscribe to Cadence</h2>
-            </div>
-            <p className="text-sm text-muted-foreground">Add this URL to Google Calendar under “From URL” to subscribe to your Cadence items. Changes appear when your calendar app refreshes its subscriptions.</p>
-            <div className="flex min-w-0 gap-2">
-              <Input readOnly aria-label="Cadence iCal subscription URL" value={subscriptionUrl} placeholder={loadingSubscription ? "Preparing link…" : "Unavailable"} data-testid="input-calendar-link" />
-              <Button variant="outline" size="icon" disabled={!subscriptionUrl} aria-label="Copy subscription link" onClick={async () => {
-                try { await navigator.clipboard.writeText(subscriptionUrl); toast({ title: "Link copied" }); }
-                catch { toast({ title: "Select and copy the link above" }); }
-              }} data-testid="button-copy-calendar-link"><Copy className="h-4 w-4" /></Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="ghost" size="sm" disabled={!subscriptionUrl || rotating} onClick={rotateLink} data-testid="button-rotate-calendar-link">
-                <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Replace link
-              </Button>
-              <span className="text-xs text-muted-foreground">Anyone with this link can read exported items, including notes. Replace it to revoke the old link.</span>
-            </div>
-            <p className="text-xs text-muted-foreground">If this app is behind a private site access gate, outside calendar services may not be able to reach this link.</p>
-          </section>}
+          </section>
           {/* subscribe */}
           <section id="calendars" className="card-md p-5 grid gap-4 content-start">
             <div className="flex items-center gap-2">
@@ -649,7 +603,7 @@ export function CalendarLinks() {
                 <li>Copy the <span className="text-foreground font-medium">Secret address in iCal format</span> and paste it below.</li>
               </ol>
               <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
-              <SiApple className="h-3.5 w-3.5" /> Add an internet-accessible iCal subscription URL, including webcal links. {isAndroid ? "The phone app requires HTTPS." : "Use HTTPS for private links;"} One-time .ics files can be uploaded below.
+              <SiApple className="h-3.5 w-3.5" /> Add an internet-accessible iCal subscription URL, including webcal links. The phone app requires HTTPS. One-time .ics files can be uploaded below.
               </div>
             </div>
 
@@ -749,21 +703,12 @@ export function CalendarLinks() {
               Repeats, reminders and notes are included.
             </p>
             <div className="flex flex-wrap gap-2">
-              {isAndroid ? <Button onClick={() => exportOnDevice(false)} data-testid="button-export">
+              <Button onClick={() => exportOnDevice(false)} data-testid="button-export">
                 <Download className="h-4 w-4 mr-1.5" /> Save my plan
-              </Button> : <Button asChild data-testid="button-export">
-                <a href={exportUrl} target="_blank" rel="noopener noreferrer">
-                  <Download className="h-4 w-4 mr-1.5" />
-                  Export my plan
-                </a>
-              </Button>}
-              {isAndroid ? <Button variant="outline" onClick={() => exportOnDevice(true)} data-testid="button-export-all">
+              </Button>
+              <Button variant="outline" onClick={() => exportOnDevice(true)} data-testid="button-export-all">
                 Include synced calendars
-              </Button> : <Button asChild variant="outline" data-testid="button-export-all">
-                <a href={exportAllUrl} target="_blank" rel="noopener noreferrer">
-                  Include synced calendars
-                </a>
-              </Button>}
+              </Button>
             </div>
           </section>
     </>
@@ -900,18 +845,13 @@ const APP_BUILD = typeof __APP_BUILD__ !== "undefined" ? __APP_BUILD__ : "";
 
 export function SettingsPage() {
   const { settings, isLoading } = useSettings();
-  const save = useSaveSettings();
   const { toast } = useToast();
-  const { theme, setTheme } = usePlanner();
+  const { setTheme } = usePlanner();
   const [locating, setLocating] = useState(false);
-  const isAndroid = !!window.CadenceAndroid;
   const [hydrated, setHydrated] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
-  const [perm, setPerm] = useState<string>(() => window.CadenceAndroid
-    ? window.CadenceAndroid.notificationsAllowed() ? "granted" : "prompt"
-    : ("Notification" in window ? Notification.permission : "unsupported"));
+  const [perm, setPerm] = useState(() => window.CadenceAndroid?.notificationsAllowed() ? "granted" : "prompt");
   useEffect(() => {
-    if (!window.CadenceAndroid) return;
     const refresh = () => setPerm(window.CadenceAndroid?.notificationsAllowed() ? "granted" : "prompt");
     window.addEventListener("cadence-notification-permission", refresh);
     return () => window.removeEventListener("cadence-notification-permission", refresh);
@@ -919,11 +859,11 @@ export function SettingsPage() {
   const [draft, setDraft] = useState(settings);
   useEffect(() => {
     if (isLoading) return;
-    if (!isAndroid || !hydrated) {
+    if (!hydrated) {
       setDraft(settings);
       setHydrated(true);
     }
-  }, [settings, isLoading, isAndroid, hydrated]);
+  }, [settings, isLoading, hydrated]);
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
   const lastQueued = useRef<string | null>(null);
@@ -959,7 +899,7 @@ export function SettingsPage() {
   const flushRef = useRef(flushAndroidSettings);
   flushRef.current = flushAndroidSettings;
   useEffect(() => {
-    if (!isAndroid || !hydrated) return;
+    if (!hydrated) return;
     const serialized = JSON.stringify(normalized(draft));
     if (lastQueued.current === null) {
       lastQueued.current = serialized;
@@ -969,55 +909,32 @@ export function SettingsPage() {
     setSaveStatus("saving");
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 300);
-  }, [draft, hydrated, isAndroid]);
+  }, [draft, hydrated]);
   useEffect(() => () => {
-    if (isAndroid && saveTimer.current) void flushRef.current().catch(() => {});
-  }, [isAndroid]);
+    if (saveTimer.current) void flushRef.current().catch(() => {});
+  }, []);
 
   const updateRoutine = (id: string, fields: Partial<Routine>) => setDraft((d) => ({
     ...d, routines: d.routines.map((r) => r.id === id ? { ...r, ...fields } : r),
   }));
 
-  const onSave = async () => {
-    try {
-      await save.mutateAsync(normalized(draft));
-      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
-      toast({ title: "Settings saved" });
-    } catch {
-      toast({ title: "Couldn't save settings", description: "Check your routine names, colors and time ranges.", variant: "destructive" });
-    }
-  };
-
-  const askPermission = async () => {
-    try {
-      if (window.CadenceAndroid) {
-        window.CadenceAndroid.requestNotifications();
-        setPerm(window.CadenceAndroid.notificationsAllowed() ? "granted" : "prompt");
-        return;
-      }
-      const p = await Notification.requestPermission();
-      setPerm(p);
-      if (p === "granted") new Notification("Notifications are on", { body: "Cadence will ping you before events." });
-    } catch {
-      setPerm("blocked");
-    }
+  const askPermission = () => {
+    window.CadenceAndroid?.requestNotifications();
+    setPerm(window.CadenceAndroid?.notificationsAllowed() ? "granted" : "prompt");
   };
 
   if (isLoading) return null;
   return (
     <>
       <PageHeader title="Settings" sub="Make Cadence fit how you live">
-        {isAndroid
-          ? <span role="status" className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="settings-save-status">
+        <span role="status" className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="settings-save-status">
               {saveStatus === "saved" ? "Saved automatically" : saveStatus === "saving" ? "Saving…" : "Couldn't save"}
               {saveStatus === "error" && <button type="button" className="text-primary underline" onClick={() => {
                 setSaveStatus("saving");
                 void flushAndroidSettings().catch(() => {});
               }}>Retry</button>}
             </span>
-          : <Button onClick={onSave} disabled={save.isPending} data-testid="button-save-settings">
-              Save changes
-            </Button>}
+
       </PageHeader>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="grid grid-cols-1 gap-4 max-w-3xl">
@@ -1085,7 +1002,7 @@ export function SettingsPage() {
                   try {
                     const { lat, lng } = await getDeviceLocation();
                     setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4), place: "My location" }));
-                    toast({ title: "Location found", description: isAndroid ? "Your settings will save automatically." : "Save to update your sunrise and sunset." });
+                    toast({ title: "Location found", description: "Your settings will save automatically." });
                   } catch (err) {
                     toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead.` });
                   } finally {
@@ -1120,6 +1037,9 @@ export function SettingsPage() {
                 </SelectContent>
               </Select>
             </Field>
+            <Row label="In-app pop-ups" hint="Show reminders and confirmations inside Cadence. Turn off to get reminders only as phone notifications, like a calendar app. Errors always show.">
+              <Switch checked={draft.inAppPopups !== false} onCheckedChange={(v) => setDraft({ ...draft, inAppPopups: v })} data-testid="switch-in-app-popups" />
+            </Row>
             <Row label="Play a sound" hint="Soft chime for reminders and when a timer ends">
               <Switch checked={draft.sound} onCheckedChange={(v) => setDraft({ ...draft, sound: v })} data-testid="switch-sound" />
             </Row>
@@ -1129,20 +1049,9 @@ export function SettingsPage() {
                 setDraft((d) => ({ ...d, haptics: v }));
               }} data-testid="switch-haptics" />
             </Row>
-            <Row
-              label={window.CadenceAndroid ? "Phone notifications" : "Desktop notifications"}
-              hint={
-                window.CadenceAndroid
-                  ? "Allow system notifications for reminders while Cadence is open."
-                : perm === "granted"
-                  ? "On — you'll get system notifications while Cadence is open."
-                  : perm === "denied" || perm === "blocked"
-                    ? "Blocked here. In-app alerts and sound still work; allow notifications in your browser, or open Cadence in its own tab."
-                    : "In-app alerts always show. Turn this on for system notifications too."
-              }
-            >
+            <Row label="Phone notifications" hint="Allow notifications for reminders and the running timer.">
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={askPermission} disabled={perm === "granted" || perm === "unsupported"} data-testid="button-notify-permission">
+                <Button variant="outline" size="sm" onClick={askPermission} disabled={perm === "granted"} data-testid="button-notify-permission">
                   <Bell className="h-3.5 w-3.5 mr-1.5" />
                   {perm === "granted" ? "Enabled" : "Enable"}
                 </Button>
@@ -1152,12 +1061,7 @@ export function SettingsPage() {
                   onClick={() => {
                     chime("soft");
                     toast({ title: "Test reminder", description: "This is how reminders look." });
-                    try {
-                      if (window.CadenceAndroid) window.CadenceAndroid.notify("Test reminder", "This is how reminders look.");
-                      else if (Notification.permission === "granted") new Notification("Test reminder", { body: "This is how reminders look." });
-                    } catch {
-                      /* noop */
-                    }
+                    window.CadenceAndroid?.notify("Test reminder", "This is how reminders look.");
                   }}
                   data-testid="button-test-notification"
                 >
@@ -1182,11 +1086,9 @@ export function SettingsPage() {
             <CalendarLinks />
           </Section>
 
-          {window.CadenceAndroid && (
-            <Section title="Backup & restore" hint="Move all your phone-local Cadence data to a file">
-              <BackupRestore beforeBackup={flushAndroidSettings} />
-            </Section>
-          )}
+          <Section title="Backup & restore" hint="Move all your phone-local Cadence data to a file">
+            <BackupRestore beforeBackup={flushAndroidSettings} />
+          </Section>
 
           <Section title="Calendar view">
             <div className="grid sm:grid-cols-2 gap-3">
@@ -1220,7 +1122,7 @@ export function SettingsPage() {
               ))}
             </div>
             <Row label="Dark mode">
-              <Switch checked={isAndroid ? draft.appearanceTheme === "dark" : theme === "dark"} onCheckedChange={(v) => {
+              <Switch checked={draft.appearanceTheme === "dark"} onCheckedChange={(v) => {
                 const next = v ? "dark" : "light";
                 setTheme(next);
                 setDraft((current) => ({ ...current, appearanceTheme: next }));
@@ -1276,9 +1178,6 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
     </div>
   );
 }
-void CalIcon;
-void ExternalLink;
-void fmtDate;
 
 function SunPreview({ lat, lng }: { lat: number; lng: number }) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
