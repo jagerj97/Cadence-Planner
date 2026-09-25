@@ -1,5 +1,6 @@
 import ICAL from "ical.js";
 import type { InsertItem, Item, Recurrence } from "@shared/schema";
+import { remindersOf } from "./cal";
 
 const days = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -43,9 +44,11 @@ function category(component: ICAL.Component): string {
 function row(component: ICAL.Component, start: ICAL.Time, end: ICAL.Time, tz: string, source: string): InsertItem {
   const allDay = start.isDate;
   const date = dateOf(start, tz), endDate = dateOf(end, tz);
-  const trigger = component.getFirstSubcomponent("valarm")?.getFirstPropertyValue("trigger") as ICAL.Duration | null;
-  const alarmMinutes = trigger && typeof trigger.toSeconds === "function"
-    ? Math.max(0, Math.round(-trigger.toSeconds() / 60)) : null;
+  const alarms = component.getAllSubcomponents("valarm").flatMap((alarm) => {
+    const trigger = alarm.getFirstPropertyValue("trigger") as ICAL.Duration | null;
+    return trigger && typeof trigger.toSeconds === "function" ? [Math.max(0, Math.round(-trigger.toSeconds() / 60))] : [];
+  });
+  const alarmMinutes = alarms.length ? alarms[0] : null;
   return {
     title: value(component, "summary") || "(untitled)",
     kind: category(component),
@@ -62,6 +65,7 @@ function row(component: ICAL.Component, start: ICAL.Time, end: ICAL.Time, tz: st
     exceptions: "[]",
     completions: "[]",
     reminder: allDay ? null : alarmMinutes ?? 10,
+    extraReminders: JSON.stringify(allDay ? [] : alarms.slice(1)),
     priority: "normal",
     autoTimer: false,
     source,
@@ -201,9 +205,11 @@ export function exportAndroidIcs(items: Item[], tz: string): string {
     }
     if (it.notes) lines.push(`DESCRIPTION:${escapeIcs(it.notes)}`);
     if (it.location) lines.push(`LOCATION:${escapeIcs(it.location)}`);
-    if (it.reminder != null && it.startTime && !it.allDay) {
-      lines.push("BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Cadence reminder",
-        `TRIGGER:${it.reminder === 0 ? "PT0M" : `-PT${it.reminder}M`}`, "END:VALARM");
+    if (it.startTime && !it.allDay) {
+      for (const minutes of remindersOf(it)) {
+        lines.push("BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Cadence reminder",
+          `TRIGGER:${minutes === 0 ? "PT0M" : `-PT${minutes}M`}`, "END:VALARM");
+      }
     }
     lines.push(`CATEGORIES:${it.kind.toUpperCase()}`, "END:VEVENT");
   }

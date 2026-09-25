@@ -118,6 +118,7 @@ export function blankItem(partial: Partial<InsertItem>): InsertItem {
     exceptions: "[]",
     completions: "[]",
     reminder: 10,
+    extraReminders: "[]",
     priority: "normal",
     autoTimer: false,
     source: "local",

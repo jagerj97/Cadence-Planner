@@ -32,6 +32,7 @@ export const items = sqliteTable("items", {
   exceptions: text("exceptions").notNull().default("[]"),
   completions: text("completions").notNull().default("[]"),
   reminder: integer("reminder"), // minutes before, null = none
+  extraReminders: text("extra_reminders").notNull().default("[]"), // JSON list of more minutes-before values
   priority: text("priority").notNull().default("normal"),
   autoTimer: integer("auto_timer", { mode: "boolean" }).notNull().default(false),
   source: text("source").notNull().default("local"), // local | import | feed:<id>

@@ -112,6 +112,12 @@ const listOf = (s: string | null | undefined): string[] => {
     return [];
   }
 };
+/** Every reminder on an item (minutes before start), latest-firing last, without duplicates. */
+export const remindersOf = (i: Pick<Item, "reminder"> & { extraReminders?: string | null }): number[] => {
+  if (i.reminder == null) return [];
+  const all = [i.reminder, ...(listOf(i.extraReminders) as unknown[])];
+  return [...new Set(all.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0))].sort((a, b) => b - a);
+};
 export const completionsOf = (i: Item) => new Set((listOf(i.completions) as string[]).filter((x) => !x.endsWith("~h")));
 /** dates marked half-done (Theme System style partial fill) */
 export const partialsOf = (i: Item) => new Set((listOf(i.completions) as string[]).filter((x) => x.endsWith("~h")).map((x) => x.slice(0, -2)));
@@ -146,6 +152,7 @@ export function sleepSchedule(settings: Settings): Item {
     exceptions: "[]",
     completions: "[]",
     reminder: null,
+    extraReminders: "[]",
     priority: "normal",
     autoTimer: false,
   };
@@ -172,6 +179,7 @@ export function routineSchedules(settings: Settings): Item[] {
     exceptions: "[]",
     completions: "[]",
     reminder: null,
+    extraReminders: "[]",
     priority: "normal",
     autoTimer: false,
   }));

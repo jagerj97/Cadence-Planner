@@ -29,6 +29,7 @@ import {
   colorOf,
   recLabel,
   recOf,
+  remindersOf,
   toMin,
   todayStr,
   ymd,
@@ -273,34 +274,35 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock. Open Focus to pause or stop it.` });
           }
         }
-        const r = b.item.reminder;
-        if (r == null || (r === 0 && b.item.autoTimer)) continue;
-        const startAbs = b.start + offset;
-        const fireAt = startAbs - r;
-        const key = `${b.key}:${r}`;
-        if (nowM >= fireAt && nowM < fireAt + 2 && !fired.current.has(key)) {
-          fired.current.add(key);
-          const mins = Math.round(startAbs - nowM);
-          const when = mins <= 0 ? "Starting now" : `Starts in ${fmtDur(mins)}`;
-          const title = `${KIND_META[kindOf(b.item)].label}: ${b.item.title}`;
-          const desc = `${when} · ${fmtTime(b.item.startTime)}${b.item.endTime ? "–" + fmtTime(b.item.endTime) : ""}`;
-          if (!window.CadenceAndroid) systemNotify(title, desc);
-          if (settings.sound) chime("soft");
-          const dur = Math.max(5, b.end - b.start);
-          toast({
-            title,
-            description: desc,
-            action:
-              kindOf(b.item) !== "sleep" && !b.item.autoTimer ? (
-                <ToastAction
-                  altText="Start focus timer"
-                  data-testid="button-toast-start-focus"
-                  onClick={() => startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: dur })}
-                >
-                  Start timer
-                </ToastAction>
-              ) : undefined,
-          });
+        for (const r of remindersOf(b.item)) {
+          if (r === 0 && b.item.autoTimer) continue;
+          const startAbs = b.start + offset;
+          const fireAt = startAbs - r;
+          const key = `${b.key}:${r}`;
+          if (nowM >= fireAt && nowM < fireAt + 2 && !fired.current.has(key)) {
+            fired.current.add(key);
+            const mins = Math.round(startAbs - nowM);
+            const when = mins <= 0 ? "Starting now" : `Starts in ${fmtDur(mins)}`;
+            const title = `${KIND_META[kindOf(b.item)].label}: ${b.item.title}`;
+            const desc = `${when} · ${fmtTime(b.item.startTime)}${b.item.endTime ? "–" + fmtTime(b.item.endTime) : ""}`;
+            if (!window.CadenceAndroid) systemNotify(title, desc);
+            if (settings.sound) chime("soft");
+            const dur = Math.max(5, b.end - b.start);
+            toast({
+              title,
+              description: desc,
+              action:
+                kindOf(b.item) !== "sleep" && !b.item.autoTimer ? (
+                  <ToastAction
+                    altText="Start focus timer"
+                    data-testid="button-toast-start-focus"
+                    onClick={() => startFocusRef.current({ title: b.item.title, itemId: b.item.id, minutes: dur })}
+                  >
+                    Start timer
+                  </ToastAction>
+                ) : undefined,
+            });
+          }
         }
       }
     };
@@ -365,6 +367,10 @@ function ItemDetails({ details, onClose, onEdit }: {
             {i.startTime && <div>
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date && !routine ? " (ends later)" : ""}</div>
+            </div>}
+            {!routine && i.startTime && remindersOf(i).length > 0 && <div>
+              <div className="text-xs text-muted-foreground">{remindersOf(i).length > 1 ? "Reminders" : "Reminder"}</div>
+              <div className="first-letter:uppercase">{remindersOf(i).map((m) => (REMINDERS.find((r) => r.v === String(m))?.l ?? `${fmtDur(m)} before`).toLowerCase()).join(", ")}</div>
             </div>}
             {!routine && recOf(i).freq !== "none" && <div>
               <div className="text-xs text-muted-foreground">Repeats</div>
@@ -483,6 +489,7 @@ type FormVals = {
   days: number[];
   until: string;
   reminder: string;
+  extraReminders: string[];
   priority: string;
   autoTimer: boolean;
   location: string;
@@ -553,6 +560,8 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       endTime: f.timeMode === "timed" ? f.endTime || fromMin(toMin(f.startTime) + 30) : null,
       recurrence: JSON.stringify(r),
       reminder: f.timeMode === "deadline" || f.reminder === "none" ? null : Number(f.reminder),
+      extraReminders: JSON.stringify(f.timeMode === "deadline" || f.reminder === "none" ? []
+        : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
       autoTimer: f.timeMode === "timed" && f.kind !== "sleep" && f.autoTimer,
       location: f.location,
@@ -724,7 +733,10 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             </div>
             <div className="grid gap-1.5">
               <Label>Reminder</Label>
-              <Select value={v.reminder} onValueChange={(x) => setValue("reminder", x)}>
+              <Select value={v.reminder} onValueChange={(x) => {
+                setValue("reminder", x);
+                if (x === "none") setValue("extraReminders", []);
+              }}>
                 <SelectTrigger data-testid="select-reminder">
                   <SelectValue />
                 </SelectTrigger>
@@ -738,6 +750,42 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
               </Select>
             </div>
           </div>}
+
+          {v.timeMode !== "deadline" && v.reminder !== "none" && (
+            <div className="grid gap-2">
+              {v.extraReminders.length > 0 && <Label>Also remind me</Label>}
+              {v.extraReminders.map((extra, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Select value={extra} onValueChange={(x) => setValue("extraReminders", v.extraReminders.map((e, k) => (k === index ? x : e)))}>
+                    <SelectTrigger className="flex-1" aria-label={`Reminder ${index + 2}`} data-testid={`select-extra-reminder-${index}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REMINDERS.filter((r) => r.v !== "none").map((r) => (
+                        <SelectItem key={r.v} value={r.v}>
+                          {r.l}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
+                    onClick={() => setValue("extraReminders", v.extraReminders.filter((_, k) => k !== index))}
+                    aria-label={`Remove reminder ${index + 2}`} data-testid={`button-remove-reminder-${index}`}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <button type="button" className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary hover:underline"
+                onClick={() => {
+                  const used = new Set([v.reminder, ...v.extraReminders]);
+                  const next = REMINDERS.find((r) => r.v !== "none" && !used.has(r.v))?.v ?? "0";
+                  setValue("extraReminders", [...v.extraReminders, next]);
+                }}
+                data-testid="button-add-reminder">
+                <Plus className="h-3.5 w-3.5" /> Add another reminder
+              </button>
+            </div>
+          )}
 
           {v.timeMode !== "deadline" && v.freq === "weekly" && (
             <div className="flex gap-1.5" aria-label="Days of week">
@@ -895,6 +943,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     days: r.days || [],
     until: r.until || "",
     reminder: i.reminder == null ? (i.title ? "none" : defReminder == null ? "none" : String(defReminder)) : String(i.reminder),
+    extraReminders: i.reminder == null ? [] : remindersOf(i as Item).filter((n) => n !== i.reminder).map(String),
     priority: i.priority || "normal",
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
