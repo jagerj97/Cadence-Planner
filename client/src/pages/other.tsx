@@ -57,6 +57,7 @@ import {
   Sunrise,
   Sunset,
   ChevronDown,
+  GripVertical,
 } from "lucide-react";
 
 /* ====================== HABITS ====================== */
@@ -126,7 +127,8 @@ export function HabitsPage() {
                   const hit = mk === 2;
                   const st = streakOf(h, today);
                   return (
-                    <div className="flex items-center gap-3 px-4 py-2.5" data-testid={`row-habit-${h.id}`}>
+                    <div className={cn("flex items-center gap-3 py-2.5 pr-4", dueNow.length > 1 ? "pl-2" : "pl-4")} data-testid={`row-habit-${h.id}`}>
+                      {dueNow.length > 1 && <GripVertical className="-mr-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
                       <button
                         onClick={() => due && cycle.mutate({ id: h.id, date: today })}
                         disabled={!due}

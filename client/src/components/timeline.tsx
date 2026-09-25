@@ -222,6 +222,8 @@ export function DayColumn({
         const k = kindOf(b.item);
         const M = KIND_META[k];
         const live = drag?.key === b.key && drag.moved ? drag : null;
+        // Picked up once the hold completes: grows and lifts like items being reordered (SortableList).
+        const lifted = drag?.key === b.key;
         let s = b.start, e = b.end;
         if (live?.mode === "move") {
           s += live.delta;
@@ -256,7 +258,7 @@ export function DayColumn({
             onKeyDown={(ev) => ev.key === "Enter" && openDetails(b.item, b.occDate)}
             className={cn(
               "group absolute overflow-hidden rounded-md text-left select-none touch-none",
-              live ? "z-20 shadow-lg cursor-grabbing" : "cursor-pointer hover:z-10",
+              lifted ? "z-20 shadow-lg cursor-grabbing" : "cursor-pointer hover:z-10",
               b.done && "opacity-55",
               (b.continues === "after" || b.continues === "through") && "rounded-b-none",
               (b.continues === "before" || b.continues === "through") && "rounded-t-none",
@@ -266,7 +268,11 @@ export function DayColumn({
               height: h + (b.continues === "before" || b.continues === "through" ? 1 : 0) + (b.continues === "after" || b.continues === "through" ? 1 : 0),
               left: `calc(${(col / cols) * 100}% + ${gap}px)`,
               width: `calc(${100 / cols}% - ${gap * 2}px)`,
-              background: tint(b.item, k === "sleep" ? 0.1 : 0.15),
+              // While lifted, a solid card under the tint keeps the grid from showing through.
+              background: lifted
+                ? `linear-gradient(${tint(b.item, k === "sleep" ? 0.1 : 0.15)}, ${tint(b.item, k === "sleep" ? 0.1 : 0.15)}), hsl(var(--card))`
+                : tint(b.item, k === "sleep" ? 0.1 : 0.15),
+              transform: lifted ? "scale(1.04)" : undefined,
               borderLeft: `3px solid ${colorOf(b.item)}`,
               boxShadow: active ? `inset 0 0 0 1.5px ${colorOf(b.item)}` : undefined,
             }}

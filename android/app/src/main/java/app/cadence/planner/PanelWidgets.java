@@ -123,6 +123,12 @@ final class PanelWidgets {
         return PendingIntent.getActivity(context, code, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
+    /** The widget's height in portrait, in dp (0 if the launcher hasn't said). */
+    private static int heightDp(AppWidgetManager manager, int id) {
+        Bundle options = manager.getAppWidgetOptions(id);
+        return options == null ? 0 : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT);
+    }
+
     private static int widthDp(AppWidgetManager manager, int id, int fallback) {
         Bundle options = manager.getAppWidgetOptions(id);
         int w = options == null ? 0 : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH);
@@ -183,7 +189,7 @@ final class PanelWidgets {
         v.setViewVisibility(R.id.now_divider, nextVisibility);
         v.setViewVisibility(R.id.now_next, nextVisibility);
         if (next != null) {
-            v.setInt(R.id.now_divider, "setBackgroundColor", theme.dark ? 0x1affffff : WidgetDraw.alpha(theme.nowBorder, 0.7f));
+            v.setInt(R.id.now_divider, "setColorFilter", theme.dark ? 0x1affffff : WidgetDraw.alpha(theme.nowBorder, 0.7f));
             v.setInt(R.id.now_next_dot, "setColorFilter", WidgetDraw.parse(next.optString("color"), theme.primary));
             v.setTextColor(R.id.now_next_label, theme.mutedForeground);
             v.setTextViewText(R.id.now_next_title, next.optString("title"));
@@ -201,9 +207,11 @@ final class PanelWidgets {
         paintCard(v, theme, theme.card, theme.border);
         v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800002, null));
         v.setTextColor(R.id.day_heading, theme.foreground);
+        // A 4x1 widget fits just the bar and totals; the heading comes back when it's resized taller.
+        v.setViewVisibility(R.id.day_heading, heightDp(manager, id) >= 100 ? View.VISIBLE : View.GONE);
         int routine = WidgetDraw.alpha(theme.sleep, 0.72f);
         int[] colors = { theme.muted, routine, theme.primary };
-        v.setImageViewBitmap(R.id.day_bar, WidgetDraw.dayBar(context, Math.max(100, widthDp(manager, id, 300) - 32),
+        v.setImageViewBitmap(R.id.day_bar, WidgetDraw.dayBar(context, Math.max(100, widthDp(manager, id, 300) - 28), 12,
             day == null ? null : day.optJSONArray("spans"), colors));
         JSONArray totals = day == null ? null : day.optJSONArray("totals");
         int[][] stats = {
@@ -382,7 +390,7 @@ final class PanelWidgets {
             String title = r.optString("title");
             if (tasks) {
                 boolean done = r.optBoolean("done");
-                v.setImageViewBitmap(R.id.row_mark, WidgetDraw.taskMark(context, done, theme.task, theme.card));
+                mark(v, done ? R.drawable.mark_box_done : R.drawable.mark_box, done, theme.task, theme.card);
                 SpannableStringBuilder t = new SpannableStringBuilder(title);
                 if (done) t.setSpan(new StrikethroughSpan(), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 v.setTextViewText(R.id.row_title, t);
@@ -403,7 +411,8 @@ final class PanelWidgets {
                     .putExtra("id", r.optInt("id")).putExtra("date", r.optString("occ")));
             } else {
                 int mark = r.optInt("mark");
-                v.setImageViewBitmap(R.id.row_mark, WidgetDraw.habitMark(context, mark, theme.habit, theme.card));
+                mark(v, mark == 2 ? R.drawable.mark_circle_done : mark == 1 ? R.drawable.mark_circle_half : R.drawable.mark_circle,
+                    mark == 2, theme.habit, theme.card);
                 v.setTextViewText(R.id.row_title, title);
                 v.setTextColor(R.id.row_title, mark == 2 ? theme.mutedForeground : theme.foreground);
                 v.setTextViewText(R.id.row_sub, r.optString("sub"));
@@ -420,6 +429,14 @@ final class PanelWidgets {
             }
             v.setTextColor(R.id.row_sub, theme.mutedForeground);
             return v;
+        }
+
+        /** A checkbox or habit circle: the shape in the item's color, with the check in the card color when done. */
+        private static void mark(RemoteViews v, int shape, boolean done, int color, int checkColor) {
+            v.setImageViewResource(R.id.row_mark_shape, shape);
+            v.setInt(R.id.row_mark_shape, "setColorFilter", color);
+            v.setViewVisibility(R.id.row_mark_check, done ? View.VISIBLE : View.GONE);
+            v.setInt(R.id.row_mark_check, "setColorFilter", checkColor);
         }
 
         private static void append(SpannableStringBuilder sub, String part, int color) {

@@ -1,0 +1,6 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp" android:height="18dp" android:viewportWidth="18" android:viewportHeight="18">
+    <!-- The check drawn over a done mark (tinted to the card color) -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent" android:pathData="M5.2,9.2l2.4,2.4l5.2,-5.2"/>
+</vector>
