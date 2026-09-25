@@ -1,6 +1,7 @@
 import { DEFAULT_SETTINGS, IMPORT_KINDS } from "@shared/schema";
 import type { Feed, InsertItem, Item, JournalEntry, Session, Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
+import { widgetSnapshot } from "./widget";
 import { addDays, blocksForDay, fmtDur, parseYmd, remindersOf, todayStr } from "./cal";
 
 export interface AndroidBridge {
@@ -21,6 +22,8 @@ export interface AndroidBridge {
   saveFocus(json: string): void;
   /** A session stopped from the timer notification, waiting to be logged (JSON or "null"). Older builds lack it. */
   takeFocusStop?(): string;
+  /** Hands the home screen widget a snapshot of the Today page (see widget.ts). Older builds lack it. */
+  updateWidget?(json: string): void;
 }
 declare global {
   interface Window { CadenceAndroid?: AndroidBridge; }
@@ -110,6 +113,9 @@ async function refreshNotifications() {
   const bridge = window.CadenceAndroid;
   if (!bridge?.scheduleReminders) return;
   const items = await list<Item>("items");
+  try {
+    bridge.updateWidget?.(JSON.stringify(widgetSnapshot(items, await pref())));
+  } catch { /* the widget is optional */ }
   const reminders: { at: number; title: string; body: string }[] = [];
   const now = Date.now();
   for (let offset = -1; offset < 32; offset++) {

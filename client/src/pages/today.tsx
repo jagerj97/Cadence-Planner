@@ -8,25 +8,18 @@ import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   KIND_META,
   addDays,
-  appearsOn,
   blocksForDay,
   colorOf,
   completionsOf,
   fmtDate,
   fmtDur,
   fmtTime,
-  canDoTaskOn,
   isDeadlineTask,
   isTimed,
   kindOf,
-  markOf,
-  occursOn,
-  orderHabits,
   parseQuick,
   recLabel,
   recOf,
-  routineSchedules,
-  streakOf,
   toMin,
   todayStr,
   untimedForDay,
@@ -37,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { dayBreakdown, habitRowsFor, taskRowsFor } from "@/lib/today";
 import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft } from "lucide-react";
 
 export default function Today() {
@@ -64,26 +58,7 @@ export default function Today() {
     el.scrollTop = Math.max(0, hourY - 16);
   }, [day, isLoading]); // eslint-disable-line
 
-  const blocks = useMemo(() => blocksForDay(list, day), [list, day]);
-  const breakdown = useMemo(() => {
-    const minutes = new Uint8Array(1440);
-    // Planned items take precedence where they overlap a background routine.
-    for (const block of blocksForDay(routineSchedules(settings), day)) {
-      for (let m = Math.max(0, block.start); m < Math.min(1440, block.end); m++) minutes[m] = 1;
-    }
-    for (const block of blocks) {
-      for (let m = Math.max(0, block.start); m < Math.min(1440, block.end); m++) minutes[m] = 2;
-    }
-    const totals = [0, 0, 0];
-    const spans: { category: number; length: number }[] = [];
-    for (const category of minutes) {
-      totals[category]++;
-      const last = spans[spans.length - 1];
-      if (last?.category === category) last.length++;
-      else spans.push({ category, length: 1 });
-    }
-    return { totals, spans };
-  }, [blocks, settings.routines, day]);
+  const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
 
   const allDay = untimedForDay(list, day).filter((i) => i.allDay || (kindOf(i) !== "task" && kindOf(i) !== "habit"));
 
@@ -338,21 +313,8 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
   const { openEditor, openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
   const isToday = day === todayStr();
-  const tasks = items.filter((i) => kindOf(i) === "task" && (appearsOn(i, day) || canDoTaskOn(i, day)));
-  const overdue = isToday
-    ? items.filter((i) => kindOf(i) === "task" && recOf(i).freq === "none" && (i.endDate || i.date) < day && !completionsOf(i).has(i.date))
-    : [];
-  const rows = [
-    ...overdue.map((i) => ({ i, occ: i.date, overdue: true })),
-    ...tasks.map((i) => ({ i, occ: recOf(i).freq === "none" ? i.date : day, overdue: false })),
-  ].sort((a, b) => {
-    const da = completionsOf(a.i).has(a.occ) ? 1 : 0, db = completionsOf(b.i).has(b.occ) ? 1 : 0;
-    if (da !== db) return da - db;
-    const pr = (x: Item) => (x.priority === "high" ? 0 : x.priority === "normal" ? 1 : 2);
-    if (pr(a.i) !== pr(b.i)) return pr(a.i) - pr(b.i);
-    return (a.i.startTime || "99").localeCompare(b.i.startTime || "99");
-  });
-  const left = rows.filter((r) => !completionsOf(r.i).has(r.occ)).length;
+  const rows = taskRowsFor(items, day, isToday);
+  const left = rows.filter((r) => !r.done).length;
 
 
   return (
@@ -370,8 +332,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
         <div className="px-4 pb-4 text-sm text-muted-foreground">No tasks. Type one in the bar above — it lands here if it has no time.</div>
       ) : (
         <ul className="pb-2">
-          {rows.map(({ i, occ, overdue }) => {
-            const done = completionsOf(i).has(occ);
+          {rows.map(({ i, occ, overdue, done }) => {
             return (
               <li key={`${i.id}:${occ}`} className="group flex items-center gap-2.5 px-4 py-1.5 hover:bg-muted/50" data-testid={`row-task-${i.id}`}>
                 <button
@@ -420,7 +381,8 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
   const { cycle } = useItemMutations();
   const { settings } = useSettings();
   const { openEditor, openDetails } = usePlanner();
-  const habits = orderHabits(items.filter((i) => kindOf(i) === "habit" && occursOn(i, day)), settings);
+  const habitRows = habitRowsFor(items, day, settings);
+  const habits = habitRows.map((r) => r.h);
   const done = habits.filter((h) => completionsOf(h).has(day)).length;
   return (
     <div className="card-md" data-testid="card-habits">
@@ -441,10 +403,8 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
         <div className="px-4 pb-4 text-sm text-muted-foreground">No habits today. Try “Read 20 min every day #habit”.</div>
       ) : (
         <ul className="pb-2">
-          {habits.map((h) => {
-            const mk = markOf(h, day);
+          {habitRows.map(({ h, mark: mk, streak }) => {
             const isDone = mk === 2;
-            const streak = streakOf(h, day);
             return (
               <li key={h.id} className="flex items-center gap-2.5 px-4 py-1.5 hover:bg-muted/50" data-testid={`row-habit-${h.id}`}>
                 <button

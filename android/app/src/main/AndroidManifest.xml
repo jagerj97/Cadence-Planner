@@ -24,6 +24,22 @@
         </activity>
         <receiver android:name=".Notifications$AlarmReceiver" android:exported="false" />
         <receiver android:name=".FocusTimer$ActionReceiver" android:exported="false" />
+        <receiver android:name=".CadenceWidget" android:exported="false" android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cadence_widget_info" />
+        </receiver>
+        <service android:name=".CadenceWidget$RowsService" android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <activity android:name=".WidgetConfigActivity" android:exported="true"
+            android:theme="@style/CadenceWidgetConfig" android:excludeFromRecents="true" android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
         <receiver android:name=".Notifications$BootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

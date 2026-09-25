@@ -839,9 +839,8 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
   );
 }
 
-// Injected at build time by vite.android.config.ts; the web dev build doesn't define them.
+// Injected at build time by vite.android.config.ts.
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
-const APP_BUILD = typeof __APP_BUILD__ !== "undefined" ? __APP_BUILD__ : "";
 
 export function SettingsPage() {
   const { settings, isLoading } = useSettings();
@@ -1130,7 +1129,7 @@ export function SettingsPage() {
             </Row>
           </Section>
           <p className="pt-2 text-center text-xs text-muted-foreground tnum" data-testid="text-app-version">
-            Cadence v{APP_VERSION}{APP_BUILD && ` · build ${APP_BUILD}`}
+            Cadence v{APP_VERSION}
           </p>
         </div>
       </div>
