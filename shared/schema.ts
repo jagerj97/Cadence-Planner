@@ -92,6 +92,7 @@ export type Settings = {
   appearanceTheme: "light" | "dark";
   habitOrder: number[];
   hiddenTodayPanels: string[]; // Today page panels the user turned off (see TODAY_PANELS)
+  todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -114,4 +115,5 @@ export const DEFAULT_SETTINGS: Settings = {
   appearanceTheme: "light",
   habitOrder: [],
   hiddenTodayPanels: [],
+  todayPanelOrder: [],
 };

@@ -32,8 +32,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, type TodayPanel } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal } from "lucide-react";
+import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal, ChevronUp, ChevronDown } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -48,6 +48,10 @@ export default function Today() {
 
   const hidden = new Set(settings.hiddenTodayPanels ?? []);
   const shows = (panel: TodayPanel) => !hidden.has(panel);
+  const panelOrder = todayPanelOrder(settings.todayPanelOrder);
+  // On phones the two columns below dissolve (display: contents) into one list in this order;
+  // on wide screens each column keeps the same relative order.
+  const at = (panel: TodayPanel) => ({ order: panelOrder.indexOf(panel) });
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scroller.current;
@@ -88,11 +92,11 @@ export default function Today() {
       <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
-          <section className="flex flex-col min-h-0 gap-3" aria-label="Day timeline">
-            {isToday && shows("now") && <NowCard items={list} now={now} onStart={startFocus} />}
-            {shows("day") && <DayBreakdown totals={breakdown.totals} spans={breakdown.spans} />}
+          <section className="contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3" aria-label="Day timeline">
+            {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
+            {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
             {shows("schedule") && allDay.length > 0 && (
-              <div className="flex flex-wrap gap-1.5" aria-label="All-day">
+              <div className="flex flex-wrap gap-1.5" style={at("schedule")} aria-label="All-day">
                 {allDay.map((i) => (
                   <button
                     key={i.id}
@@ -106,7 +110,7 @@ export default function Today() {
                 ))}
               </div>
             )}
-            {shows("schedule") && <div className="relative flex-1 min-h-[420px] card-md overflow-hidden">
+            {shows("schedule") && <div className="relative flex-1 min-h-[420px] card-md overflow-hidden" style={at("schedule")}>
               {isLoading ? (
                 <div className="p-4 grid gap-3">
                   {[0, 1, 2, 3].map((k) => (
@@ -127,19 +131,19 @@ export default function Today() {
                 </div>
               )}
             </div>}
-            {shows("schedule") && <p className="text-xs text-muted-foreground hidden md:block">
+            {shows("schedule") && <p className="text-xs text-muted-foreground hidden md:block" style={at("schedule")}>
               Click an empty slot to add · hold a block briefly, then drag to move or resize
             </p>}
           </section>
 
           {/* right rail */}
-          <aside className="grid grid-cols-1 content-start gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 pb-4" aria-label="Day details">
-            {shows("tasks") && <TasksCard items={list} day={day} />}
-            {shows("habits") && <HabitsCard items={list} day={day} />}
+          <aside className="contents lg:grid lg:grid-cols-1 lg:content-start lg:gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 lg:pb-4" aria-label="Day details">
+            {shows("tasks") && <div style={at("tasks")}><TasksCard items={list} day={day} /></div>}
+            {shows("habits") && <div style={at("habits")}><HabitsCard items={list} day={day} /></div>}
             {TODAY_PANELS.every((p) => !shows(p.id)) && (
-              <p className="text-sm text-muted-foreground text-center">All Today panels are hidden.</p>
+              <p className="text-sm text-muted-foreground text-center" style={{ order: 98 }}>All Today panels are hidden.</p>
             )}
-            <CustomizeToday hidden={hidden} />
+            <div className="pb-4 lg:pb-0" style={{ order: 99 }}><CustomizeToday hidden={hidden} order={panelOrder} /></div>
           </aside>
         </div>
       </div>
@@ -148,9 +152,14 @@ export default function Today() {
 }
 
 
-function CustomizeToday({ hidden }: { hidden: Set<string> }) {
+function CustomizeToday({ hidden, order }: { hidden: Set<string>; order: TodayPanel[] }) {
   const [open, setOpen] = useState(false);
   const save = useSaveSettings();
+  const move = (index: number, by: -1 | 1) => {
+    const next = [...order];
+    [next[index], next[index + by]] = [next[index + by], next[index]];
+    save.mutate({ todayPanelOrder: next });
+  };
   const toggle = (panel: TodayPanel, shown: boolean) => {
     const next = new Set(hidden);
     if (shown) next.delete(panel); else next.add(panel);
@@ -167,18 +176,33 @@ function CustomizeToday({ hidden }: { hidden: Set<string> }) {
         <DialogContent className="max-w-sm" data-testid="dialog-customize-today">
           <DialogHeader className="text-left">
             <DialogTitle>Customize Today</DialogTitle>
-            <DialogDescription>Choose which panels show on your Today page.</DialogDescription>
+            <DialogDescription>Choose which panels show on your Today page, and their order.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
-            {TODAY_PANELS.map((p) => (
-              <label key={p.id} className="flex items-center justify-between gap-4">
-                <span>
-                  <span className="block text-sm font-medium">{p.label}</span>
-                  <span className="block text-xs text-muted-foreground">{p.hint}</span>
-                </span>
-                <Switch checked={!hidden.has(p.id)} onCheckedChange={(v) => toggle(p.id, v)} data-testid={`switch-today-${p.id}`} />
-              </label>
-            ))}
+            {order.map((id, index) => {
+              const p = TODAY_PANELS.find((panel) => panel.id === id)!;
+              return (
+                <div key={p.id} className="flex items-center gap-2">
+                  <div className="flex flex-col">
+                    <Button size="icon" variant="ghost" className="h-6 w-7" disabled={index === 0 || save.isPending}
+                      onClick={() => move(index, -1)} aria-label={`Move ${p.label} up`} data-testid={`button-today-up-${p.id}`}>
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-6 w-7" disabled={index === order.length - 1 || save.isPending}
+                      onClick={() => move(index, 1)} aria-label={`Move ${p.label} down`} data-testid={`button-today-down-${p.id}`}>
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <label className="flex flex-1 items-center justify-between gap-4">
+                    <span>
+                      <span className="block text-sm font-medium">{p.label}</span>
+                      <span className="block text-xs text-muted-foreground">{p.hint}</span>
+                    </span>
+                    <Switch checked={!hidden.has(p.id)} onCheckedChange={(v) => toggle(p.id, v)} data-testid={`switch-today-${p.id}`} />
+                  </label>
+                </div>
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>

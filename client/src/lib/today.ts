@@ -15,6 +15,13 @@ export const TODAY_PANELS = [
 ] as const;
 export type TodayPanel = (typeof TODAY_PANELS)[number]["id"];
 
+/** Every panel in the user's order; ones they haven't placed keep their default position at the end. */
+export function todayPanelOrder(saved: string[] | undefined): TodayPanel[] {
+  const ids = TODAY_PANELS.map((p) => p.id) as TodayPanel[];
+  const placed = (saved ?? []).filter((id): id is TodayPanel => (ids as string[]).includes(id));
+  return [...new Set([...placed, ...ids])];
+}
+
 export type TaskRow = { i: Item; occ: string; overdue: boolean; done: boolean };
 
 /** Today's tasks: overdue ones first on the current day, then open before done, high priority, and time. */
