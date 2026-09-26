@@ -245,7 +245,7 @@ function Composer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         }}
-        placeholder={keep ? "Take a note…" : "Jot something down. Use #hashtags to tag it."}
+        placeholder={keep ? "Jot something down…" : "Jot something down. Use #hashtags to tag it."}
         className={keep
           ? "min-h-[128px] resize-none rounded-none border-0 bg-transparent px-4 pb-1 pt-4 text-[16px] leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           : "min-h-[96px] resize-y text-[16px] leading-relaxed"}
@@ -543,7 +543,7 @@ export default function JournalPage() {
                   className="flex w-full items-center gap-2 card-md px-3 h-11 text-left text-base text-muted-foreground"
                   data-testid="button-journal-new">
                   <Plus className="h-4 w-4 text-primary shrink-0" />
-                  <span className="truncate">Write an entry…</span>
+                  <span className="truncate text-[14px] italic">Got the zoomies #fun</span>
                 </button>
                 <Dialog open={composing} onOpenChange={setComposing}>
                   <DialogContent hideClose className="max-w-lg gap-0 overflow-hidden rounded-xl p-0" data-testid="dialog-journal-new"
