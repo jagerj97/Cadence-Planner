@@ -79,7 +79,7 @@ const exclusive = <T>(work: () => Promise<T>): Promise<T> => {
 const pref = async (): Promise<Settings> => {
   const saved = (await read<{ key: string; value: Settings }>("settings", "prefs"))?.value;
   const merged = { ...DEFAULT_SETTINGS, ...saved };
-  // Orange and Monochrome became Carrot and Mushroom.
+  // Themes that were renamed carry over to their new names.
   return { ...merged, colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme };
 };
 const bodyJSON = async (input?: BodyInit | null) => input ? JSON.parse(String(input)) : {};
