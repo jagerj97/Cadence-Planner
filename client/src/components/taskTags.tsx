@@ -1,9 +1,14 @@
 import { useState } from "react";
 import type { Item, Settings, TaskTag } from "@shared/schema";
-import { useSaveSettings, useSettings } from "@/lib/data";
+import { useItems, useSaveSettings, useSettings } from "@/lib/data";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Check, Hash, Plus, X } from "lucide-react";
+import { colorOf, kindOf } from "@/lib/cal";
+import { Check, Hash, Plus, Trash2, X } from "lucide-react";
 
 /**
  * Task tags, like the journal's, but each has a color (kept in Settings.taskTags). A task's first
@@ -26,6 +31,14 @@ export function taskTagsOf(i: Pick<Item, "tags">): string[] {
 export function itemTags(i: Pick<Item, "tags">, settings: Settings): TaskTag[] {
   const byName = new Map((settings.taskTags ?? []).map((t) => [t.name, t]));
   return taskTagsOf(i).map((n) => byName.get(n)).filter((t): t is TaskTag => !!t);
+}
+
+/**
+ * An item's accent (checkbox and left edge) in calendar views: a tagged task's tag color, otherwise
+ * its usual color. Its background tint stays the task yellow.
+ */
+export function accentOf(i: Item, settings: Settings): string {
+  return kindOf(i) === "task" ? itemTags(i, settings)[0]?.color ?? colorOf(i) : colorOf(i);
 }
 
 /** A task's checkbox color: its first tag's color, or the task yellow. */
@@ -135,5 +148,79 @@ export function TaskTagField({ value, onChange }: { value: string[]; onChange: (
         </PopoverContent>
       </Popover>
     </div>
+  );
+}
+
+/** Rename, recolor or delete task tags. Renaming or deleting also updates the tasks that carry the tag. */
+export function TagManager({ open, onOpenChange, onRenamed }: { open: boolean; onOpenChange: (o: boolean) => void; onRenamed?: (from: string, to: string) => void }) {
+  const { settings } = useSettings();
+  const { data: items } = useItems();
+  const save = useSaveSettings();
+  const tags = settings.taskTags ?? [];
+  const [editing, setEditing] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const retag = async (from: string, to: string | null) => {
+    for (const i of items ?? []) {
+      const t = taskTagsOf(i);
+      if (!t.includes(from)) continue;
+      const next = to ? [...new Set(t.map((n) => (n === from ? to : n)))] : t.filter((n) => n !== from);
+      await apiRequest("PATCH", `/api/items/${i.id}`, { tags: JSON.stringify(next) });
+    }
+    queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+  };
+  const rename = async (tag: TaskTag) => {
+    const to = cleanTag(name);
+    setEditing(null);
+    if (!to || to === tag.name) return;
+    if (tags.some((t) => t.name === to)) {
+      // Renaming onto an existing tag merges them.
+      save.mutate({ taskTags: tags.filter((t) => t.name !== tag.name) });
+    } else save.mutate({ taskTags: tags.map((t) => (t.name === tag.name ? { ...t, name: to } : t)) });
+    onRenamed?.(tag.name, to);
+    await retag(tag.name, to);
+  };
+  const remove = async (tag: TaskTag) => {
+    save.mutate({ taskTags: tags.filter((t) => t.name !== tag.name) });
+    await retag(tag.name, null);
+  };
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setEditing(null); }}>
+      <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-manage-tags">
+        <DialogHeader className="pr-8 text-left">
+          <DialogTitle>Task tags</DialogTitle>
+          <DialogDescription>Tap a tag to rename it or change its color.</DialogDescription>
+        </DialogHeader>
+        {tags.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No tags yet. Use “add tag” in a task's window.</p>
+        ) : (
+          <ul className="grid grid-cols-1 gap-1">
+            {tags.map((t) => (
+              <li key={t.name} className="grid gap-2 py-1.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <button type="button" onClick={() => { setEditing(editing === t.name ? null : t.name); setName(t.name); }}
+                    aria-expanded={editing === t.name} className="flex min-w-0 flex-1 items-center text-left" data-testid={`button-edit-task-tag-${t.name}`}>
+                    <TagChip tag={t} />
+                  </button>
+                  <span className="text-xs text-muted-foreground tnum">{(items ?? []).filter((i) => taskTagsOf(i).includes(t.name)).length} tasks</span>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Delete tag ${t.name}`} onClick={() => remove(t)} data-testid={`button-delete-task-tag-${t.name}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                {editing === t.name && (
+                  <div className="grid gap-2 pl-1">
+                    <div className="flex items-center gap-2">
+                      <Input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && rename(t)}
+                        className="h-9" aria-label="Tag name" data-testid="input-rename-task-tag" />
+                      <Button size="sm" variant="outline" onClick={() => rename(t)} data-testid="button-rename-task-tag">Save</Button>
+                    </div>
+                    <ColorSwatches value={t.color} onChange={(color) => save.mutate({ taskTags: tags.map((x) => (x.name === t.name ? { ...x, color } : x)) })} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -34,7 +34,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { taskColor } from "@/components/taskTags";
+import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
 import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
@@ -105,7 +105,7 @@ export default function Today() {
                     key={i.id}
                     onClick={() => openDetails(i, day)}
                     className="rounded-md px-2 py-1 text-xs font-medium hover-elevate"
-                    style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${colorOf(i)}` }}
+                    style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${accentOf(i, settings)}` }}
                     data-testid={`chip-allday-${i.id}`}
                   >
                     {i.title}

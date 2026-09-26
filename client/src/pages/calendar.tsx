@@ -23,6 +23,7 @@ import {
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { accentOf } from "@/components/taskTags";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -125,7 +126,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                             className="h-2.5 sm:h-auto min-w-0 truncate rounded px-0.5 sm:px-1 text-left text-xs"
                             style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
                           >
-                            <span className="block sm:hidden h-1.5 w-full rounded-full" style={{ background: colorOf(i) }} aria-hidden />
+                            <span className="block sm:hidden h-1.5 w-full rounded-full" style={{ background: accentOf(i, settings) }} aria-hidden />
                             <span className="hidden sm:inline">{i.title}</span>
                           </button>
                         ))}
@@ -249,7 +250,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                       className="flex h-3.5 sm:h-auto items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[9px] sm:text-xs leading-none sm:leading-normal hover-elevate min-w-0 overflow-hidden"
                       style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
                     >
-                      <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: colorOf(i) }} />
+                      <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: accentOf(i, settings) }} />
                       {t && <span className="hidden sm:inline text-muted-foreground tnum shrink-0">{fmtTime(t, true)}</span>}
                       <span className="block min-w-0 truncate whitespace-nowrap">{i.title}</span>
                     </button>

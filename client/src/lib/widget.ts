@@ -65,6 +65,7 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       blocks: layoutBlocks(blocksForDay(items, day)).map(({ b, col, cols }) => ({
         title: b.item.title, start: b.start, end: b.end, fullStart: b.fullStart, fullEnd: b.fullEnd,
         continues: b.continues ?? "", col, cols, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),
+        accent: kindOf(b.item) === "task" ? itemTags(b.item, settings)[0]?.color ?? "" : "",
         // The line under the title, as the timeline shows it.
         sub: (b.continues === "before" || b.continues === "through"
           ? b.continues === "through" ? "continues" : "until " + fmtTime(b.item.endTime, true)

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { usePlanner } from "@/components/planner";
-import { taskColor } from "@/components/taskTags";
+import { TagManager, taskColor, taskTagsOf } from "@/components/taskTags";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   addDays,
@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Plus, Check, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag } from "lucide-react";
+import { Plus, Check, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag, Hash, Settings2 } from "lucide-react";
 
 type Row = { i: Item; occ: string; done: boolean };
 type Filter = "today" | "upcoming" | "open" | "done";
@@ -44,8 +44,14 @@ export default function TasksPage() {
   const { data: items, isLoading } = useItems();
   const [filter, setFilter] = useState<Filter>("today");
   const [showOlder, setShowOlder] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
+  const { settings: tagSettings } = useSettings();
+  const allTags = tagSettings.taskTags ?? [];
+  // A tag that was deleted stops filtering.
+  const activeTag = tagFilter && allTags.some((t) => t.name === tagFilter) ? tagFilter : null;
   const today = todayStr();
-  const tasks = (items ?? []).filter((i) => kindOf(i) === "task");
+  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && (!activeTag || taskTagsOf(i).includes(activeTag)));
 
   const rows = useMemo(() => {
     const open: Row[] = [];
@@ -139,6 +145,33 @@ export default function TasksPage() {
               </button>
             ))}
           </div>
+
+          {/* Tag filter: tap a tag to show only its tasks, again to show all. */}
+          {allTags.length > 0 && (
+            <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 scroll-thin md:mx-0 md:flex-wrap md:px-0" role="group" aria-label="Filter by tag">
+              {allTags.map((t) => {
+                const on = activeTag === t.name;
+                return (
+                  <button key={t.name} type="button" onClick={() => setTagFilter(on ? null : t.name)} aria-pressed={on}
+                    className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
+                    style={on
+                      ? { background: t.color, borderColor: t.color, color: "white" }
+                      : { background: `color-mix(in srgb, ${t.color} 14%, transparent)`, borderColor: "transparent", color: `color-mix(in srgb, ${t.color} 75%, hsl(var(--foreground)))` }}
+                    data-testid={`filter-task-tag-${t.name}`}>
+                    <Hash className="h-3 w-3" />
+                    {t.name}
+                  </button>
+                );
+              })}
+              <button type="button" onClick={() => setManaging(true)}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                data-testid="button-manage-task-tags">
+                <Settings2 className="h-3.5 w-3.5" />
+                Manage
+              </button>
+            </div>
+          )}
+          <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => tagFilter === from && setTagFilter(to)} />
 
           {isLoading ? (
             <div className="grid gap-2">
