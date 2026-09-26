@@ -368,6 +368,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
 }
 
 function TasksCard({ items, day }: { items: Item[]; day: string }) {
+  const [, nav] = useLocation();
   const { toggle } = useItemMutations();
   const { openEditor, openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
@@ -378,11 +379,19 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 
   return (
     <div className="card-md" data-testid="card-tasks">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <h2 className="text-sm font-semibold">Tasks</h2>
+      <div
+        role="link"
+        tabIndex={0}
+        onClick={() => nav("/tasks")}
+        onKeyDown={(e) => e.key === "Enter" && nav("/tasks")}
+        className="flex cursor-pointer items-center justify-between rounded-t-[20px] px-4 pt-3 pb-2 hover:bg-muted/40"
+        aria-label="Open Tasks"
+        data-testid="link-tasks-page"
+      >
+        <h2 className="flex items-center gap-0.5 text-sm font-semibold">Tasks<ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden /></h2>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{rows.length ? `${left} left` : ""}</span>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditor({ date: day, kind: "task" })} aria-label="Add task" data-testid="button-add-task">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEditor({ date: day, kind: "task" }); }} aria-label="Add task" data-testid="button-add-task">
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -437,6 +446,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 }
 
 function HabitsCard({ items, day }: { items: Item[]; day: string }) {
+  const [, nav] = useLocation();
   const { cycle } = useItemMutations();
   const { settings } = useSettings();
   const { openEditor, openDetails } = usePlanner();
@@ -445,15 +455,23 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
   const done = habits.filter((h) => completionsOf(h).has(day)).length;
   return (
     <div className="card-md" data-testid="card-habits">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <h2 className="text-sm font-semibold">Habits</h2>
+      <div
+        role="link"
+        tabIndex={0}
+        onClick={() => nav("/habits")}
+        onKeyDown={(e) => e.key === "Enter" && nav("/habits")}
+        className="flex cursor-pointer items-center justify-between rounded-t-[20px] px-4 pt-3 pb-2 hover:bg-muted/40"
+        aria-label="Open Habits"
+        data-testid="link-habits-page"
+      >
+        <h2 className="flex items-center gap-0.5 text-sm font-semibold">Habits<ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden /></h2>
         <div className="flex items-center gap-2">
           {habits.length > 0 && (
             <span className="text-xs text-muted-foreground tnum">
               {done}/{habits.length}
             </span>
           )}
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditor({ date: day, kind: "habit", recurrence: '{"freq":"daily"}' })} aria-label="Add habit" data-testid="button-add-habit">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEditor({ date: day, kind: "habit", recurrence: '{"freq":"daily"}' }); }} aria-label="Add habit" data-testid="button-add-habit">
             <Plus className="h-4 w-4" />
           </Button>
         </div>
