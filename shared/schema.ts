@@ -2,6 +2,8 @@
 
 export const KINDS = ["task", "event", "meeting", "habit", "sleep", "focus"] as const;
 export type Kind = (typeof KINDS)[number];
+/** The journal tag an item's notes get, by kind. */
+export const KIND_TAGS: Record<Kind, string> = { task: "tasks", event: "events", meeting: "meetings", habit: "habits", sleep: "sleep", focus: "focus" };
 export const IMPORT_KINDS = ["event", "task", "meeting", "habit", "focus"] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
 
@@ -34,6 +36,8 @@ export type Item = {
   autoTimer: boolean;
   source: string; // local | import | feed:<id> | routine
   uid: string | null;
+  /** The journal entry holding this item's notes; null once it's removed, missing if never synced. */
+  journalId?: number | null;
 };
 /** A new item: title and date are required, everything else falls back to a default. */
 export type InsertItem = Pick<Item, "title" | "date"> & Partial<Omit<Item, "id" | "title" | "date">>;
@@ -65,6 +69,7 @@ export type JournalEntry = {
   date: string;
   body: string;
   tags: string; // JSON string[] (lowercase, no #)
+  itemId?: number | null; // the planner item whose notes this entry mirrors
   createdAt: string;
   updatedAt: string;
 };

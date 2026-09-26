@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS, IMPORT_KINDS } from "@shared/schema";
-import type { Feed, InsertItem, Item, JournalEntry, Session, Settings } from "@shared/schema";
+import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, type Session, type Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
@@ -103,6 +103,42 @@ const normTags = (body: string, tags: unknown) => {
   }
   return JSON.stringify([...found]);
 };
+/**
+ * An item's notes live on as a journal entry on the day the item begins, tagged with its kind
+ * (#events, #meetings...), except for habits. Saving the item keeps the entry's text, date and tag current, clearing
+ * the notes removes it, and editing the entry in the journal edits the notes. An entry deleted
+ * from the journal comes back only when the notes are changed again.
+ */
+const kindTags = new Set(Object.values(KIND_TAGS));
+async function syncNotes(item: Item, notesChanged: boolean): Promise<Item> {
+  // Habits keep their notes to themselves; an item that becomes a habit gives up its entry.
+  const notes = item.kind === "habit" ? "" : (item.notes || "").trim();
+  const tag = KIND_TAGS[item.kind as keyof typeof KIND_TAGS] ?? KIND_TAGS.event;
+  const linked = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
+  if (linked) {
+    if (!notes) {
+      await remove("journal", linked.id);
+      return put("items", { ...item, journalId: null });
+    }
+    const tags = normTags(notes, [...(JSON.parse(linked.tags) as string[]).filter((t) => !kindTags.has(t)), tag]);
+    if (linked.body !== notes || linked.date !== item.date || linked.tags !== tags) {
+      await put("journal", { ...linked, body: notes, date: item.date, tags, updatedAt: linked.body !== notes ? new Date().toISOString() : linked.updatedAt });
+    }
+    return item;
+  }
+  if (!notes || !notesChanged) return item;
+  const now = new Date().toISOString();
+  const entry = await put("journal", { date: item.date, body: notes, tags: normTags(notes, [tag]), itemId: item.id, createdAt: now, updatedAt: now });
+  return put("items", { ...item, journalId: entry.id });
+}
+/** Items saved before notes became journal entries get theirs once. */
+const backfillNotes = () => exclusive(async () => {
+  for (const item of await list<Item>("items")) {
+    if (item.journalId === undefined && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
+  }
+});
+let notesBackfilled: Promise<void> | null = null;
+
 const normalizedUrl = (raw: string) => {
   const url = new URL(raw.trim().replace(/^webcal:\/\//i, "https://"));
   if (url.protocol !== "https:" || !url.hostname.includes(".") || url.port ||
@@ -257,6 +293,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     catch (cause) { return fail(cause instanceof Error ? cause.message : "Invalid backup", 400); }
     try {
       await exclusive(() => restoreBackup(backup));
+      notesBackfilled = null;
       return ok({ restored: true });
     } catch {
       return fail("Could not restore this backup. Your existing data was not changed.", 500);
@@ -265,20 +302,26 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/items" && method === "GET") return ok(await list<Item>("items"));
   if (path === "/api/items" && method === "POST") {
     if (!validItem(data)) return fail("Enter a valid title, date and time");
-    return ok(await put("items", data));
+    const { journalId: _, ...fresh } = data;
+    return exclusive(async () => ok(await syncNotes(await put("items", fresh), true)));
   }
   const itemRoute = /^\/api\/items\/(\d+)(?:\/(toggle|cycle|skip))?$/.exec(path);
   if (itemRoute) return exclusive(async () => {
     const id = Number(itemRoute[1]), item = await read<Item>("items", id);
     if (!item) return fail("Not found", 404);
     if (method === "DELETE" && !itemRoute[2]) {
+      // The notes stay in the journal as a plain entry.
+      const entry = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
+      if (entry) await put("journal", { ...entry, itemId: null });
       await remove("items", id);
       return ok({ ok: true });
     }
     if (method === "PATCH" && !itemRoute[2]) {
-      const merged = { ...item, ...data, ...(item.source.startsWith("feed:") && data.kind && data.kind !== item.kind ? { color: null } : {}) };
+      const merged = { ...item, ...data, journalId: item.journalId, ...(item.source.startsWith("feed:") && data.kind && data.kind !== item.kind ? { color: null } : {}) };
       if (!validItem(merged)) return fail("Enter a valid title, date and time");
-      return ok(await put("items", merged));
+      const notesChanged = typeof data.notes === "string" && data.notes.trim() !== (item.notes || "").trim() ||
+        item.kind === "habit" && merged.kind !== "habit";
+      return ok(await syncNotes(await put("items", merged), notesChanged));
     }
     if (method !== "POST" || !itemRoute[2]) return fail("Unsupported action", 405);
     const date = item.kind === "task" && item.availableFrom ? item.date : String(data.date || "");
@@ -382,6 +425,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/sessions" && method === "GET") return ok(await list<Session>("sessions"));
   if (path === "/api/sessions" && method === "POST") return ok(await put("sessions", data));
   if (path === "/api/journal" && method === "GET") {
+    await (notesBackfilled ??= backfillNotes().catch(() => {}));
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   }
   if (path === "/api/journal" && method === "POST") {
@@ -396,13 +440,23 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (journalRoute) return exclusive(async () => {
     const id = Number(journalRoute[1]), entry = await read<JournalEntry>("journal", id);
     if (!entry) return fail("Not found", 404);
-    if (method === "DELETE") { await remove("journal", id); return ok({ ok: true }); }
-    if (method === "PATCH") return ok(await put("journal", {
-      ...entry, ...data,
-      body: typeof data.body === "string" ? data.body.trim() : entry.body,
-      tags: data.body !== undefined || data.tags ? normTags(data.body ?? "", data.tags ?? JSON.parse(entry.tags)) : entry.tags,
-      updatedAt: new Date().toISOString(),
-    }));
+    const item = entry.itemId ? await read<Item>("items", entry.itemId) : undefined;
+    if (method === "DELETE") {
+      await remove("journal", id);
+      if (item) await put("items", { ...item, journalId: null });
+      return ok({ ok: true });
+    }
+    if (method === "PATCH") {
+      const saved = await put("journal", {
+        ...entry, ...data, itemId: entry.itemId,
+        body: typeof data.body === "string" ? data.body.trim() : entry.body,
+        tags: data.body !== undefined || data.tags ? normTags(data.body ?? "", data.tags ?? JSON.parse(entry.tags)) : entry.tags,
+        updatedAt: new Date().toISOString(),
+      });
+      // Editing the entry edits the item's notes.
+      if (item && saved.body && saved.body !== item.notes) await put("items", { ...item, notes: saved.body });
+      return ok(saved);
+    }
     return fail("Unsupported action", 405);
   });
   return fail("This feature isn't available offline", 501);

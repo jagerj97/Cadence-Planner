@@ -1,19 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
-import type { JournalEntry } from "@shared/schema";
+import { KIND_TAGS, type Item, type JournalEntry, type Kind } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
-import { hashtagsIn, tagsOf, useJournal, useJournalMutations } from "@/lib/data";
-import { addDays, fmtDate, todayStr } from "@/lib/cal";
+import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations } from "@/lib/data";
+import { KIND_META, addDays, colorOf, fmtDate, kindOf, todayStr } from "@/lib/cal";
+import { usePlanner } from "@/components/planner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Hash, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Hash, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+/** A kind tag (#events, #tasks...) takes its item's color, or its kind's; other tags keep the accent. */
+const KIND_OF_TAG = new Map(Object.entries(KIND_TAGS).map(([k, t]) => [t, k as Kind]));
+function tagColor(t: string, item?: Item): string | undefined {
+  const kind = KIND_OF_TAG.get(t);
+  if (!kind) return undefined;
+  return item && kindOf(item) === kind ? colorOf(item) : `hsl(var(${KIND_META[kind].cssVar}))`;
+}
+const tagStyle = (color?: string) => color ? { background: `color-mix(in srgb, ${color} 18%, transparent)`, color: `color-mix(in srgb, ${color} 75%, hsl(var(--foreground)))` } : undefined;
 
 /** body text with #hashtags highlighted and clickable */
 function Body({ text, onTag }: { text: string; onTag: (t: string) => void }) {
@@ -36,12 +46,12 @@ function Body({ text, onTag }: { text: string; onTag: (t: string) => void }) {
   );
 }
 
-function TagChips({ tags, onRemove, onClick }: { tags: string[]; onRemove?: (t: string) => void; onClick?: (t: string) => void }) {
+function TagChips({ tags, onRemove, onClick, item }: { tags: string[]; onRemove?: (t: string) => void; onClick?: (t: string) => void; item?: Item }) {
   if (!tags.length) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((t) => (
-        <span key={t} className="inline-flex items-center gap-0.5 rounded-full bg-accent text-accent-foreground pl-2 pr-2 h-6 text-xs font-medium">
+        <span key={t} className="inline-flex items-center gap-0.5 rounded-full bg-accent text-accent-foreground pl-2 pr-2 h-6 text-xs font-medium" style={tagStyle(tagColor(t, item))}>
           <button onClick={() => onClick?.(t)} className={cn("inline-flex items-center", !onClick && "cursor-default")} data-testid={`chip-tag-${t}`}>
             <Hash className="h-3 w-3" />
             {t}
@@ -200,15 +210,27 @@ function EntryCard({ e, onTag, showDate }: { e: JournalEntry; onTag: (t: string)
   const [, nav] = useLocation();
   const tags = tagsOf(e);
   const extraTags = tags.filter((t) => !hashtagsIn(e.body).includes(t));
+  const { data: items } = useItems();
+  const { openDetails } = usePlanner();
+  const item = e.itemId ? items?.find((i) => i.id === e.itemId) : undefined;
   return (
-    <article className="card-md p-4 group" data-testid={`card-entry-${e.id}`}>
+    <article
+      className={cn("card-md p-4 group", item && !editing && "cursor-pointer")}
+      // An entry holding an item's notes opens that item; its buttons, tags and links keep their own taps.
+      onClick={(ev) => item && !editing && !(ev.target as HTMLElement).closest("button, a, input, textarea") && openDetails(item)}
+      data-testid={`card-entry-${e.id}`}
+    >
       <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
         {showDate ? (
           <button onClick={() => nav(`/journal/${e.date}`)} className="font-medium text-foreground hover:text-primary">
             {fmtDate(e.date, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
           </button>
         ) : null}
-        <span className="tnum">{timeOf(e.createdAt)}</span>
+        {item ? (
+          <button onClick={() => openDetails(item)} className="min-w-0 truncate font-medium hover:underline" style={{ color: colorOf(item) }} data-testid={`button-entry-item-${e.id}`}>
+            {item.title}
+          </button>
+        ) : <span className="tnum">{timeOf(e.createdAt)}</span>}
         {e.updatedAt !== e.createdAt && <span>· edited</span>}
         {!editing && (
           <div className="ml-auto flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
@@ -245,11 +267,48 @@ function EntryCard({ e, onTag, showDate }: { e: JournalEntry; onTag: (t: string)
         />
       ) : (
         <div className="grid gap-2.5">
-          <Body text={e.body} onTag={onTag} />
-          <TagChips tags={extraTags} onClick={onTag} />
+          <Clamp>
+            <Body text={e.body} onTag={onTag} />
+          </Clamp>
+          <TagChips tags={extraTags} onClick={onTag} item={item} />
         </div>
       )}
     </article>
+  );
+}
+
+/** Long entries show their first few lines, fading out, with a chevron to open the rest. */
+const CLAMP_PX = 168;
+function Clamp({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [long, setLong] = useState(false);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setLong(el.scrollHeight > CLAMP_PX + 24);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el.firstElementChild ?? el);
+    return () => ro.disconnect();
+  }, []);
+  const clamped = long && !open;
+  return (
+    <div className="grid gap-1">
+      <div
+        ref={ref}
+        className="overflow-hidden"
+        style={clamped ? { maxHeight: CLAMP_PX, maskImage: "linear-gradient(to bottom, black 55%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, black 55%, transparent)" } : undefined}
+      >
+        {children}
+      </div>
+      {long && (
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={open ? "Show less" : "Show the whole entry"}
+          className="mx-auto grid h-7 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" data-testid="button-entry-expand">
+          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -338,6 +397,7 @@ export default function JournalPage() {
                           "inline-flex items-center gap-1 rounded-full h-7 px-2.5 text-xs font-medium transition-colors",
                           query === `#${t}` ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-accent hover:text-accent-foreground",
                         )}
+                        style={query === `#${t}` ? undefined : tagStyle(tagColor(t))}
                         data-testid={`button-tag-${t}`}
                       >
                         #{t}

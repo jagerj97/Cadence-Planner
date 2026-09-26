@@ -20,7 +20,8 @@ export function useSessions() {
   return useQuery<Session[]>({ queryKey: ["/api/sessions"] });
 }
 
-const inv = () => queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+// An item's notes are mirrored in the journal (androidApi.ts), so changes to either refresh both.
+const inv = () => Promise.all([queryClient.invalidateQueries({ queryKey: ["/api/items"] }), queryClient.invalidateQueries({ queryKey: ["/api/journal"] })]);
 
 export function useItemMutations() {
   const create = useMutation({
@@ -132,7 +133,7 @@ import type { JournalEntry } from "@shared/schema";
 export function useJournal() {
   return useQuery<JournalEntry[]>({ queryKey: ["/api/journal"] });
 }
-const invJ = () => queryClient.invalidateQueries({ queryKey: ["/api/journal"] });
+const invJ = inv;
 export function useJournalMutations() {
   const create = useMutation({
     mutationFn: async (d: { date: string; body: string; tags: string[] }) => (await apiRequest("POST", "/api/journal", d)).json() as Promise<JournalEntry>,
