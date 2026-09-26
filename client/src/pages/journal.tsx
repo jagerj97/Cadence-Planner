@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Baseline, Bold, ChevronDown, ChevronLeft, Italic, Underline, ChevronRight, Hash, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Hash, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -162,14 +162,22 @@ function TagPicker({ taken, onAdd }: { taken: string[]; onAdd: (t: string) => vo
 }
 
 const FORMATS = [
-  { mark: "**", label: "Bold", icon: Bold },
-  { mark: "*", label: "Italic", icon: Italic },
-  { mark: "__", label: "Underline", icon: Underline },
+  { mark: "**", label: "Bold", letter: "B", style: "font-bold", find: /\*\*[^*\n]+?\*\*/g },
+  { mark: "*", label: "Italic", letter: "I", style: "italic font-serif", find: /(?<!\*)\*[^*\n]+?\*(?!\*)/g },
+  { mark: "__", label: "Underline", letter: "U", style: "underline underline-offset-2", find: /__[^_\n]+?__/g },
 ] as const;
+type Format = (typeof FORMATS)[number];
+/** Whether the selection sits inside a format's marks (or right between an empty pair). */
+function formatAt(f: Format, text: string, a: number, b: number) {
+  const before = text.slice(0, a), after = text.slice(b), n = f.mark.length;
+  if (before.endsWith(f.mark) && after.startsWith(f.mark) && (f.mark !== "*" || !before.endsWith("**") || before.endsWith("***"))) return true;
+  for (const m of text.matchAll(f.find)) if (m.index! + n <= a && b <= m.index! + m[0].length - n) return true;
+  return false;
+}
 
 /**
  * Textarea, tags and format buttons, used for new and edited entries. The new entry window uses the
- * "keep" look: a borderless note with its day as the heading and a toolbar along the bottom.
+ * "keep" look: a borderless note with a toolbar along the bottom.
  */
 function Composer({
   initial = "",
@@ -179,7 +187,6 @@ function Composer({
   onCancel,
   busy,
   keep,
-  heading,
 }: {
   initial?: string;
   initialTags?: string[];
@@ -188,12 +195,20 @@ function Composer({
   onCancel?: () => void;
   busy?: boolean;
   keep?: boolean;
-  heading?: React.ReactNode;
 }) {
-  const [formatting, setFormatting] = useState(false);
+  const [sel, setSel] = useState<[number, number]>([initial.length, initial.length]);
   const [body, setBody] = useState(initial);
   const [extra, setExtra] = useState<string[]>(initialTags.filter((t) => !hashtagsIn(initial).includes(t)));
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Follow the selection so B, I and U show the format under it.
+  useEffect(() => {
+    const f = () => {
+      const el = ref.current;
+      if (el && document.activeElement === el) setSel([el.selectionStart, el.selectionEnd]);
+    };
+    document.addEventListener("selectionchange", f);
+    return () => document.removeEventListener("selectionchange", f);
+  }, []);
   const inline = hashtagsIn(body);
   const all = [...new Set([...inline, ...extra])];
   // Wraps the selection in a format's marks, or unwraps it if it already has them.
@@ -210,7 +225,7 @@ function Composer({
     else if (sel.length > 2 * n && sel.startsWith(mark) && sel.endsWith(mark)) [next, s, e] = [before + sel.slice(n, -n) + after, a, b - 2 * n];
     else [next, s, e] = [before + mark + sel + mark + after, a + n, b + n];
     setBody(next);
-    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(s, e); });
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(s, e); setSel([s, e]); });
   };
   const submit = async () => {
     if (!body.trim()) return;
@@ -220,20 +235,19 @@ function Composer({
       setExtra([]);
     }
   };
-  const iconBtn = "grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground";
   return (
     <div className={cn("grid", keep ? "gap-2" : "gap-3")}>
-      {heading}
       <Textarea
         ref={ref}
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        onSelect={(e) => setSel([e.currentTarget.selectionStart, e.currentTarget.selectionEnd])}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         }}
         placeholder={keep ? "Take a note…" : "Jot something down. Use #hashtags to tag it."}
         className={keep
-          ? "min-h-[128px] resize-none rounded-none border-0 bg-transparent px-4 py-1 text-[16px] leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          ? "min-h-[128px] resize-none rounded-none border-0 bg-transparent px-4 pb-1 pt-4 text-[16px] leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           : "min-h-[96px] resize-y text-[16px] leading-relaxed"}
         data-testid="input-journal-body"
       />
@@ -241,30 +255,29 @@ function Composer({
         <TagChips tags={all} onRemove={(t) => (inline.includes(t) ? setBody(body.replace(new RegExp(`(^|\\s)#${t}\\b`, "i"), "$1")) : setExtra(extra.filter((x) => x !== t)))} />
         <TagPicker taken={all} onAdd={(t) => !all.includes(t) && setExtra((x) => [...x, t])} />
       </div>
-      {formatting && (
-        <div className={cn("flex items-center gap-1", keep ? "px-2" : "-mx-2")} role="toolbar" aria-label="Text formatting">
-          {FORMATS.map(({ mark, label, icon: Icon }) => (
-            // pointerdown keeps the textarea's selection
-            <button key={label} type="button" className={iconBtn} onPointerDown={(e) => e.preventDefault()} onClick={() => format(mark)}
-              aria-label={label} title={label} data-testid={`button-format-${label.toLowerCase()}`}>
-              <Icon className="h-[18px] w-[18px]" />
-            </button>
-          ))}
+      <div className={cn("flex items-center gap-1.5", keep && "px-4 pb-4")}>
+        {/* B, I and U buttons look like the add tag button, and take the tag color while the selection has that format. */}
+        <div className="flex items-center gap-1.5" role="toolbar" aria-label="Text formatting">
+          {FORMATS.map((f) => {
+            const on = formatAt(f, body, sel[0], sel[1]);
+            return (
+              // pointerdown keeps the textarea's selection
+              <button key={f.label} type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => format(f.mark)}
+                className={cn("grid h-7 w-7 place-items-center rounded-full border text-sm transition-colors", f.style,
+                  on ? "border-transparent bg-accent text-accent-foreground" : "border-dashed text-muted-foreground hover:border-primary hover:text-primary")}
+                aria-label={f.label} aria-pressed={on} title={f.label} data-testid={`button-format-${f.label.toLowerCase()}`}>
+                {f.letter}
+              </button>
+            );
+          })}
         </div>
-      )}
-      <div className={cn("flex items-center gap-1", keep ? "px-2 pb-2" : "-mx-2")}>
-        <button type="button" className={cn(iconBtn, formatting && "bg-muted text-foreground")} onPointerDown={(e) => e.preventDefault()}
-          onClick={() => setFormatting((v) => !v)} aria-pressed={formatting} aria-label="Text formatting" title="Text formatting" data-testid="button-journal-format">
-          <Baseline className="h-[18px] w-[18px]" />
-        </button>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-2">
           {onCancel && (
             <Button variant="ghost" size="sm" onClick={onCancel} data-testid="button-journal-cancel">
               Cancel
             </Button>
           )}
-          <Button variant={keep ? "ghost" : "default"} size="sm" onClick={submit} disabled={!body.trim() || busy}
-            className={cn(keep && "font-semibold text-primary hover:text-primary")} data-testid="button-journal-save">
+          <Button size="sm" onClick={submit} disabled={!body.trim() || busy} data-testid="button-journal-save">
             {submitLabel}
           </Button>
         </div>
@@ -536,10 +549,10 @@ export default function JournalPage() {
                   <DialogContent hideClose className="max-w-lg gap-0 overflow-hidden rounded-xl p-0" data-testid="dialog-journal-new"
                     // Start typing right away.
                     onOpenAutoFocus={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).querySelector("textarea")?.focus(); }}>
-                    <DialogDescription className="sr-only">New journal entry</DialogDescription>
+                    <DialogTitle className="sr-only">New entry</DialogTitle>
+                    <DialogDescription className="sr-only">{fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}</DialogDescription>
                     <Composer
                       keep
-                      heading={<DialogTitle className="px-4 pt-4 text-lg font-medium text-muted-foreground">{fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}</DialogTitle>}
                       submitLabel="Add entry"
                       busy={create.isPending}
                       onCancel={() => setComposing(false)}
