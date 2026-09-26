@@ -388,7 +388,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
         aria-label="Open Tasks"
         data-testid="link-tasks-page"
       >
-        <h2 className="flex items-center gap-0.5 text-sm font-semibold">Tasks<ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden /></h2>
+        <h2 className="text-sm font-semibold">Tasks</h2>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{rows.length ? `${left} left` : ""}</span>
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEditor({ date: day, kind: "task" }); }} aria-label="Add task" data-testid="button-add-task">
@@ -464,7 +464,7 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
         aria-label="Open Habits"
         data-testid="link-habits-page"
       >
-        <h2 className="flex items-center gap-0.5 text-sm font-semibold">Habits<ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden /></h2>
+        <h2 className="text-sm font-semibold">Habits</h2>
         <div className="flex items-center gap-2">
           {habits.length > 0 && (
             <span className="text-xs text-muted-foreground tnum">
