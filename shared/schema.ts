@@ -83,7 +83,7 @@ export type JournalEntry = {
 /** A task tag and the color it gives a task's checkbox. */
 export type TaskTag = { name: string; color: string };
 export type Routine = { id: string; name: string; startTime: string; endTime: string; color: string };
-// Red, orange, yellow, green, blue, violet and grey, named for cat things (like the mascot).
+// Red, orange, yellow, green, blue, violet and grey.
 export const COLOR_THEMES = ["ribbon", "carrot", "butter", "grass", "denim", "plum", "mouse"] as const;
 /** Earlier theme names, and what they became. */
 export const RENAMED_THEMES: Record<string, ColorTheme> = {
