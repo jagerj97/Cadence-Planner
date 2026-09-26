@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { usePlanner } from "@/components/planner";
-import { TagManager, taskColor, taskTagsOf } from "@/components/taskTags";
+import { TagManager, tagTint, taskColor, taskTagsOf } from "@/components/taskTags";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   addDays,
@@ -156,7 +156,7 @@ export default function TasksPage() {
                     className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
                     style={on
                       ? { background: t.color, borderColor: t.color, color: "white" }
-                      : { background: `color-mix(in srgb, ${t.color} 14%, transparent)`, borderColor: "transparent", color: `color-mix(in srgb, ${t.color} 75%, hsl(var(--foreground)))` }}
+                      : { ...tagTint(t.color), borderColor: "transparent" }}
                     data-testid={`filter-task-tag-${t.name}`}>
                     <Hash className="h-3 w-3" />
                     {t.name}
@@ -310,7 +310,7 @@ function TaskQuickAdd() {
         endTime: p.endTime,
         recurrence: JSON.stringify(p.recurrence),
         reminder: p.startTime ? settings.defaultReminder : null,
-        availableFrom: taskAvailableFrom(p.date, p.startTime, JSON.stringify(p.recurrence)),
+        availableFrom: taskAvailableFrom(p.date, p.startTime, p.recurrence.freq),
         priority: high ? "high" : "normal",
       }),
     );

@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shell";
 import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations } from "@/lib/data";
 import { KIND_META, addDays, colorOf, fmtDate, kindOf, todayStr } from "@/lib/cal";
 import { usePlanner } from "@/components/planner";
+import { cleanTag, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,7 +25,7 @@ function tagColor(t: string, item?: Item): string | undefined {
   if (!kind) return undefined;
   return item && kindOf(item) === kind ? colorOf(item) : `hsl(var(${KIND_META[kind].cssVar}))`;
 }
-const tagStyle = (color?: string) => color ? { background: `color-mix(in srgb, ${color} 18%, transparent)`, color: `color-mix(in srgb, ${color} 75%, hsl(var(--foreground)))` } : undefined;
+const tagStyle = (color?: string) => (color ? tagTint(color) : undefined);
 
 /** Entries mark **bold**, *italic* and __underline__ in their text (the composer's format buttons add them). */
 const FORMAT = /(\*\*[^*\n]+?\*\*|__[^_\n]+?__|\*[^*\n]+?\*)/;
@@ -92,7 +93,6 @@ function TagChips({ tags, onRemove, onClick, item }: { tags: string[]; onRemove?
 }
 
 const SUGGESTED = ["idea", "gratitude", "health", "sleep", "work", "mood", "win", "todo", "family", "learning"];
-const cleanTag = (t: string) => t.trim().replace(/^#+/, "").toLowerCase().replace(/\s+/g, "-").replace(/[^\p{L}\p{N}_-]/gu, "");
 
 /** "add tag" button → type a new tag or pick from suggestions */
 function TagPicker({ taken, onAdd }: { taken: string[]; onAdd: (t: string) => void }) {
@@ -167,10 +167,13 @@ const FORMATS = [
   { mark: "__", label: "Underline", letter: "U", style: "underline underline-offset-2", find: /__[^_\n]+?__/g },
 ] as const;
 type Format = (typeof FORMATS)[number];
+/** Whether the text around a selection is a format's pair of marks. A lone * next to ** belongs to bold. */
+const wrappedIn = (mark: string, before: string, after: string) =>
+  before.endsWith(mark) && after.startsWith(mark) && (mark !== "*" || !before.endsWith("**") || before.endsWith("***"));
 /** Whether the selection sits inside a format's marks (or right between an empty pair). */
 function formatAt(f: Format, text: string, a: number, b: number) {
-  const before = text.slice(0, a), after = text.slice(b), n = f.mark.length;
-  if (before.endsWith(f.mark) && after.startsWith(f.mark) && (f.mark !== "*" || !before.endsWith("**") || before.endsWith("***"))) return true;
+  const n = f.mark.length;
+  if (wrappedIn(f.mark, text.slice(0, a), text.slice(b))) return true;
   for (const m of text.matchAll(f.find)) if (m.index! + n <= a && b <= m.index! + m[0].length - n) return true;
   return false;
 }
@@ -204,7 +207,7 @@ function Composer({
   useEffect(() => {
     const f = () => {
       const el = ref.current;
-      if (el && document.activeElement === el) setSel([el.selectionStart, el.selectionEnd]);
+      if (el && document.activeElement === el) setSel((s) => (s[0] === el.selectionStart && s[1] === el.selectionEnd ? s : [el.selectionStart, el.selectionEnd]));
     };
     document.addEventListener("selectionchange", f);
     return () => document.removeEventListener("selectionchange", f);
@@ -218,8 +221,7 @@ function Composer({
     const a = el.selectionStart, b = el.selectionEnd;
     const before = body.slice(0, a), sel = body.slice(a, b), after = body.slice(b);
     const n = mark.length;
-    // A lone * next to ** belongs to bold, not italic.
-    const around = before.endsWith(mark) && after.startsWith(mark) && (mark !== "*" || !before.endsWith("**") || before.endsWith("***"));
+    const around = wrappedIn(mark, before, after);
     let next: string, s: number, e: number;
     if (around) [next, s, e] = [before.slice(0, -n) + sel + after.slice(n), a - n, b - n];
     else if (sel.length > 2 * n && sel.startsWith(mark) && sel.endsWith(mark)) [next, s, e] = [before + sel.slice(n, -n) + after, a, b - 2 * n];
@@ -241,7 +243,6 @@ function Composer({
         ref={ref}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        onSelect={(e) => setSel([e.currentTarget.selectionStart, e.currentTarget.selectionEnd])}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         }}
@@ -286,16 +287,15 @@ function Composer({
   );
 }
 
-function EntryCard({ e, onTag, showDate }: { e: JournalEntry; onTag: (t: string) => void; showDate?: boolean }) {
+function EntryCard({ e, onTag, showDate, item, openDetails }: {
+  e: JournalEntry; onTag: (t: string) => void; showDate?: boolean; item?: Item; openDetails: (i: Item) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const { update, remove } = useJournalMutations();
   const { toast } = useToast();
   const [, nav] = useLocation();
   const tags = tagsOf(e);
   const extraTags = tags.filter((t) => !hashtagsIn(e.body).includes(t));
-  const { data: items } = useItems();
-  const { openDetails } = usePlanner();
-  const item = e.itemId ? items?.find((i) => i.id === e.itemId) : undefined;
   return (
     <article
       className={cn("card-md p-4 group", item && !editing && "cursor-pointer")}
@@ -402,6 +402,11 @@ export default function JournalPage() {
   const { create } = useJournalMutations();
   const [q, setQ] = useState("");
   const [composing, setComposing] = useState(false);
+  // Entries holding an item's notes link to it.
+  const { data: items } = useItems();
+  const { openDetails } = usePlanner();
+  const itemsById = useMemo(() => new Map((items ?? []).map((i) => [i.id, i])), [items]);
+  const itemOf = (e: JournalEntry) => (e.itemId ? itemsById.get(e.itemId) : undefined);
   // The app bar's + opens the entry window here.
   useEffect(() => {
     const f = () => { setQ(""); setComposing(true); };
@@ -533,7 +538,7 @@ export default function JournalPage() {
                 {results.length === 0 ? (
                   <div className="card-md p-8 text-center text-sm text-muted-foreground">Nothing matches that yet.</div>
                 ) : (
-                  results.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} showDate />)
+                  results.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} showDate item={itemOf(e)} openDetails={openDetails} />)
                 )}
               </>
             ) : (
@@ -574,7 +579,7 @@ export default function JournalPage() {
                     <p className="text-sm text-muted-foreground max-w-xs">Thoughts, ideas, how you slept, what went well. Each note is saved as its own entry.</p>
                   </div>
                 ) : (
-                  dayEntries.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} />)
+                  dayEntries.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} item={itemOf(e)} openDetails={openDetails} />)
                 )}
               </>
             )}

@@ -24,9 +24,9 @@ import {
   todayStr,
   untimedForDay,
   taskAvailableFrom,
+  fillOf,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
-import { fillOf } from "@/pages/other";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SortableList } from "@/components/sortable";
@@ -249,7 +249,7 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
       endTime: p.endTime,
       recurrence: JSON.stringify(p.recurrence),
       reminder: p.startTime ? settings.defaultReminder : null,
-      availableFrom: p.kind === "task" ? taskAvailableFrom(p.date, p.startTime, JSON.stringify(p.recurrence)) : null,
+      availableFrom: p.kind === "task" ? taskAvailableFrom(p.date, p.startTime, p.recurrence.freq) : null,
     });
     await create.mutateAsync(item);
     toast({ title: `${KIND_META[p.kind].label} added`, description: summary(p) });
@@ -306,6 +306,25 @@ function summary(p: ReturnType<typeof parseQuick>) {
   if (r.freq === "weekdays") parts.push("weekdays");
   if (r.freq === "weekly") parts.push("weekly on " + (r.days || []).map((d) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]).join(", "));
   return parts.join(" · ");
+}
+
+/** A Today card's header: tapping it opens the card's page; its own buttons keep their taps. */
+function CardHeaderLink({ to, title, testId, children }: { to: string; title: string; testId: string; children: React.ReactNode }) {
+  const [, nav] = useLocation();
+  return (
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={(e) => !(e.target as HTMLElement).closest("button") && nav(to)}
+      onKeyDown={(e) => e.target === e.currentTarget && e.key === "Enter" && nav(to)}
+      className="flex cursor-pointer items-center justify-between rounded-t-[20px] px-4 pt-3 pb-2 hover:bg-muted/40"
+      aria-label={`Open ${title}`}
+      data-testid={testId}
+    >
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <div className="flex items-center gap-2">{children}</div>
+    </div>
+  );
 }
 
 function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: ReturnType<typeof usePlanner>["startFocus"] }) {
@@ -371,7 +390,6 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
 }
 
 function TasksCard({ items, day }: { items: Item[]; day: string }) {
-  const [, nav] = useLocation();
   const { toggle } = useItemMutations();
   const { openEditor, openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
@@ -382,23 +400,12 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 
   return (
     <div className="card-md" data-testid="card-tasks">
-      <div
-        role="link"
-        tabIndex={0}
-        onClick={() => nav("/tasks")}
-        onKeyDown={(e) => e.key === "Enter" && nav("/tasks")}
-        className="flex cursor-pointer items-center justify-between rounded-t-[20px] px-4 pt-3 pb-2 hover:bg-muted/40"
-        aria-label="Open Tasks"
-        data-testid="link-tasks-page"
-      >
-        <h2 className="text-sm font-semibold">Tasks</h2>
-        <div className="flex items-center gap-2">
+      <CardHeaderLink to="/tasks" title="Tasks" testId="link-tasks-page">
           <span className="text-xs text-muted-foreground">{rows.length ? `${left} left` : ""}</span>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEditor({ date: day, kind: "task" }); }} aria-label="Add task" data-testid="button-add-task">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditor({ date: day, kind: "task" })} aria-label="Add task" data-testid="button-add-task">
             <Plus className="h-4 w-4" />
           </Button>
-        </div>
-      </div>
+      </CardHeaderLink>
       {rows.length === 0 ? (
         <div className="px-4 pb-4 text-sm text-muted-foreground">No tasks. Type one in the bar above — it lands here if it has no time.</div>
       ) : (
@@ -449,7 +456,6 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 }
 
 function HabitsCard({ items, day }: { items: Item[]; day: string }) {
-  const [, nav] = useLocation();
   const { cycle } = useItemMutations();
   const { settings } = useSettings();
   const { openEditor, openDetails } = usePlanner();
@@ -458,27 +464,16 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
   const done = habits.filter((h) => completionsOf(h).has(day)).length;
   return (
     <div className="card-md" data-testid="card-habits">
-      <div
-        role="link"
-        tabIndex={0}
-        onClick={() => nav("/habits")}
-        onKeyDown={(e) => e.key === "Enter" && nav("/habits")}
-        className="flex cursor-pointer items-center justify-between rounded-t-[20px] px-4 pt-3 pb-2 hover:bg-muted/40"
-        aria-label="Open Habits"
-        data-testid="link-habits-page"
-      >
-        <h2 className="text-sm font-semibold">Habits</h2>
-        <div className="flex items-center gap-2">
+      <CardHeaderLink to="/habits" title="Habits" testId="link-habits-page">
           {habits.length > 0 && (
             <span className="text-xs text-muted-foreground tnum">
               {done}/{habits.length}
             </span>
           )}
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEditor({ date: day, kind: "habit", recurrence: '{"freq":"daily"}' }); }} aria-label="Add habit" data-testid="button-add-habit">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditor({ date: day, kind: "habit", recurrence: '{"freq":"daily"}' })} aria-label="Add habit" data-testid="button-add-habit">
             <Plus className="h-4 w-4" />
           </Button>
-        </div>
-      </div>
+      </CardHeaderLink>
       {habits.length === 0 ? (
         <div className="px-4 pb-4 text-sm text-muted-foreground">No habits today. Try “Read 20 min every day #habit”.</div>
       ) : (

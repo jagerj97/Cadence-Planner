@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Item, InsertItem, Kind, Recurrence } from "@shared/schema";
-import { KINDS } from "@shared/schema";
+import { DEFAULT_SETTINGS, KINDS } from "@shared/schema";
 import { useForm } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   KIND_META,
   DAY_SHORT,
   addDays,
+  availableFromFor,
   blocksForDay,
   dayDiff,
   dow,
@@ -26,8 +27,10 @@ import {
   fmtTime,
   fromMin,
   kindOf,
+  listOf,
   colorOf,
   completionsOf,
+  fillOf,
   markOf,
   occursOn,
   recLabel,
@@ -103,17 +106,20 @@ export const usePlanner = () => {
 };
 
 /**
- * "Just this one" for a repeating item: that day is skipped in the series and a one-off copy with
- * the changes takes its place, keeping that day's check-off.
+ * Saves changes to an item. A repeating item (other than a habit, which always changes as a whole)
+ * opened on a given day asks "Just this one" or "All of them" first. Just this one skips that day in
+ * the series and saves a one-off copy with the changes, keeping that day's check-off. Resolves to
+ * the scope that was saved, or null if the question was dismissed.
  */
-export function useEditOccurrence() {
-  const { create, skip } = useItemMutations();
-  return async (series: Item, occDate: string, changes: Partial<InsertItem>) => {
+export function useSaveItem() {
+  const { askRepeatScope } = usePlanner();
+  const { create, update, skip } = useItemMutations();
+  const saveOne = async (series: Item, occDate: string, changes: Partial<InsertItem>) => {
     const { id: _id, journalId: _journal, ...rest } = series;
     // The form shows the series' first day; a changed date moves this one there.
     const date = changes.date && changes.date !== series.date ? changes.date : occDate;
     const span = dayDiff(changes.date ?? series.date, changes.endDate ?? series.endDate ?? series.date);
-    const marks = (JSON.parse(series.completions || "[]") as string[]).filter((c) => c === occDate || c === occDate + "~h");
+    const marks = listOf(series.completions).filter((c) => c === occDate || c === occDate + "~h");
     await skip.mutateAsync({ id: series.id, date: occDate });
     await create.mutateAsync(blankItem({
       ...rest, ...changes, date, endDate: addDays(date, Math.max(0, span)),
@@ -122,6 +128,16 @@ export function useEditOccurrence() {
       // The series already keeps these notes in the journal.
       journalOff: (changes.notes ?? series.notes).trim() === series.notes.trim() ? true : undefined,
     }));
+  };
+  return async (item: Item, changes: Partial<InsertItem>, occDate?: string): Promise<RepeatScope | null> => {
+    if (occDate && recOf(item).freq !== "none" && item.kind !== "habit" && (changes.kind ?? item.kind) !== "habit") {
+      const scope = await askRepeatScope();
+      if (scope === "one") await saveOne(item, occDate, changes);
+      if (scope === "all") await update.mutateAsync({ id: item.id, ...changes });
+      return scope;
+    }
+    await update.mutateAsync({ id: item.id, ...changes });
+    return "all";
   };
 }
 
@@ -143,7 +159,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     }
   }, [savedSettings?.appearanceTheme]);
   useEffect(() => {
-    document.documentElement.dataset.colorTheme = settings.colorTheme || "carrot";
+    document.documentElement.dataset.colorTheme = settings.colorTheme || DEFAULT_SETTINGS.colorTheme;
   }, [settings.colorTheme]);
 
   /* editor */
@@ -412,11 +428,49 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** "Show notes in journal", for an item's details and for calendar imports. */
+export function JournalNotesCheckbox({ id, checked, onChange, className }: { id: string; checked: boolean; onChange: (on: boolean) => void; className?: string }) {
+  return (
+    <label className={cn("flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground", className)}>
+      <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid={id} />
+      Show notes in journal
+    </label>
+  );
+}
+
+/** The details window's checkbox for a task, or check circle for a habit, for one day. */
+function DetailCheck({ item: i, day }: { item: Item; day: string }) {
+  const { toggle, cycle } = useItemMutations();
+  const { settings } = useSettings();
+  if (i.kind === "task") {
+    const done = completionsOf(i).has(day);
+    const c = taskColor(i, settings);
+    return (
+      <button type="button" onClick={() => toggle.mutate({ id: i.id, date: day })}
+        className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition-colors"
+        style={{ borderColor: c, background: done ? c : "transparent" }}
+        aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`} aria-pressed={done} data-testid="button-detail-check">
+        {done && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
+      </button>
+    );
+  }
+  const mk = markOf(i, day);
+  const c = colorOf(i);
+  return (
+    <button type="button" onClick={() => cycle.mutate({ id: i.id, date: day })}
+      className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 transition-colors"
+      style={{ borderColor: c, background: fillOf(mk, c, 90) }}
+      aria-label={`${i.title}: ${["not done", "half done", "done"][mk]}`} data-testid="button-detail-check">
+      {mk === 2 && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
+    </button>
+  );
+}
+
 function ItemDetails({ details, onClose, onEdit }: {
   details: { target: Item; occDate?: string } | null; onClose: () => void; onEdit: () => void;
 }) {
   const { data: items } = useItems();
-  const { update, toggle, cycle } = useItemMutations();
+  const { update } = useItemMutations();
   const { settings } = useSettings();
   // The live copy, so the journal checkbox and check marks reflect what was just saved.
   const i = details && (items?.find((x) => x.id === details.target.id) ?? details.target);
@@ -433,30 +487,7 @@ function ItemDetails({ details, onClose, onEdit }: {
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto scroll-thin [overflow-wrap:anywhere]" data-testid="dialog-item-details">
         {i && <>
           <div className="flex items-start gap-3 pr-8">
-            {checkable && i.kind === "task" && (() => {
-              const done = completionsOf(i).has(checkDay);
-              const c = taskColor(i, settings);
-              return (
-                <button type="button" onClick={() => toggle.mutate({ id: i.id, date: checkDay })}
-                  className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition-colors"
-                  style={{ borderColor: c, background: done ? c : "transparent" }}
-                  aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`} aria-pressed={done} data-testid="button-detail-check">
-                  {done && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
-                </button>
-              );
-            })()}
-            {checkable && i.kind === "habit" && (() => {
-              const mk = markOf(i, checkDay);
-              const c = colorOf(i);
-              return (
-                <button type="button" onClick={() => cycle.mutate({ id: i.id, date: checkDay })}
-                  className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 transition-colors"
-                  style={{ borderColor: c, background: mk === 2 ? c : mk === 1 ? `linear-gradient(90deg, ${c} 50%, transparent 50%)` : "transparent" }}
-                  aria-label={`${i.title}: ${["not done", "half done", "done"][mk]}`} data-testid="button-detail-check">
-                  {mk === 2 && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
-                </button>
-              );
-            })()}
+            {checkable && <DetailCheck item={i} day={checkDay} />}
             <DialogHeader className="min-w-0 flex-1 text-left">
               <DialogTitle className="min-w-0 text-lg leading-snug">{i.title}</DialogTitle>
               <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
@@ -489,11 +520,8 @@ function ItemDetails({ details, onClose, onEdit }: {
             {i.location && <div className="break-words">{i.location}</div>}
             {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground">{i.notes}</p>}
             {i.notes?.trim() && !routine && i.kind !== "habit" && i.id > 0 && (
-              <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={!i.journalOff && i.journalId != null}
-                  onChange={(e) => update.mutate({ id: i.id, journalOff: !e.target.checked })} data-testid="checkbox-notes-journal" />
-                Show notes in journal
-              </label>
+              <JournalNotesCheckbox id="checkbox-notes-journal" checked={!i.journalOff && i.journalId != null}
+                onChange={(on) => update.mutate({ id: i.id, journalOff: !on })} />
             )}
             {routine && <p className="text-xs text-muted-foreground">A routine is a background guide, not a calendar event.</p>}
           </div>
@@ -577,8 +605,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
   const existing = editing && "id" in editing.target && typeof (editing.target as Item).id === "number" ? (editing.target as Item) : null;
   const { settings } = useSettings();
   const { create, update, remove, skip } = useItemMutations();
-  const { askRepeatScope } = usePlanner();
-  const editOccurrence = useEditOccurrence();
+  const saveItem = useSaveItem();
   const { toast } = useToast();
 
   const form = useForm<FormVals>({ defaultValues: toForm(blankItem({}), settings.defaultReminder) });
@@ -604,10 +631,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
     if (f.kind === "meeting") f = { ...f, endDate: f.date };
     if (f.kind === "task") {
       f = { ...f, endDate: f.date };
-      if (f.timeMode === "deadline") {
-        const start = f.availableFrom || todayStr();
-        f.availableFrom = start > f.date ? f.date : start;
-      }
+      if (f.timeMode === "deadline") f.availableFrom = availableFromFor(f.date, f.availableFrom || todayStr());
     }
     if (!f.date || (f.timeMode !== "deadline" && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366))) {
       toast({ title: "Check the end date", description: "Choose an end date on or after the start, within one year.", variant: "destructive" });
@@ -645,20 +669,14 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       location: f.location,
       notes: f.notes,
     };
-    // A repeating item opened on one day can change just that day (habits always change as a whole).
-    if (existing && isRecurring && editing?.occDate && existing.kind !== "habit" && f.kind !== "habit") {
-      const scope = await askRepeatScope();
+    if (existing) {
+      const scope = await saveItem(existing, payload, editing?.occDate);
       if (!scope) return;
-      if (scope === "one") {
-        await editOccurrence(existing, editing.occDate, payload);
-        toast({ title: "Saved this one", description: payload.title });
-        onClose();
-        return;
-      }
+      toast({ title: scope === "one" ? "Saved this one" : "Saved", description: payload.title });
+    } else {
+      await create.mutateAsync(blankItem(payload));
+      toast({ title: "Added to your plan", description: payload.title });
     }
-    if (existing) await update.mutateAsync({ id: existing.id, ...payload });
-    else await create.mutateAsync(blankItem(payload));
-    toast({ title: existing ? "Saved" : "Added to your plan", description: payload.title });
     onClose();
   });
 
@@ -702,7 +720,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                     if (k !== "task" && v.timeMode === "deadline") setValue("timeMode", "anytime");
                     if (k === "task" && v.timeMode === "anytime" && v.freq === "none") {
                       setValue("timeMode", "deadline");
-                      setValue("availableFrom", todayStr() <= v.date ? todayStr() : v.date);
+                      setValue("availableFrom", availableFromFor(v.date));
                     }
                     if (k === "habit" && v.freq === "none") setValue("freq", "daily");
                     if (k === "sleep") {
@@ -746,7 +764,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                 setValue("timeMode", x as TimeMode);
                 if (x === "deadline") {
                   setValue("freq", "none");
-                  setValue("availableFrom", v.availableFrom && v.availableFrom <= v.date ? v.availableFrom : (todayStr() <= v.date ? todayStr() : v.date));
+                  setValue("availableFrom", v.availableFrom && v.availableFrom <= v.date ? v.availableFrom : availableFromFor(v.date));
                 }
               }}>
                 <SelectTrigger data-testid="select-timemode">
@@ -1018,13 +1036,13 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const r = recOf(i as Item);
   const isNew = !("id" in i && typeof (i as Item).id === "number");
-  const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || (isNew && !i.startTime && !i.allDay && recOf(i as Item).freq === "none"))
+  const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || (isNew && !i.startTime && !i.allDay && r.freq === "none"))
     ? "deadline" : i.allDay ? "allday" : i.startTime ? "timed" : "anytime";
   return {
     title: i.title || "",
     kind: ((KINDS as readonly string[]).includes(i.kind as string) ? i.kind : "event") as Kind,
     date: i.date || todayStr(),
-    availableFrom: i.availableFrom || (todayStr() <= i.date ? todayStr() : i.date),
+    availableFrom: i.availableFrom || availableFromFor(i.date),
     endDate: i.endDate || (i.startTime && i.endTime && toMin(i.endTime) <= toMin(i.startTime) ? addDays(i.date, 1) : i.date),
     timeMode,
     startTime: i.startTime || "09:00",

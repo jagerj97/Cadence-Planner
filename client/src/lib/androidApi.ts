@@ -3,7 +3,7 @@ import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, ty
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
-import { addDays, blocksForDay, fmtDur, parseYmd, remindersOf, todayStr } from "./cal";
+import { addDays, blocksForDay, fmtDur, listOf, parseYmd, remindersOf, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -76,6 +76,8 @@ const exclusive = <T>(work: () => Promise<T>): Promise<T> => {
   mutation = next.catch(() => {});
   return next;
 };
+// Current theme names, plus renamed ones that saved settings and backups may still hold.
+const KNOWN_THEMES = new Set<string>([...COLOR_THEMES, ...Object.keys(RENAMED_THEMES)]);
 const pref = async (): Promise<Settings> => {
   const saved = (await read<{ key: string; value: Settings }>("settings", "prefs"))?.value;
   const merged = { ...DEFAULT_SETTINGS, ...saved };
@@ -246,7 +248,7 @@ function validateBackup(value: unknown): Backup {
         !record(entry.value) || !Array.isArray(entry.value.routines) ||
         !Array.isArray(entry.value.habitOrder) ||
         (entry.value.appearanceTheme !== undefined && !["light", "dark"].includes(entry.value.appearanceTheme)) ||
-        ![...COLOR_THEMES, ...Object.keys(RENAMED_THEMES)].includes(entry.value.colorTheme) ||
+        !KNOWN_THEMES.has(entry.value.colorTheme) ||
         entry.value.routines.some((routine: unknown) => !record(routine) ||
           typeof routine.name !== "string" || !routine.name.trim() ||
           typeof routine.startTime !== "string" || typeof routine.endTime !== "string" ||
@@ -313,6 +315,16 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     const { journalId: _, ...fresh } = data;
     return exclusive(async () => ok(await syncNotes(await put("items", fresh), true)));
   }
+  if (path === "/api/items/retag" && method === "POST") return exclusive(async () => {
+    const from = String(data.from || ""), to = data.to ? String(data.to) : null;
+    for (const item of await list<Item>("items")) {
+      const tags = listOf(item.tags);
+      if (!tags.includes(from)) continue;
+      const next = to ? [...new Set(tags.map((t) => (t === from ? to : t)))] : tags.filter((t) => t !== from);
+      await put("items", { ...item, tags: JSON.stringify(next) });
+    }
+    return ok({ ok: true });
+  });
   const itemRoute = /^\/api\/items\/(\d+)(?:\/(toggle|cycle|skip))?$/.exec(path);
   if (itemRoute) return exclusive(async () => {
     const id = Number(itemRoute[1]), item = await read<Item>("items", id);
@@ -353,7 +365,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     if (!Array.isArray(next.routines) || !Array.isArray(next.habitOrder) || !Array.isArray(next.hiddenTodayPanels) || !Array.isArray(next.todayPanelOrder) ||
         !Array.isArray(next.taskTags) || next.taskTags.some((t: any) => typeof t?.name !== "string" || !t.name || !/^#[0-9a-f]{6}$/i.test(t.color)) ||
         !["light", "dark"].includes(next.appearanceTheme) ||
-        ![...COLOR_THEMES, ...Object.keys(RENAMED_THEMES)].includes(next.colorTheme) ||
+        !KNOWN_THEMES.has(next.colorTheme) ||
         next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime)) {
       return fail("Check routine settings, theme and habit order");
     }

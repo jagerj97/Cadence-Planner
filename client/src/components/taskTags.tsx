@@ -1,58 +1,62 @@
 import { useState } from "react";
 import type { Item, Settings, TaskTag } from "@shared/schema";
-import { useItems, useSaveSettings, useSettings } from "@/lib/data";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { colorOf, kindOf } from "@/lib/cal";
+import { colorOf, kindOf, listOf } from "@/lib/cal";
 import { Check, Hash, Plus, Trash2, X } from "lucide-react";
 
 /**
  * Task tags, like the journal's, but each has a color (kept in Settings.taskTags). A task's first
- * tag colors its checkbox in lists; calendar views keep the task yellow.
+ * tag colors its checkbox, and in calendar views its left edge, while its tint stays task yellow.
  */
 // Task yellow first (the default), then colors kept clear of the event blue, meeting purple, habit
 // green and focus pink. The sleep indigo is fine to reuse: routine colors can be changed.
-export const TAG_COLORS = ["#c9910d", "#e0701f", "#d93b3b", "#7a9a1f", "#11998e", "#3f51b5", "#b83fb8", "#8a6d3b", "#6b7280"];
+const TAG_COLORS = ["#c9910d", "#e0701f", "#d93b3b", "#7a9a1f", "#11998e", "#3f51b5", "#b83fb8", "#8a6d3b", "#6b7280"];
 
-export function taskTagsOf(i: Pick<Item, "tags">): string[] {
-  try {
-    const t = JSON.parse(i.tags || "[]");
-    return Array.isArray(t) ? t.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
+export const taskTagsOf = (i: Pick<Item, "tags">): string[] => listOf(i.tags).filter((x) => typeof x === "string");
+
+// Tag lookups by name, built once per Settings.taskTags list.
+const tagMaps = new WeakMap<TaskTag[], Map<string, TaskTag>>();
+const tagsByName = (settings: Settings) => {
+  const list = settings.taskTags ?? [];
+  let m = tagMaps.get(list);
+  if (!m) tagMaps.set(list, (m = new Map(list.map((t) => [t.name, t]))));
+  return m;
+};
 
 /** The tags of a task that still exist in Settings, with their colors. */
 export function itemTags(i: Pick<Item, "tags">, settings: Settings): TaskTag[] {
-  const byName = new Map((settings.taskTags ?? []).map((t) => [t.name, t]));
+  const byName = tagsByName(settings);
   return taskTagsOf(i).map((n) => byName.get(n)).filter((t): t is TaskTag => !!t);
 }
 
-/**
- * An item's accent (checkbox and left edge) in calendar views: a tagged task's tag color, otherwise
- * its usual color. Its background tint stays the task yellow.
- */
-export function accentOf(i: Item, settings: Settings): string {
-  return kindOf(i) === "task" ? itemTags(i, settings)[0]?.color ?? colorOf(i) : colorOf(i);
-}
+/** A task's first tag color, if it has one. */
+export const firstTagColor = (i: Item, settings: Settings): string | undefined =>
+  kindOf(i) === "task" ? itemTags(i, settings)[0]?.color : undefined;
 
-/** A task's checkbox color: its first tag's color, or the task yellow. */
-export function taskColor(i: Pick<Item, "tags">, settings: Settings): string {
-  return itemTags(i, settings)[0]?.color ?? "hsl(var(--k-task))";
-}
+/** An item's accent (checkbox and left edge) in calendar views: a tagged task's tag color, otherwise its usual color. */
+export const accentOf = (i: Item, settings: Settings) => firstTagColor(i, settings) ?? colorOf(i);
 
-const cleanTag = (t: string) => t.trim().replace(/^#+/, "").toLowerCase().replace(/\s+/g, "-").replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 32);
+/** A task's checkbox color in lists: its first tag's color, or the task yellow. */
+export const taskColor = (i: Item, settings: Settings) => firstTagColor(i, settings) ?? "hsl(var(--k-task))";
+
+/** A tag name as typed, cleaned up: lowercase, no #, dashes for spaces. Shared with journal tags. */
+export const cleanTag = (t: string) => t.trim().replace(/^#+/, "").toLowerCase().replace(/\s+/g, "-").replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 32);
+
+/** A tag chip's tinted background and text in the tag's color. */
+export const tagTint = (color: string) => ({
+  background: `color-mix(in srgb, ${color} 18%, transparent)`,
+  color: `color-mix(in srgb, ${color} 75%, hsl(var(--foreground)))`,
+});
 
 export function TagChip({ tag, onRemove }: { tag: TaskTag; onRemove?: () => void }) {
   return (
     <span className="inline-flex h-6 items-center gap-0.5 rounded-full px-2 text-xs font-medium"
-      style={{ background: `color-mix(in srgb, ${tag.color} 18%, transparent)`, color: `color-mix(in srgb, ${tag.color} 75%, hsl(var(--foreground)))` }}
-      data-testid={`chip-task-tag-${tag.name}`}>
+      style={tagTint(tag.color)} data-testid={`chip-task-tag-${tag.name}`}>
       <Hash className="h-3 w-3" />
       {tag.name}
       {onRemove && (
@@ -64,7 +68,7 @@ export function TagChip({ tag, onRemove }: { tag: TaskTag; onRemove?: () => void
   );
 }
 
-export function ColorSwatches({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+function ColorSwatches({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
     <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tag color">
       {TAG_COLORS.map((c) => (
@@ -159,15 +163,8 @@ export function TagManager({ open, onOpenChange, onRenamed }: { open: boolean; o
   const tags = settings.taskTags ?? [];
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const retag = async (from: string, to: string | null) => {
-    for (const i of items ?? []) {
-      const t = taskTagsOf(i);
-      if (!t.includes(from)) continue;
-      const next = to ? [...new Set(t.map((n) => (n === from ? to : n)))] : t.filter((n) => n !== from);
-      await apiRequest("PATCH", `/api/items/${i.id}`, { tags: JSON.stringify(next) });
-    }
-    queryClient.invalidateQueries({ queryKey: ["/api/items"] });
-  };
+  const { retag: retagItems } = useItemMutations();
+  const retag = (from: string, to: string | null) => retagItems.mutateAsync({ from, to });
   const rename = async (tag: TaskTag) => {
     const to = cleanTag(name);
     setEditing(null);

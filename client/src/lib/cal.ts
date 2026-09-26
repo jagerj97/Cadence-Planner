@@ -105,7 +105,8 @@ export const recOf = (i: Item): Recurrence => {
     return { freq: "none" };
   }
 };
-const listOf = (s: string | null | undefined): string[] => {
+/** A JSON list stored on a record (completions, exceptions, tags...), or [] if it's missing or broken. */
+export const listOf = (s: string | null | undefined): string[] => {
   try {
     return JSON.parse(s || "[]");
   } catch {
@@ -246,9 +247,17 @@ export function isDeadlineTask(i: Item) {
  * Tasks default to "anytime before the due date". They only ask for a due date; the first day they can be
  * checked off is today (or the due date, if that's earlier). Timed or repeating tasks can't be deadline tasks.
  */
-export function taskAvailableFrom(due: string, startTime?: string | null, recurrence?: string | null): string | null {
-  if (startTime || (recurrence && JSON.parse(recurrence).freq !== "none")) return null;
-  return todayStr() <= due ? todayStr() : due;
+/** The first day a deadline task can be done: today, or its due date if that's earlier. */
+export const availableFromFor = (due: string, start = todayStr()) => (start <= due ? start : due);
+/** A new task's first day, or null when it has a time or repeats (so it isn't a deadline task). */
+export function taskAvailableFrom(due: string, startTime: string | null | undefined, freq: Recurrence["freq"]): string | null {
+  return startTime || freq !== "none" ? null : availableFromFor(due);
+}
+/** A habit mark's fill: empty, half (split at the angle), or solid. */
+export function fillOf(mk: 0 | 1 | 2, color: string, angle = 135) {
+  if (mk === 2) return color;
+  if (mk === 1) return `linear-gradient(${angle}deg, ${color} 50%, transparent 50%)`;
+  return "transparent";
 }
 export function canDoTaskOn(i: Item, day: string) {
   return isDeadlineTask(i) && i.availableFrom! <= day && day <= i.date;
@@ -328,7 +337,7 @@ export function layoutBlocks(blocks: Block[]) {
 
 
 /** Where a habit's history begins: its date, or its earliest mark if one was logged before that. */
-export function historyStart(i: Item) {
+function historyStart(i: Item) {
   const marks = listOf(i.completions) as string[];
   return marks.reduce((m, c) => (c.slice(0, 10) < m ? c.slice(0, 10) : m), i.date);
 }

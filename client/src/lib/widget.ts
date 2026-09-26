@@ -4,7 +4,7 @@ import {
   routineSchedules, sunTimes, todayStr, untimedForDay,
 } from "./cal";
 import { dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
-import { itemTags } from "@/components/taskTags";
+import { firstTagColor } from "@/components/taskTags";
 
 /**
  * The home screen widgets (PanelWidgets.java) can't read the app's database, so the app hands
@@ -65,7 +65,7 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       blocks: layoutBlocks(blocksForDay(items, day)).map(({ b, col, cols }) => ({
         title: b.item.title, start: b.start, end: b.end, fullStart: b.fullStart, fullEnd: b.fullEnd,
         continues: b.continues ?? "", col, cols, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),
-        accent: kindOf(b.item) === "task" ? itemTags(b.item, settings)[0]?.color ?? "" : "",
+        accent: firstTagColor(b.item, settings) ?? "",
         // The line under the title, as the timeline shows it.
         sub: (b.continues === "before" || b.continues === "through"
           ? b.continues === "through" ? "continues" : "until " + fmtTime(b.item.endTime, true)
@@ -84,7 +84,7 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
         due: isDeadlineTask(i) ? `Due ${fmtDate(i.date, { month: "short", day: "numeric" })}` : "",
         high: i.priority === "high",
         // The first tag's color for the checkbox, or "" for the task yellow.
-        color: itemTags(i, settings)[0]?.color ?? "",
+        color: firstTagColor(i, settings) ?? "",
         time: isTimed(i) ? fmtTime(i.startTime, true) : "",
         rec: recOf(i).freq !== "none" ? recLabel(i) : "",
       })),

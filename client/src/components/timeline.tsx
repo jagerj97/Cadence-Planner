@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Item } from "@shared/schema";
-import { useEditOccurrence, usePlanner } from "./planner";
+import { useSaveItem, usePlanner } from "./planner";
 import { accentOf } from "./taskTags";
 import { useItemMutations, useSettings } from "@/lib/data";
 import {
@@ -62,9 +62,9 @@ export function DayColumn({
 }) {
   const { settings } = useSettings();
   const sun = sunTimes(day, settings.lat, settings.lng);
-  const { openEditor, openDetails, startFocus, askRepeatScope } = usePlanner();
-  const editOccurrence = useEditOccurrence();
-  const { update, toggle } = useItemMutations();
+  const { openEditor, openDetails, startFocus } = usePlanner();
+  const saveItem = useSaveItem();
+  const { toggle } = useItemMutations();
   const blocks = layoutBlocks(blocksForDay(items, day));
   const routineBlocks = showRoutines ? blocksForDay(routineSchedules(settings), day) : [];
   const isToday = day === todayStr();
@@ -168,15 +168,8 @@ export function DayColumn({
       const e = Math.max(b.start + 15, d.e0 + d.delta);
       changes = { endTime: fromMin(Math.min(e, 1440 - 1)) };
     }
-    // Moving a repeating item asks whether to move just this day or every repeat (habits move as a whole).
-    if (recOf(i).freq !== "none" && kindOf(i) !== "habit") {
-      void askRepeatScope().then((scope) => {
-        if (scope === "one") void editOccurrence(i, b.occDate, changes);
-        else if (scope === "all") update.mutate({ id: i.id, ...changes });
-      });
-      return;
-    }
-    update.mutate({ id: i.id, ...changes });
+    // A repeating item asks whether to move just this day or every repeat.
+    void saveItem(i, changes, b.occDate);
   };
   const cancelDrag = () => {
     if (pendingRef.current?.timer) clearTimeout(pendingRef.current.timer);

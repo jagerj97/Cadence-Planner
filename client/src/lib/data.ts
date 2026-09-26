@@ -19,9 +19,16 @@ export function useFeeds() {
 export function useSessions() {
   return useQuery<Session[]>({ queryKey: ["/api/sessions"] });
 }
+export function useDeleteSession() {
+  return useMutation({
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/sessions/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/sessions"] }),
+  });
+}
 
-// An item's notes are mirrored in the journal (androidApi.ts), so changes to either refresh both.
-const inv = () => Promise.all([queryClient.invalidateQueries({ queryKey: ["/api/items"] }), queryClient.invalidateQueries({ queryKey: ["/api/journal"] })]);
+const invItems = () => queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+// An item's notes are mirrored in the journal (androidApi.ts), so saving either refreshes both.
+const inv = () => Promise.all([invItems(), queryClient.invalidateQueries({ queryKey: ["/api/journal"] })]);
 
 export function useItemMutations() {
   const create = useMutation({
@@ -59,7 +66,7 @@ export function useItemMutations() {
       return { prev };
     },
     onError: (_e, _v, ctx) => ctx?.prev && queryClient.setQueryData(["/api/items"], ctx.prev),
-    onSettled: inv,
+    onSettled: invItems,
   });
   const cycle = useMutation({
     mutationFn: async ({ id, date }: { id: number; date: string }) =>
@@ -86,13 +93,18 @@ export function useItemMutations() {
       return { prev };
     },
     onError: (_e, _v, ctx) => ctx?.prev && queryClient.setQueryData(["/api/items"], ctx.prev),
-    onSettled: inv,
+    onSettled: invItems,
   });
   const skip = useMutation({
     mutationFn: async ({ id, date }: { id: number; date: string }) => apiRequest("POST", `/api/items/${id}/skip`, { date }),
-    onSuccess: inv,
+    onSuccess: invItems,
   });
-  return { create, update, remove, toggle, cycle, skip };
+  // Renames a task tag on every task that has it, or removes it (to: null), in one pass.
+  const retag = useMutation({
+    mutationFn: async (d: { from: string; to: string | null }) => apiRequest("POST", "/api/items/retag", d),
+    onSuccess: invItems,
+  });
+  return { create, update, remove, toggle, cycle, skip, retag };
 }
 
 export function useSaveSettings() {
@@ -133,20 +145,19 @@ import type { JournalEntry } from "@shared/schema";
 export function useJournal() {
   return useQuery<JournalEntry[]>({ queryKey: ["/api/journal"] });
 }
-const invJ = inv;
 export function useJournalMutations() {
   const create = useMutation({
     mutationFn: async (d: { date: string; body: string; tags: string[] }) => (await apiRequest("POST", "/api/journal", d)).json() as Promise<JournalEntry>,
-    onSuccess: invJ,
+    onSuccess: inv,
   });
   const update = useMutation({
     mutationFn: async ({ id, ...d }: { id: number; body?: string; tags?: string[]; date?: string }) =>
       (await apiRequest("PATCH", `/api/journal/${id}`, d)).json() as Promise<JournalEntry>,
-    onSuccess: invJ,
+    onSuccess: inv,
   });
   const remove = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/journal/${id}`),
-    onSuccess: invJ,
+    onSuccess: inv,
   });
   return { create, update, remove };
 }

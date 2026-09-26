@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
-import { usePlanner, Ring, clock, chime } from "@/components/planner";
-import { TZ, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
+import { usePlanner, Ring, clock, chime, JournalNotesCheckbox } from "@/components/planner";
+import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   DAY_SHORT,
@@ -11,10 +11,12 @@ import {
   blocksForDay,
   colorOf,
   completionsOf,
+  fillOf,
   fmtDate,
   fmtDur,
   fmtTime,
   kindOf,
+  listOf,
   markOf,
   occursOn,
   orderHabits,
@@ -62,12 +64,6 @@ import {
 
 /* ====================== HABITS ====================== */
 const MARK_LABEL = ["not done", "half done", "done"] as const;
-/** empty, half (diagonal / split), or solid */
-export function fillOf(mk: 0 | 1 | 2, color: string, angle = 135) {
-  if (mk === 2) return color;
-  if (mk === 1) return `linear-gradient(${angle}deg, ${color} 50%, transparent 50%)`;
-  return "transparent";
-}
 export function HabitsPage() {
   const { data: items } = useItems();
   const { cycle } = useItemMutations();
@@ -88,10 +84,7 @@ export function HabitsPage() {
   const doneToday = dueNow.filter((h) => completionsOf(h).has(today)).length;
   // Newest first, like writing down the page. The last week shows; "Show older" reaches back to the oldest mark.
   const week = addDays(today, -7);
-  const oldest = habits.reduce((m, h) => {
-    const marks = (JSON.parse(h.completions || "[]") as string[]).map((c) => c.slice(0, 10)).sort();
-    return marks.length && marks[0] < m ? marks[0] : m;
-  }, week);
+  const oldest = habits.reduce((m, h) => listOf(h.completions).reduce((o, c) => (c.slice(0, 10) < o ? c.slice(0, 10) : o), m), week);
   const days = Array.from({ length: dayDiff(showOlder ? oldest : week, today) + 1 }, (_, n) => addDays(today, -n));
   const weekStart = settings.weekStartsOn ?? 0;
 
@@ -286,6 +279,7 @@ export function FocusPage() {
 
   const todays = (sessions ?? []).filter((s) => s.date === today);
   const [openSession, setOpenSession] = useState<Session | null>(null);
+  const deleteSession = useDeleteSession();
   const sessionWhen = (s: Session) =>
     `${new Date(s.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${fmtDur(s.actualSec / 60)}`;
   const totalToday = todays.reduce((a, s) => a + s.actualSec, 0) / 60;
@@ -462,8 +456,7 @@ export function FocusPage() {
                 <div className="flex justify-end gap-2">
                   <Button variant="destructive" size="sm" data-testid="button-delete-session" onClick={async () => {
                     if (!openSession) return;
-                    await apiRequest("DELETE", `/api/sessions/${openSession.id}`);
-                    queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+                    await deleteSession.mutateAsync(openSession.id);
                     setOpenSession(null);
                     toast({ title: "Session deleted" });
                   }}>
@@ -481,15 +474,6 @@ export function FocusPage() {
 
 /* ====================== SYNC ====================== */
 const FEED_COLORS = ["#4f6bd8", "#0b8a6a", "#c2562b", "#8a4fd8", "#b8860b", "#d8457a"];
-/** Imported events' notes go to the journal only when asked; each item's details can change it later. */
-function JournalNotesCheckbox({ id, checked, onChange }: { id: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground sm:pb-2.5">
-      <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid={id} />
-      Show notes in journal
-    </label>
-  );
-}
 
 const IMPORT_LABELS: Record<ImportKind, string> = {
   event: "Events",
@@ -647,7 +631,8 @@ export function CalendarLinks() {
             </div>
             <div className="flex flex-col sm:flex-row sm:items-end gap-2">
               <ImportTypePicker id="select-feed-import-kind" value={feedKind} onChange={setFeedKind} />
-              <JournalNotesCheckbox id="checkbox-feed-journal" checked={feedJournal} onChange={setFeedJournal} />
+              {/* Imported events' notes go to the journal only when asked; each item's details can change it later. */}
+              <JournalNotesCheckbox id="checkbox-feed-journal" className="sm:pb-2.5" checked={feedJournal} onChange={setFeedJournal} />
               <Button onClick={addFeed} disabled={!url.trim() || adding} data-testid="button-add-feed">
                 <Link2 className="h-4 w-4 mr-1.5" />
                 {adding ? "Connecting…" : "Connect"}
