@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Item } from "@shared/schema";
-import { usePlanner } from "./planner";
+import { useEditOccurrence, usePlanner } from "./planner";
 import { useItemMutations, useSettings } from "@/lib/data";
 import {
   KIND_META,
@@ -61,7 +61,8 @@ export function DayColumn({
 }) {
   const { settings } = useSettings();
   const sun = sunTimes(day, settings.lat, settings.lng);
-  const { openEditor, openDetails, startFocus } = usePlanner();
+  const { openEditor, openDetails, startFocus, askRepeatScope } = usePlanner();
+  const editOccurrence = useEditOccurrence();
   const { update, toggle } = useItemMutations();
   const blocks = layoutBlocks(blocksForDay(items, day));
   const routineBlocks = showRoutines ? blocksForDay(routineSchedules(settings), day) : [];
@@ -157,14 +158,24 @@ export function DayColumn({
     if (d.delta === 0) return;
     haptic("tick");
     const i = b.item;
+    let changes: Partial<Item>;
     if (d.mode === "move") {
       const s = toMin(i.startTime) + d.delta;
       const e = toMin(i.endTime || fromMin(toMin(i.startTime) + 30)) + d.delta;
-      update.mutate({ id: i.id, startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: fromMin(e) });
+      changes = { startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: fromMin(e) };
     } else {
       const e = Math.max(b.start + 15, d.e0 + d.delta);
-      update.mutate({ id: i.id, endTime: fromMin(Math.min(e, 1440 - 1)) });
+      changes = { endTime: fromMin(Math.min(e, 1440 - 1)) };
     }
+    // Moving a repeating item asks whether to move just this day or every repeat (habits move as a whole).
+    if (recOf(i).freq !== "none" && kindOf(i) !== "habit") {
+      void askRepeatScope().then((scope) => {
+        if (scope === "one") void editOccurrence(i, b.occDate, changes);
+        else if (scope === "all") update.mutate({ id: i.id, ...changes });
+      });
+      return;
+    }
+    update.mutate({ id: i.id, ...changes });
   };
   const cancelDrag = () => {
     if (pendingRef.current?.timer) clearTimeout(pendingRef.current.timer);

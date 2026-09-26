@@ -87,13 +87,39 @@ type Ctx = {
   resumeFocus: () => void;
   stopFocus: (completed?: boolean) => void;
   addFocusTime: (min: number) => void;
+  /** Asks whether a change to a repeating item applies to just the one opened or the whole series. */
+  askRepeatScope: () => Promise<RepeatScope | null>;
 };
+type RepeatScope = "one" | "all";
 const PlannerCtx = createContext<Ctx | null>(null);
 export const usePlanner = () => {
   const c = useContext(PlannerCtx);
   if (!c) throw new Error("PlannerProvider missing");
   return c;
 };
+
+/**
+ * "Just this one" for a repeating item: that day is skipped in the series and a one-off copy with
+ * the changes takes its place, keeping that day's check-off.
+ */
+export function useEditOccurrence() {
+  const { create, skip } = useItemMutations();
+  return async (series: Item, occDate: string, changes: Partial<InsertItem>) => {
+    const { id: _id, journalId: _journal, ...rest } = series;
+    // The form shows the series' first day; a changed date moves this one there.
+    const date = changes.date && changes.date !== series.date ? changes.date : occDate;
+    const span = dayDiff(changes.date ?? series.date, changes.endDate ?? series.endDate ?? series.date);
+    const marks = (JSON.parse(series.completions || "[]") as string[]).filter((c) => c === occDate || c === occDate + "~h");
+    await skip.mutateAsync({ id: series.id, date: occDate });
+    await create.mutateAsync(blankItem({
+      ...rest, ...changes, date, endDate: addDays(date, Math.max(0, span)),
+      recurrence: '{"freq":"none"}', exceptions: "[]", uid: null, source: "local",
+      completions: JSON.stringify(marks.map((c) => c.replace(occDate, date))),
+      // The series already keeps these notes in the journal.
+      journalOff: (changes.notes ?? series.notes).trim() === series.notes.trim() ? true : undefined,
+    }));
+  };
+}
 
 export function PlannerProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() =>
@@ -122,6 +148,12 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const [details, setDetails] = useState<{ target: Item; occDate?: string } | null>(null);
   const openEditor = useCallback((target: Item | Partial<InsertItem>, occDate?: string) => setEditing({ target, occDate }), []);
   const openDetails = useCallback((target: Item, occDate?: string) => setDetails({ target, occDate }), []);
+  const [scopeAsk, setScopeAsk] = useState<{ resolve: (scope: RepeatScope | null) => void } | null>(null);
+  const askRepeatScope = useCallback(() => new Promise<RepeatScope | null>((resolve) => setScopeAsk({ resolve })), []);
+  const answerScope = (scope: RepeatScope | null) => {
+    scopeAsk?.resolve(scope);
+    setScopeAsk(null);
+  };
 
   /* focus */
   const [focus, setFocus] = useState<FocusState | null>(() => {
@@ -343,6 +375,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     resumeFocus,
     stopFocus,
     addFocusTime,
+    askRepeatScope,
   };
 
   return (
@@ -360,6 +393,18 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         }}
       />
       <ItemEditor editing={editing} onClose={() => setEditing(null)} />
+      <Dialog open={!!scopeAsk} onOpenChange={(o) => !o && answerScope(null)}>
+        <DialogContent className="max-w-sm" data-testid="dialog-repeat-scope">
+          <DialogHeader className="pr-8 text-left">
+            <DialogTitle>Change a repeating item</DialogTitle>
+            <DialogDescription>Change just this one, or every time it repeats?</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => answerScope("one")} data-testid="button-scope-one">Just this one</Button>
+            <Button size="sm" onClick={() => answerScope("all")} data-testid="button-scope-all">All of them</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PlannerCtx.Provider>
   );
 }
@@ -492,6 +537,8 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
   const existing = editing && "id" in editing.target && typeof (editing.target as Item).id === "number" ? (editing.target as Item) : null;
   const { settings } = useSettings();
   const { create, update, remove, skip } = useItemMutations();
+  const { askRepeatScope } = usePlanner();
+  const editOccurrence = useEditOccurrence();
   const { toast } = useToast();
 
   const form = useForm<FormVals>({ defaultValues: toForm(blankItem({}), settings.defaultReminder) });
@@ -557,6 +604,17 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       location: f.location,
       notes: f.notes,
     };
+    // A repeating item opened on one day can change just that day (habits always change as a whole).
+    if (existing && isRecurring && editing?.occDate && existing.kind !== "habit" && f.kind !== "habit") {
+      const scope = await askRepeatScope();
+      if (!scope) return;
+      if (scope === "one") {
+        await editOccurrence(existing, editing.occDate, payload);
+        toast({ title: "Saved this one", description: payload.title });
+        onClose();
+        return;
+      }
+    }
     if (existing) await update.mutateAsync({ id: existing.id, ...payload });
     else await create.mutateAsync(blankItem(payload));
     toast({ title: existing ? "Saved" : "Added to your plan", description: payload.title });
