@@ -4,7 +4,7 @@ import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
 import { usePlanner, useNow, Ring } from "@/components/planner";
-import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
+import { useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
 import {
   KIND_META,
   addDays,
@@ -17,25 +17,21 @@ import {
   isDeadlineTask,
   isTimed,
   kindOf,
-  parseQuick,
   recLabel,
   recOf,
   toMin,
   todayStr,
   untimedForDay,
-  taskAvailableFrom,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
 import { fillOf } from "@/pages/other";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SortableList } from "@/components/sortable";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -222,89 +218,6 @@ function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: 
       </div>
     </div>
   );
-}
-
-export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: string; appbar?: boolean; onDone?: () => void }) {
-  const [text, setText] = useState("");
-  const [, nav] = useLocation();
-  const { create } = useItemMutations();
-  const { settings } = useSettings();
-  const { toast } = useToast();
-  const p = text.trim() ? parseQuick(text, day) : null;
-  const submit = async () => {
-    if (!p) return;
-    if (p.kind === "sleep") {
-      nav("/settings");
-      toast({ title: "Sleep is a schedule", description: "Set bedtime and wake time in Settings." });
-      setText("");
-      onDone?.();
-      return;
-    }
-    const item = blankItem({
-      title: p.title,
-      kind: p.kind,
-      date: p.date,
-      startTime: p.startTime,
-      endTime: p.endTime,
-      recurrence: JSON.stringify(p.recurrence),
-      reminder: p.startTime ? settings.defaultReminder : null,
-      availableFrom: p.kind === "task" ? taskAvailableFrom(p.date, p.startTime, JSON.stringify(p.recurrence)) : null,
-    });
-    await create.mutateAsync(item);
-    toast({ title: `${KIND_META[p.kind].label} added`, description: summary(p) });
-    setText("");
-    onDone?.();
-  };
-  return (
-    <div className={cn("relative rounded bg-card text-card-foreground", appbar ? "border" : "card-md")}>
-      <div className="flex items-center gap-2 px-3">
-        <Sparkles className="h-4 w-4 text-primary shrink-0" />
-        <Input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="Type it — “Gym 6-7pm every mon wed fri”"
-          className={cn("border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
-          aria-label="Quick add"
-          data-testid="input-quick-add"
-        />
-        {p && (
-          <Button size="sm" onClick={submit} disabled={create.isPending} data-testid="button-quick-add">
-            <CornerDownLeft className="h-3.5 w-3.5 mr-1" />
-            {p.kind === "sleep" ? "Set sleep" : "Add"}
-          </Button>
-        )}
-      </div>
-      {p && (
-        <div
-          className={cn(
-            "flex flex-wrap items-center gap-1.5 border-t px-3 py-2 text-xs text-muted-foreground",
-          )}
-          data-testid="text-quick-preview"
-        >
-          <span
-            className="rounded px-1.5 py-0.5 font-medium text-foreground"
-            style={{ background: `hsl(var(${KIND_META[p.kind].cssVar}) / .16)` }}
-          >
-            {KIND_META[p.kind].label}
-          </span>
-          <span className="text-foreground font-medium">{p.title}</span>
-          <span>· {summary(p)}</span>
-          <span className="ml-auto hidden sm:inline">Use #task #habit #meeting #focus to set the type</span>
-        </div>
-      )}
-    </div>
-  );
-}
-function summary(p: ReturnType<typeof parseQuick>) {
-  const parts = [p.date === todayStr() ? "Today" : fmtDate(p.date, { weekday: "short", month: "short", day: "numeric" })];
-  if (p.startTime) parts.push(`${fmtTime(p.startTime, true)}–${fmtTime(p.endTime, true)}`);
-  else parts.push("anytime");
-  const r = p.recurrence;
-  if (r.freq === "daily") parts.push("every day");
-  if (r.freq === "weekdays") parts.push("weekdays");
-  if (r.freq === "weekly") parts.push("weekly on " + (r.days || []).map((d) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]).join(", "));
-  return parts.join(" · ");
 }
 
 function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: ReturnType<typeof usePlanner>["startFocus"] }) {
