@@ -373,14 +373,15 @@ function ItemDetails({ details, onClose, onEdit }: {
   const d = i?.kind === "task" && i.availableFrom ? i.date : details?.occDate || i?.date || "";
   return (
     <Dialog open={!!details} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md" data-testid="dialog-item-details">
+      {/* Long titles, links, and notes wrap anywhere, and the window scrolls rather than growing off screen. */}
+      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto scroll-thin [overflow-wrap:anywhere]" data-testid="dialog-item-details">
         {i && <>
           <DialogHeader className="pr-8 text-left">
-            <DialogTitle className="text-lg leading-snug">{i.title}</DialogTitle>
+            <DialogTitle className="min-w-0 text-lg leading-snug">{i.title}</DialogTitle>
             <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
           </DialogHeader>
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
-          <div className="grid gap-3 text-sm">
+          <div className="grid grid-cols-1 gap-3 text-sm">
             <div>
               <div className="text-xs text-muted-foreground">{routine ? "Every day" : i.kind === "task" && i.availableFrom ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
               <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
