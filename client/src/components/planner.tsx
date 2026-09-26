@@ -396,8 +396,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       <Dialog open={!!scopeAsk} onOpenChange={(o) => !o && answerScope(null)}>
         <DialogContent className="max-w-sm" data-testid="dialog-repeat-scope">
           <DialogHeader className="pr-8 text-left">
-            <DialogTitle>Change a repeating item</DialogTitle>
-            <DialogDescription>Change just this one, or every time it repeats?</DialogDescription>
+            <DialogTitle>You're editing a repeating item</DialogTitle>
+            <DialogDescription className="sr-only">Change just this one, or every time it repeats</DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => answerScope("one")} data-testid="button-scope-one">Just this one</Button>
