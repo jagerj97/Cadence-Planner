@@ -300,8 +300,8 @@ export function FocusPage() {
     <>
       <PageHeader title="Focus" sub={`${fmtDur(totalToday)} focused today · ${todays.length} session${todays.length === 1 ? "" : "s"}`} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
-          <section className="card-md p-6 md:p-10 grid justify-items-center gap-6" aria-label="Timer">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
+          <section className="card-md min-w-0 p-6 md:p-10 grid justify-items-center gap-6" aria-label="Timer">
             <div className="relative">
               <Ring pct={pct} size={260} stroke={10} color={ringColor} />
               <div className="absolute inset-0 grid place-items-center text-center">
@@ -317,17 +317,17 @@ export function FocusPage() {
             </div>
 
             {focus ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button variant="outline" onClick={() => addFocusTime(5)} data-testid="button-timer-add5">
                   +5 min
                 </Button>
                 {focus.runStart ? (
-                  <Button onClick={pauseFocus} data-testid="button-timer-pause">
-                    <Pause className="h-4 w-4 mr-1.5" /> Pause
+                  <Button size="icon" onClick={pauseFocus} aria-label="Pause" title="Pause" data-testid="button-timer-pause">
+                    <Pause className="h-4 w-4" />
                   </Button>
                 ) : (
-                  <Button onClick={resumeFocus} data-testid="button-timer-resume">
-                    <Play className="h-4 w-4 mr-1.5" /> Resume
+                  <Button size="icon" onClick={resumeFocus} aria-label="Resume" title="Resume" data-testid="button-timer-resume">
+                    <Play className="h-4 w-4" />
                   </Button>
                 )}
                 <Button variant="outline" onClick={() => stopFocus(true)} data-testid="button-timer-finish">
