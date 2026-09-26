@@ -86,7 +86,6 @@ export type Settings = {
   weekStartsOn: 0 | 1;
   lat: number;
   lng: number;
-  place: string;
   routines: Routine[];
   colorTheme: ColorTheme;
   appearanceTheme: "light" | "dark";
@@ -109,7 +108,6 @@ export const DEFAULT_SETTINGS: Settings = {
   weekStartsOn: 0,
   lat: 39.7029,
   lng: -75.1118,
-  place: "Glassboro, NJ",
   routines: [{ id: "sleep", name: "Sleep", startTime: "23:00", endTime: "07:00", color: "#5966AD" }],
   colorTheme: "orange",
   appearanceTheme: "light",

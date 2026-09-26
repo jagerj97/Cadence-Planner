@@ -972,11 +972,8 @@ export function SettingsPage() {
             </div>
           </Section>
 
-          <Section title="Sunrise & sunset" hint={`Colors your timeline with the sky. Using ${draft.place || "your location"} (${draft.lat.toFixed(2)}, ${draft.lng.toFixed(2)}).`}>
-            <div className="grid sm:grid-cols-[1fr_140px_140px] gap-3">
-              <Field label="Place">
-                <Input value={draft.place} onChange={(e) => setDraft({ ...draft, place: e.target.value })} data-testid="input-place" />
-              </Field>
+          <Section title="Sunrise & sunset" hint={`Colors your timeline with the sky. Using ${draft.lat.toFixed(2)}, ${draft.lng.toFixed(2)}.`}>
+            <div className="grid grid-cols-2 gap-3">
               <Field label="Latitude">
                 <CoordInput value={draft.lat} limit={90} label="Latitude" onChange={(lat) => setDraft((d) => ({ ...d, lat }))} testId="input-lat" />
               </Field>
@@ -993,7 +990,7 @@ export function SettingsPage() {
                   setLocating(true);
                   try {
                     const { lat, lng } = await getDeviceLocation();
-                    setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4), place: "My location" }));
+                    setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4) }));
                     toast({ title: "Location found", description: "Your settings will save automatically." });
                   } catch (err) {
                     toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead.` });
