@@ -127,7 +127,7 @@ export const DEFAULT_SETTINGS: Settings = {
   weekStartsOn: 0,
   lat: 39.7029,
   lng: -75.1118,
-  routines: [{ id: "sleep", name: "Sleep", startTime: "23:00", endTime: "07:00", color: "#5966AD" }],
+  routines: [{ id: "sleep", name: "Sleep", startTime: "23:00", endTime: "07:00", color: "#3f51b5" }],
   colorTheme: "carrot",
   appearanceTheme: "dark",
   habitOrder: [],

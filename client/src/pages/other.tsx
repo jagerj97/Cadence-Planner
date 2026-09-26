@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
 import { usePlanner, Ring, clock, chime, JournalNotesCheckbox } from "@/components/planner";
+import { ColorSwatches } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -951,21 +952,20 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routine settings" hint="Background time ranges on every day, including past days. These are not events.">
+          <Section title="Routine settings" hint="Background things for every day. Sleeping, eating, grooming...">
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
                   <div className="flex items-center gap-2">
                     <Input className="min-w-0 flex-1 font-medium" value={r.name} aria-label="Routine name"
                       onChange={(e) => updateRoutine(r.id, { name: e.target.value })} data-testid={`input-routine-name-${r.id}`} />
-                    <input type="color" value={r.color} aria-label={`${r.name} color`}
-                      className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border bg-transparent p-1"
-                      onChange={(e) => updateRoutine(r.id, { color: e.target.value })} data-testid={`input-routine-color-${r.id}`} />
                     <Button size="icon" variant="ghost" className="shrink-0" aria-label={`Remove ${r.name} routine`}
                       onClick={() => setDraft((d) => ({ ...d, routines: d.routines.filter((entry) => entry.id !== r.id) }))}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
+                  {/* The same colors as task tags. */}
+                  <ColorSwatches value={r.color} onChange={(color) => updateRoutine(r.id, { color })} />
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="From">
                       <Input type="time" step={60} className="min-w-0" value={r.startTime} aria-label={`${r.name} start time`}
@@ -982,7 +982,7 @@ export function SettingsPage() {
               <Button variant="outline" className="justify-self-start" onClick={() => setDraft((d) => ({
                 ...d,
                 routines: [...d.routines, { id: crypto.randomUUID(), name: "New routine", startTime: "09:00", endTime: "10:00",
-                  color: "#5966AD" }],
+                  color: "#3f51b5" }],
               }))} data-testid="button-add-routine"><Plus className="h-4 w-4 mr-1.5" /> Add routine</Button>
             </div>
           </Section>

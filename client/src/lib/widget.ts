@@ -36,8 +36,23 @@ const hexOf = (i: Item) => (i.color && /^#[0-9a-f]{6}$/i.test(i.color) ? i.color
 const mixHex = (a: string, b: string, t: number) => "#" + [1, 3, 5].map((i) =>
   Math.round(parseInt(a.slice(i, i + 2), 16) * t + parseInt(b.slice(i, i + 2), 16) * (1 - t)).toString(16).padStart(2, "0")).join("");
 
-function theme(settings: Settings) {
-  const dark = settings.appearanceTheme === "dark";
+/**
+ * The widget colors for light or dark mode. The widgets follow the phone's system setting rather
+ * than the app's, so both are sent; the page's dark class is flipped for the reading and put back
+ * in the same task, so nothing repaints.
+ */
+function themeFor(dark: boolean) {
+  const root = document.documentElement;
+  const was = root.classList.contains("dark");
+  root.classList.toggle("dark", dark);
+  try {
+    return readTheme(dark);
+  } finally {
+    root.classList.toggle("dark", was);
+  }
+}
+
+function readTheme(dark: boolean) {
   const v = (name: string) => cssVarHex(`--${name}`);
   return {
     dark,
@@ -94,5 +109,5 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       })),
     };
   }
-  return { version: 2, generatedAt: Date.now(), theme: theme(settings), days };
+  return { version: 2, generatedAt: Date.now(), themes: { light: themeFor(false), dark: themeFor(true) }, days };
 }

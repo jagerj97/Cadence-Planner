@@ -68,7 +68,8 @@ export function TagChip({ tag, onRemove }: { tag: TaskTag; onRemove?: () => void
   );
 }
 
-function ColorSwatches({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+/** The color choices for task tags and routines. */
+export function ColorSwatches({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
     <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tag color">
       {TAG_COLORS.map((c) => (

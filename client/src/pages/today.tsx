@@ -63,10 +63,10 @@ export default function Today() {
       el.scrollTop = 0; // other days start at 12am
       return;
     }
-    // Start today at the current hour when the timeline opens (it doesn't follow the clock after that).
-    // 8px is the column's top padding; the extra 16px keeps that hour's label readable above it.
-    const hourY = 8 + new Date().getHours() * HOUR_PX;
-    el.scrollTop = Math.max(0, hourY - 16);
+    // Today opens with the timeline starting 1.5 hours before now (it doesn't follow the clock after
+    // that). 8px is the column's top padding.
+    const now = new Date();
+    el.scrollTop = Math.max(0, 8 + ((now.getHours() * 60 + now.getMinutes() - 90) / 60) * HOUR_PX);
   }, [day, isLoading, shows("schedule")]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);

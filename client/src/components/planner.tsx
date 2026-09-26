@@ -567,6 +567,21 @@ export const clock = (sec: number) => {
 
 /* ============ item editor ============ */
 type TimeMode = "timed" | "anytime" | "allday" | "deadline";
+/** "Save for tomorrow" and the like: where a habit's repeating count starts instead of today. */
+const NEXT_PERIOD: Partial<Record<Recurrence["freq"], { label: string; date: (today: string) => string }>> = {
+  daily: { label: "tomorrow", date: (d) => addDays(d, 1) },
+  weekly: { label: "next week", date: (d) => addDays(d, 7) },
+  monthly: { label: "next month", date: (d) => shiftYmd(d, 0, 1) },
+  yearly: { label: "next year", date: (d) => shiftYmd(d, 1, 0) },
+};
+/** A date moved by whole years and months, keeping the day of the month where it can. */
+function shiftYmd(d: string, years: number, months: number) {
+  const [y, m, day] = d.split("-").map(Number);
+  const target = new Date(y + years, m - 1 + months, 1);
+  const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  return ymd(new Date(target.getFullYear(), target.getMonth(), Math.min(day, last)));
+}
+
 type FormVals = {
   title: string;
   tags: string[];
@@ -1023,6 +1038,17 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
               </>
             )}
             <div className="flex-1" />
+            {/* A habit repeating every few days, weeks, months or years can start its count from the next one instead of now. */}
+            {v.kind === "habit" && v.interval > 1 && NEXT_PERIOD[v.freq] && (
+              <Button type="button" variant="outline" disabled={create.isPending || update.isPending} data-testid="button-save-next"
+                onClick={() => {
+                  // Monthly and yearly habits keep their chosen day, a period later; the others start from today.
+                  setValue("date", NEXT_PERIOD[v.freq]!.date(v.freq === "monthly" || v.freq === "yearly" ? v.date : todayStr()));
+                  void onSubmit();
+                }}>
+                Save for {NEXT_PERIOD[v.freq]!.label}
+              </Button>
+            )}
             <Button type="submit" disabled={create.isPending || update.isPending} data-testid="button-save">
               {existing ? "Save" : "Add"}
             </Button>
