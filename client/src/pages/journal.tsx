@@ -273,7 +273,7 @@ function Composer({
         </div>
         <div className="ml-auto flex items-center gap-2">
           {onCancel && (
-            <Button variant="ghost" size="sm" onClick={onCancel} data-testid="button-journal-cancel">
+            <Button variant="outline" size="sm" onClick={onCancel} data-testid="button-journal-cancel">
               Cancel
             </Button>
           )}
