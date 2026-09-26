@@ -394,8 +394,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       />
       <ItemEditor editing={editing} onClose={() => setEditing(null)} />
       <Dialog open={!!scopeAsk} onOpenChange={(o) => !o && answerScope(null)}>
-        <DialogContent className="max-w-sm" data-testid="dialog-repeat-scope">
-          <DialogHeader className="pr-8 text-left">
+        <DialogContent hideClose className="max-w-sm" data-testid="dialog-repeat-scope">
+          <DialogHeader className="text-left">
             <DialogTitle>You're editing a repeating item</DialogTitle>
             <DialogDescription className="sr-only">Change just this one, or every time it repeats</DialogDescription>
           </DialogHeader>
