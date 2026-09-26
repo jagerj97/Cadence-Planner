@@ -44,7 +44,7 @@ function theme(settings: Settings) {
     primary: v("primary"), destructive: v("destructive"), task: v("k-task"), habit: v("k-habit"), sleep: v("k-sleep"),
     skyNight: v("sky-night"), skyDawn: v("sky-dawn"), skyDay: v("sky-day"), skyDusk: v("sky-dusk"),
     // The Right now card's tint of the color theme (.wellness-now in index.css).
-    nowCard: mixHex(v("primary"), v("card"), dark ? .18 : .09), nowBorder: mixHex(v("primary"), v("card"), .25),
+    nowCard: mixHex(v("primary"), v("card"), .16), nowBorder: mixHex(v("primary"), v("card"), dark ? .25 : .35),
   };
 }
 

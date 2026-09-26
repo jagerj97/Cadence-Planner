@@ -413,11 +413,11 @@
 /* Cadence x contemporary wellness: warm brand, airy modules, calm data surfaces. */
 /* The Right now card fades from the chosen color theme (--primary) into the card. */
 .wellness-now {
-  background: linear-gradient(115deg, hsl(var(--primary) / .11), hsl(var(--primary) / .05) 60%, transparent), hsl(var(--card));
-  border-color: hsl(var(--primary) / .25);
+  background: linear-gradient(115deg, hsl(var(--primary) / .22), hsl(var(--primary) / .1) 60%, hsl(var(--primary) / .03)), hsl(var(--card));
+  border-color: hsl(var(--primary) / .35);
 }
 .dark .wellness-now {
-  background: linear-gradient(115deg, hsl(var(--primary) / .22), hsl(var(--primary) / .04) 75%), hsl(var(--card));
+  background: linear-gradient(115deg, hsl(var(--primary) / .16), transparent), hsl(var(--card));
   border-color: hsl(var(--primary) / .24);
 }
 .wellness-stat {
