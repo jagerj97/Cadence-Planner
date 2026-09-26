@@ -543,7 +543,7 @@ export default function JournalPage() {
                   className="flex w-full items-center gap-2 card-md px-3 h-11 text-left text-base text-muted-foreground"
                   data-testid="button-journal-new">
                   <Plus className="h-4 w-4 text-primary shrink-0" />
-                  <span className="truncate text-[14px] italic">Got the zoomies #fun</span>
+                  <span className="truncate text-[14px] italic">Got the zoomies #exercise</span>
                 </button>
                 <Dialog open={composing} onOpenChange={setComposing}>
                   <DialogContent hideClose className="max-w-lg gap-0 overflow-hidden rounded-xl p-0" data-testid="dialog-journal-new"
