@@ -127,12 +127,13 @@ function AddMenu() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors", open && "bg-primary/15 text-primary hover:bg-primary/15 dark:hover:bg-primary/15")}
+          className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors", open && "bg-black/10 dark:bg-white/15")}
           aria-label="Add something"
           aria-expanded={open}
           data-testid="button-add"
         >
-          <Plus className="h-6 w-6" />
+          {/* The + turns into an x while the menu is open, like the settings gear. */}
+          <Plus className={cn("h-6 w-6 transition-transform duration-300", open && "rotate-[135deg]")} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden rounded-[20px] p-0 shadow-lg">

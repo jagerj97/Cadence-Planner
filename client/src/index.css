@@ -23,9 +23,10 @@
   --sidebar-accent: 28 100% 94%;
   --sidebar-accent-foreground: 0 0% 13%;
   --sidebar-ring: 25 100% 45%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 13%;
-  --popover-border: 0 0% 88%;
+  /* Pop-up menus share the cards' colors, so they follow the theme with them. */
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
+  --popover-border: var(--border);
   --primary: 25 100% 45%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 93%;
@@ -133,9 +134,10 @@
   --sidebar-accent: 0 0% 20%;
   --sidebar-accent-foreground: 0 0% 93%;
   --sidebar-ring: 26 100% 55%;
-  --popover: 0 0% 18%;
-  --popover-foreground: 0 0% 93%;
-  --popover-border: 0 0% 24%;
+  /* Pop-up menus share the cards' colors, so they follow the theme with them. */
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
+  --popover-border: var(--border);
   --primary: 26 100% 55%;
   --primary-foreground: 0 0% 8%;
   --secondary: 0 0% 20%;
