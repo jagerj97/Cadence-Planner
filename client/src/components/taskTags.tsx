@@ -9,7 +9,9 @@ import { Check, Hash, Plus, X } from "lucide-react";
  * Task tags, like the journal's, but each has a color (kept in Settings.taskTags). A task's first
  * tag colors its checkbox in lists; calendar views keep the task yellow.
  */
-export const TAG_COLORS = ["#e66000", "#d93b3b", "#d8457a", "#8a4fd8", "#4f6bd8", "#0b8a9a", "#32855c", "#8a6d3b", "#6b7280"];
+// Task yellow first (the default), then colors kept clear of the event blue, meeting purple, habit
+// green and focus pink. The sleep indigo is fine to reuse: routine colors can be changed.
+export const TAG_COLORS = ["#c9910d", "#e0701f", "#d93b3b", "#7a9a1f", "#11998e", "#3f51b5", "#b83fb8", "#8a6d3b", "#6b7280"];
 
 export function taskTagsOf(i: Pick<Item, "tags">): string[] {
   try {
