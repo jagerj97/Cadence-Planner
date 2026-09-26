@@ -73,6 +73,15 @@ const ADD_KINDS: { kind: Kind | "journal"; label: string; icon: typeof Home; col
   { kind: "focus", label: "Focus", icon: Target, color: "hsl(var(--k-focus))" },
 ];
 
+/** Away from Today, the + opens the new item window set to the kind that fits the page. */
+function kindForPage(loc: string): Kind | "journal" {
+  if (loc.startsWith("/tasks")) return "task";
+  if (loc.startsWith("/habits")) return "habit";
+  if (loc.startsWith("/focus")) return "focus";
+  if (loc.startsWith("/journal")) return "journal";
+  return "event";
+}
+
 function AddMenu() {
   const [open, setOpen] = useState(false);
   const [loc, nav] = useLocation();
@@ -83,7 +92,7 @@ function AddMenu() {
   const pick = (kind: Kind | "journal") => {
     setOpen(false);
     if (kind === "journal") {
-      nav("/journal");
+      if (!loc.startsWith("/journal")) nav("/journal");
       setTimeout(() => window.dispatchEvent(new Event("cadence:journal-compose")), 80);
       return;
     }
@@ -99,6 +108,21 @@ function AddMenu() {
     });
   };
 
+  // Today keeps the full menu with quick add; other pages go straight to the matching item.
+  const onToday = loc === "/" || loc.startsWith("/day/");
+  if (!onToday) {
+    return (
+      <button
+        onClick={() => pick(kindForPage(loc))}
+        className="grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        aria-label="Add something"
+        data-testid="button-add"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+    );
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -108,11 +132,12 @@ function AddMenu() {
           aria-expanded={open}
           data-testid="button-add"
         >
-          <Plus className="h-6 w-6" />
+          {/* The + turns into an x while the menu is open, like the settings gear. */}
+          <Plus className={cn("h-6 w-6 transition-transform duration-300", open && "rotate-[135deg]")} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] p-0 rounded shadow-lg">
-        <div className="p-3 border-b">
+      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden rounded-[20px] p-0 shadow-lg">
+        <div className="p-2.5 border-b">
           <QuickAdd appbar day={day} onDone={() => setOpen(false)} />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-2">

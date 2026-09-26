@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Item } from "@shared/schema";
-import { usePlanner } from "./planner";
+import { useSaveItem, usePlanner } from "./planner";
+import { accentOf } from "./taskTags";
 import { useItemMutations, useSettings } from "@/lib/data";
 import {
   KIND_META,
@@ -62,7 +63,8 @@ export function DayColumn({
   const { settings } = useSettings();
   const sun = sunTimes(day, settings.lat, settings.lng);
   const { openEditor, openDetails, startFocus } = usePlanner();
-  const { update, toggle } = useItemMutations();
+  const saveItem = useSaveItem();
+  const { toggle } = useItemMutations();
   const blocks = layoutBlocks(blocksForDay(items, day));
   const routineBlocks = showRoutines ? blocksForDay(routineSchedules(settings), day) : [];
   const isToday = day === todayStr();
@@ -157,14 +159,17 @@ export function DayColumn({
     if (d.delta === 0) return;
     haptic("tick");
     const i = b.item;
+    let changes: Partial<Item>;
     if (d.mode === "move") {
       const s = toMin(i.startTime) + d.delta;
       const e = toMin(i.endTime || fromMin(toMin(i.startTime) + 30)) + d.delta;
-      update.mutate({ id: i.id, startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: fromMin(e) });
+      changes = { startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: fromMin(e) };
     } else {
       const e = Math.max(b.start + 15, d.e0 + d.delta);
-      update.mutate({ id: i.id, endTime: fromMin(Math.min(e, 1440 - 1)) });
+      changes = { endTime: fromMin(Math.min(e, 1440 - 1)) };
     }
+    // A repeating item asks whether to move just this day or every repeat.
+    void saveItem(i, changes, b.occDate);
   };
   const cancelDrag = () => {
     if (pendingRef.current?.timer) clearTimeout(pendingRef.current.timer);
@@ -190,8 +195,8 @@ export function DayColumn({
           role="img"
           aria-label={`${b.item.title} routine, ${fmtTime(b.item.startTime)} to ${fmtTime(b.item.endTime)}`}
           data-testid={`routine-${day}-${b.item.id}-${b.start}`}
-          onClick={(event) => event.stopPropagation()}
-          className="absolute inset-x-0 flex items-start overflow-hidden border-l-2 border-dashed px-1 pt-1 sm:px-2 text-left select-none"
+          // Routines are a background overlay: taps go through to the grid to add an item.
+          className="pointer-events-none absolute inset-x-0 flex items-start overflow-hidden border-l-2 border-dashed px-1 pt-1 sm:px-2 text-left select-none"
           style={{
             top: (b.start / 60) * hourPx,
             height: ((b.end - b.start) / 60) * hourPx,
@@ -273,8 +278,8 @@ export function DayColumn({
                 ? `linear-gradient(${tint(b.item, k === "sleep" ? 0.1 : 0.15)}, ${tint(b.item, k === "sleep" ? 0.1 : 0.15)}), hsl(var(--card))`
                 : tint(b.item, k === "sleep" ? 0.1 : 0.15),
               transform: lifted ? "scale(1.04)" : undefined,
-              borderLeft: `3px solid ${colorOf(b.item)}`,
-              boxShadow: active ? `inset 0 0 0 1.5px ${colorOf(b.item)}` : undefined,
+              borderLeft: `3px solid ${accentOf(b.item, settings)}`,
+              boxShadow: active ? `inset 0 0 0 1.5px ${accentOf(b.item, settings)}` : undefined,
             }}
             data-testid={`block-${b.key}`}
           >
@@ -291,7 +296,7 @@ export function DayColumn({
                     "mt-0.5 h-4 w-4 shrink-0 rounded grid place-items-center border",
                     tiny && "mt-0",
                   )}
-                  style={{ borderColor: colorOf(b.item), background: b.done ? colorOf(b.item) : "transparent" }}
+                  style={{ borderColor: accentOf(b.item, settings), background: b.done ? accentOf(b.item, settings) : "transparent" }}
                   aria-label={b.done ? "Mark not done" : "Mark done"}
                   data-testid={`button-check-${b.key}`}
                 >

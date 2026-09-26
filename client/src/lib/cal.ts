@@ -105,7 +105,8 @@ export const recOf = (i: Item): Recurrence => {
     return { freq: "none" };
   }
 };
-const listOf = (s: string | null | undefined): string[] => {
+/** A JSON list stored on a record (completions, exceptions, tags...), or [] if it's missing or broken. */
+export const listOf = (s: string | null | undefined): string[] => {
   try {
     return JSON.parse(s || "[]");
   } catch {
@@ -158,21 +159,25 @@ export function routineSchedules(settings: Settings): Item[] {
   }));
 }
 
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+
 export function occursOn(i: Item, d: string): boolean {
   const r = recOf(i);
   // The schedule in Settings describes every night, including nights before it was saved.
   if ((i.uid === "cadence:sleep-schedule" || i.uid?.startsWith("cadence:routine:")) && i.kind === "sleep" && r.freq === "daily") {
     return !exceptionsOf(i).has(d);
   }
-  if (d < i.date) return false;
-  if (r.until && d > r.until) return false;
+  // Habits have no start or end: their pattern runs back and forward forever, anchored on their date.
+  const habit = i.kind === "habit";
+  if (!habit && d < i.date) return false;
+  if (!habit && r.until && d > r.until) return false;
   if (r.freq !== "none" && exceptionsOf(i).has(d)) return false;
   const iv = Math.max(1, r.interval || 1);
   switch (r.freq) {
     case "none":
       return d === i.date;
     case "daily":
-      return dayDiff(i.date, d) % iv === 0;
+      return mod(dayDiff(i.date, d), iv) === 0;
     case "weekdays": {
       const w = dow(d);
       return w >= 1 && w <= 5;
@@ -181,16 +186,16 @@ export function occursOn(i: Item, d: string): boolean {
       const days = r.days && r.days.length ? r.days : [dow(i.date)];
       if (!days.includes(dow(d))) return false;
       const weeks = Math.floor(dayDiff(startOfWeek(i.date), startOfWeek(d)) / 7);
-      return weeks % iv === 0;
+      return mod(weeks, iv) === 0;
     }
     case "monthly": {
       const a = parseYmd(i.date), b = parseYmd(d);
       if (a.getDate() !== b.getDate()) return false;
       const months = (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
-      return months % iv === 0;
+      return mod(months, iv) === 0;
     }
     case "yearly":
-      return i.date.slice(5) === d.slice(5) && (parseYmd(d).getFullYear() - parseYmd(i.date).getFullYear()) % iv === 0;
+      return i.date.slice(5) === d.slice(5) && mod(parseYmd(d).getFullYear() - parseYmd(i.date).getFullYear(), iv) === 0;
   }
   return false;
 }
@@ -237,6 +242,22 @@ export function isTimed(i: Item) {
 /** A deadline task is actionable before its due day, but is not a multi-day calendar event. */
 export function isDeadlineTask(i: Item) {
   return i.kind === "task" && !!i.availableFrom;
+}
+/**
+ * Tasks default to "anytime before the due date". They only ask for a due date; the first day they can be
+ * checked off is today (or the due date, if that's earlier). Timed or repeating tasks can't be deadline tasks.
+ */
+/** The first day a deadline task can be done: today, or its due date if that's earlier. */
+export const availableFromFor = (due: string, start = todayStr()) => (start <= due ? start : due);
+/** A new task's first day, or null when it has a time or repeats (so it isn't a deadline task). */
+export function taskAvailableFrom(due: string, startTime: string | null | undefined, freq: Recurrence["freq"]): string | null {
+  return startTime || freq !== "none" ? null : availableFromFor(due);
+}
+/** A habit mark's fill: empty, half (split at the angle), or solid. */
+export function fillOf(mk: 0 | 1 | 2, color: string, angle = 135) {
+  if (mk === 2) return color;
+  if (mk === 1) return `linear-gradient(${angle}deg, ${color} 50%, transparent 50%)`;
+  return "transparent";
 }
 export function canDoTaskOn(i: Item, day: string) {
   return isDeadlineTask(i) && i.availableFrom! <= day && day <= i.date;
@@ -315,14 +336,20 @@ export function layoutBlocks(blocks: Block[]) {
 }
 
 
+/** Where a habit's history begins: its date, or its earliest mark if one was logged before that. */
+function historyStart(i: Item) {
+  const marks = listOf(i.completions) as string[];
+  return marks.reduce((m, c) => (c.slice(0, 10) < m ? c.slice(0, 10) : m), i.date);
+}
 export function streakOf(i: Item, today: string) {
   const done = touchedOf(i);
+  const start = historyStart(i);
   let cur = 0;
   let d = today;
   // today not required to count yet
   if (!done.has(d)) d = addDays(d, -1);
   for (let n = 0; n < 400; n++) {
-    if (d < i.date) break;
+    if (d < start) break;
     if (occursOn(i, d)) {
       if (done.has(d)) cur++;
       else break;
@@ -334,7 +361,7 @@ export function streakOf(i: Item, today: string) {
 export function bestStreak(i: Item, today: string) {
   const done = touchedOf(i);
   let best = 0, cur = 0;
-  let d = i.date;
+  let d = historyStart(i);
   for (let n = 0; n < 800 && d <= today; n++) {
     if (occursOn(i, d)) {
       if (done.has(d)) {
@@ -350,9 +377,10 @@ export function rateOf(i: Item, today: string, days = 30) {
   const done = completionsOf(i);
   const half = partialsOf(i);
   let due = 0, hit = 0;
+  const start = historyStart(i);
   for (let n = 0; n < days; n++) {
     const d = addDays(today, -n);
-    if (d < i.date) break;
+    if (d < start) break;
     if (occursOn(i, d)) {
       due++;
       if (done.has(d)) hit++;

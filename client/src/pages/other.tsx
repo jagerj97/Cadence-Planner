@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
-import { usePlanner, Ring, clock, chime } from "@/components/planner";
-import { TZ, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
+import { usePlanner, Ring, clock, chime, JournalNotesCheckbox } from "@/components/planner";
+import { ColorSwatches } from "@/components/taskTags";
+import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   DAY_SHORT,
@@ -11,13 +12,16 @@ import {
   blocksForDay,
   colorOf,
   completionsOf,
+  fillOf,
   fmtDate,
   fmtDur,
   fmtTime,
   kindOf,
+  listOf,
   markOf,
   occursOn,
   orderHabits,
+  dayDiff,
   parseYmd,
   rateOf,
   recLabel,
@@ -34,7 +38,7 @@ import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS } from "@shared/schema";
-import type { ColorTheme, ImportKind, Routine, Settings } from "@shared/schema";
+import type { ColorTheme, ImportKind, Routine, Session, Settings } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { SiGooglecalendar, SiApple } from "react-icons/si";
@@ -44,7 +48,6 @@ import {
   Check,
   Play,
   Pause,
-  Square,
   RefreshCw,
   Trash2,
   Upload,
@@ -62,20 +65,14 @@ import {
 
 /* ====================== HABITS ====================== */
 const MARK_LABEL = ["not done", "half done", "done"] as const;
-/** empty, half (diagonal / split), or solid */
-export function fillOf(mk: 0 | 1 | 2, color: string, angle = 135) {
-  if (mk === 2) return color;
-  if (mk === 1) return `linear-gradient(${angle}deg, ${color} 50%, transparent 50%)`;
-  return "transparent";
-}
 export function HabitsPage() {
   const { data: items } = useItems();
   const { cycle } = useItemMutations();
   const saveOrder = useSaveSettings();
-  const { openEditor, openDetails } = usePlanner();
+  const { openDetails } = usePlanner();
   const { settings } = useSettings();
   const today = todayStr();
-  const [span, setSpan] = useState(28);
+  const [showOlder, setShowOlder] = useState(false);
   const habits = orderHabits((items ?? []).filter((i) => kindOf(i) === "habit"), settings);
   const dueNow = habits.filter((h) => occursOn(h, today));
   // Today's habits are reordered by dragging; habits not due today keep their slots in the full order.
@@ -86,20 +83,15 @@ export function HabitsPage() {
   };
   const habitById = new Map(habits.map((h) => [h.id, h]));
   const doneToday = dueNow.filter((h) => completionsOf(h).has(today)).length;
-  // newest first, like writing down the page
-  const first = habits.reduce((m, h) => (h.date < m ? h.date : m), today);
-  const all = Math.max(1, Math.round((parseYmd(today).getTime() - parseYmd(first).getTime()) / 864e5) + 1);
-  const days = Array.from({ length: Math.min(span, all) }, (_, n) => addDays(today, -n));
+  // Newest first, like writing down the page. The last week shows; "Show older" reaches back to the oldest mark.
+  const week = addDays(today, -7);
+  const oldest = habits.reduce((m, h) => listOf(h.completions).reduce((o, c) => (c.slice(0, 10) < o ? c.slice(0, 10) : o), m), week);
+  const days = Array.from({ length: dayDiff(showOlder ? oldest : week, today) + 1 }, (_, n) => addDays(today, -n));
   const weekStart = settings.weekStartsOn ?? 0;
 
   return (
     <>
-      <PageHeader title="Habits" sub={dueNow.length ? `${doneToday} of ${dueNow.length} done today` : "Build routines that stick"}>
-        <Button variant="outline" onClick={() => openEditor({ kind: "habit", date: today, recurrence: '{"freq":"daily"}' })} data-testid="button-add-habit">
-          <Plus className="h-4 w-4 mr-1.5" />
-          New habit
-        </Button>
-      </PageHeader>
+      <PageHeader title="Habits" sub={dueNow.length ? `${doneToday} of ${dueNow.length} done today` : "Build routines that stick"} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         {habits.length === 0 ? (
           <Empty
@@ -209,7 +201,7 @@ export function HabitsPage() {
                             </span>
                           </td>
                           {habits.map((h) => {
-                            const due = occursOn(h, d) && d >= h.date;
+                            const due = occursOn(h, d);
                             const mk = markOf(h, d);
                             const hit = mk === 2;
                             return (
@@ -238,12 +230,14 @@ export function HabitsPage() {
                     })}
                   </tbody>
                 </table>
-                {all > span && <div className="flex justify-center pt-2">
-                  <Button variant="ghost" size="sm" onClick={() => setSpan((n) => n + 28)} data-testid="button-habits-more">
-                    Show 4 more weeks
-                  </Button>
-                </div>}
               </div>
+              {oldest < week && (
+                <button type="button" aria-expanded={showOlder} onClick={() => setShowOlder((v) => !v)}
+                  className="w-full border-t px-4 py-2.5 text-center text-xs font-medium text-muted-foreground hover:bg-muted/40"
+                  data-testid="button-habits-show-older">
+                  {showOlder ? "Show less" : "Show older"}
+                </button>
+              )}
             </section>
           </div>
         )}
@@ -269,6 +263,7 @@ export function FocusPage() {
   const { settings } = useSettings();
   const { data: items } = useItems();
   const { data: sessions } = useSessions();
+  const { toast } = useToast();
   const [label, setLabel] = useState("");
   const [duration, setDuration] = useState(String(settings.focusMinutes));
   useEffect(() => setDuration(String(settings.focusMinutes)), [settings.focusMinutes]);
@@ -284,6 +279,10 @@ export function FocusPage() {
   }, [items, today]);
 
   const todays = (sessions ?? []).filter((s) => s.date === today);
+  const [openSession, setOpenSession] = useState<Session | null>(null);
+  const deleteSession = useDeleteSession();
+  const sessionWhen = (s: Session) =>
+    `${new Date(s.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${fmtDur(s.actualSec / 60)}`;
   const totalToday = todays.reduce((a, s) => a + s.actualSec, 0) / 60;
   const week = Array.from({ length: 7 }, (_, n) => addDays(today, n - 6)).map((d) => ({
     d,
@@ -299,8 +298,8 @@ export function FocusPage() {
     <>
       <PageHeader title="Focus" sub={`${fmtDur(totalToday)} focused today · ${todays.length} session${todays.length === 1 ? "" : "s"}`} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
-          <section className="card-md p-6 md:p-10 grid justify-items-center gap-6" aria-label="Timer">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
+          <section className="card-md min-w-0 p-6 md:p-10 grid justify-items-center gap-6" aria-label="Timer">
             <div className="relative">
               <Ring pct={pct} size={260} stroke={10} color={ringColor} />
               <div className="absolute inset-0 grid place-items-center text-center">
@@ -316,24 +315,21 @@ export function FocusPage() {
             </div>
 
             {focus ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button variant="outline" onClick={() => addFocusTime(5)} data-testid="button-timer-add5">
                   +5 min
                 </Button>
                 {focus.runStart ? (
-                  <Button onClick={pauseFocus} data-testid="button-timer-pause">
-                    <Pause className="h-4 w-4 mr-1.5" /> Pause
+                  <Button size="icon" onClick={pauseFocus} aria-label="Pause" title="Pause" data-testid="button-timer-pause">
+                    <Pause className="h-4 w-4" />
                   </Button>
                 ) : (
-                  <Button onClick={resumeFocus} data-testid="button-timer-resume">
-                    <Play className="h-4 w-4 mr-1.5" /> Resume
+                  <Button size="icon" onClick={resumeFocus} aria-label="Resume" title="Resume" data-testid="button-timer-resume">
+                    <Play className="h-4 w-4" />
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => stopFocus(true)} data-testid="button-timer-finish">
-                  <Check className="h-4 w-4 mr-1.5" /> Finish
-                </Button>
-                <Button variant="ghost" onClick={() => stopFocus(false)} aria-label="Stop" data-testid="button-timer-stop">
-                  <Square className="h-4 w-4" />
+                <Button variant="outline" size="icon" onClick={() => stopFocus(true)} aria-label="Finish" title="Finish" data-testid="button-timer-finish">
+                  <Check className="h-4 w-4" />
                 </Button>
               </div>
             ) : (
@@ -440,17 +436,36 @@ export function FocusPage() {
               ) : (
                 <ul className="pb-2">
                   {todays.map((s) => (
-                    <li key={s.id} className="flex items-center gap-2 px-4 py-1.5 text-sm" data-testid={`row-session-${s.id}`}>
-                      <Timer className="h-3.5 w-3.5 text-[hsl(var(--k-focus))]" />
-                      <span className="truncate flex-1">{s.title}</span>
-                      <span className="text-xs text-muted-foreground tnum">
-                        {new Date(s.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · {fmtDur(s.actualSec / 60)}
-                      </span>
+                    <li key={s.id}>
+                      <button type="button" onClick={() => setOpenSession(s)} className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-sm hover:bg-muted/50" data-testid={`row-session-${s.id}`}>
+                        <Timer className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--k-focus))]" />
+                        <span className="truncate flex-1">{s.title}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground tnum">{sessionWhen(s)}</span>
+                      </button>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
+            {/* A logged session opens a window where it can be deleted. */}
+            <Dialog open={!!openSession} onOpenChange={(o) => !o && setOpenSession(null)}>
+              <DialogContent className="max-w-sm" data-testid="dialog-session">
+                <DialogHeader className="pr-8 text-left">
+                  <DialogTitle className="min-w-0 break-words">{openSession?.title}</DialogTitle>
+                  <DialogDescription>{openSession && sessionWhen(openSession)}</DialogDescription>
+                </DialogHeader>
+                <div className="flex justify-end gap-2">
+                  <Button variant="destructive" size="sm" data-testid="button-delete-session" onClick={async () => {
+                    if (!openSession) return;
+                    await deleteSession.mutateAsync(openSession.id);
+                    setOpenSession(null);
+                    toast({ title: "Session deleted" });
+                  }}>
+                    <Trash2 className="h-4 w-4 mr-1.5" /> Delete session
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </aside>
         </div>
       </div>
@@ -460,6 +475,7 @@ export function FocusPage() {
 
 /* ====================== SYNC ====================== */
 const FEED_COLORS = ["#4f6bd8", "#0b8a6a", "#c2562b", "#8a4fd8", "#b8860b", "#d8457a"];
+
 const IMPORT_LABELS: Record<ImportKind, string> = {
   event: "Events",
   task: "Tasks",
@@ -497,6 +513,8 @@ export function CalendarLinks() {
   const [url, setUrl] = useState("");
   const [feedKind, setFeedKind] = useState<"auto" | ImportKind>("auto");
   const [fileKind, setFileKind] = useState<"auto" | ImportKind>("auto");
+  const [feedJournal, setFeedJournal] = useState(false);
+  const [fileJournal, setFileJournal] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -514,6 +532,7 @@ export function CalendarLinks() {
       setBusy(null);
       queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/journal"] });
     }
   };
 
@@ -524,7 +543,7 @@ export function CalendarLinks() {
       const color = FEED_COLORS[(feeds?.length ?? 0) % FEED_COLORS.length];
       const f = await (await apiRequest("POST", "/api/feeds", {
         name: name.trim() || "Calendar", url: url.trim(), color,
-        importKind: feedKind === "auto" ? null : feedKind,
+        importKind: feedKind === "auto" ? null : feedKind, journalNotes: feedJournal,
       })).json();
       queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
       setUrl("");
@@ -544,9 +563,10 @@ export function CalendarLinks() {
     try {
       const ics = await file.text();
       const r = await (await apiRequest("POST", "/api/import", {
-        ics, tz: TZ, importKind: fileKind === "auto" ? null : fileKind,
+        ics, tz: TZ, importKind: fileKind === "auto" ? null : fileKind, journalNotes: fileJournal,
       })).json();
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/journal"] });
       toast({ title: "Import complete", description: `${r.imported} items added from ${file.name}` });
     } catch (e: any) {
       toast({ title: "Import failed", description: String(e.message).replace(/^\d+: /, ""), variant: "destructive" });
@@ -567,16 +587,15 @@ export function CalendarLinks() {
   };
   return (
     <>
-          <section className="card-md p-5 grid gap-2">
+          <section className="grid gap-1">
             <h2 className="text-sm font-semibold">Your calendar stays on this phone</h2>
             <p className="text-sm text-muted-foreground">You can import subscribed calendars and save an iCal file below. A phone-only calendar cannot provide a public subscription URL that Google Calendar can reach.</p>
           </section>
           {/* subscribe */}
-          <section id="calendars" className="card-md p-5 grid gap-4 content-start">
-            <div className="flex items-center gap-2">
-              <RefreshCw className="h-4 w-4 text-primary" />
+          <section id="calendars" className="grid min-w-0 grid-cols-1 gap-3 border-t pt-4">
+            <div>
               <h2 className="text-sm font-semibold">Connected calendars</h2>
-              <span className="ml-auto text-xs text-muted-foreground">Auto-syncs every 15 min while open</span>
+              <p className="text-xs text-muted-foreground">Auto-syncs every 15 min while open</p>
             </div>
 
             <div className="rounded-md bg-muted/60 p-4 text-sm grid gap-2">
@@ -595,8 +614,8 @@ export function CalendarLinks() {
                 <li>Under “Settings for my calendars”, pick your calendar → “Integrate calendar”.</li>
                 <li>Copy the <span className="text-foreground font-medium">Secret address in iCal format</span> and paste it below.</li>
               </ol>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
-              <SiApple className="h-3.5 w-3.5" /> Add an internet-accessible iCal subscription URL, including webcal links. The phone app requires HTTPS. One-time .ics files can be uploaded below.
+              <div className="flex items-start gap-2 text-xs text-muted-foreground pt-1">
+              <SiApple className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Add an internet-accessible iCal subscription URL, including webcal links. The phone app requires HTTPS. One-time .ics files can be uploaded below.
               </div>
             </div>
 
@@ -613,6 +632,8 @@ export function CalendarLinks() {
             </div>
             <div className="flex flex-col sm:flex-row sm:items-end gap-2">
               <ImportTypePicker id="select-feed-import-kind" value={feedKind} onChange={setFeedKind} />
+              {/* Imported events' notes go to the journal only when asked; each item's details can change it later. */}
+              <JournalNotesCheckbox id="checkbox-feed-journal" className="sm:pb-2.5" checked={feedJournal} onChange={setFeedJournal} />
               <Button onClick={addFeed} disabled={!url.trim() || adding} data-testid="button-add-feed">
                 <Link2 className="h-4 w-4 mr-1.5" />
                 {adding ? "Connecting…" : "Connect"}
@@ -620,7 +641,7 @@ export function CalendarLinks() {
             </div>
 
             {feeds && feeds.length > 0 ? (
-              <ul className="grid gap-2">
+              <ul className="grid grid-cols-1 gap-2">
                 {feeds.map((f) => (
                   <li key={f.id} className="flex items-center gap-3 rounded-md border px-3 py-2.5" data-testid={`row-feed-${f.id}`}>
                     <span className="h-3 w-3 rounded-full shrink-0" style={{
@@ -666,17 +687,15 @@ export function CalendarLinks() {
           </section>
 
           {/* import */}
-          <section className="card-md p-5 grid gap-3 content-start">
-            <div className="flex items-center gap-2">
-              <Upload className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Import a file</h2>
-            </div>
+          <section className="grid min-w-0 grid-cols-1 gap-3 border-t pt-4">
+            <h2 className="text-sm font-semibold">Import a file</h2>
             <p className="text-sm text-muted-foreground">
               Upload any .ics file (Google: Settings → Import &amp; export → Export). Imported items are editable in Cadence, and repeating
               items keep their schedule.
             </p>
             <input ref={fileRef} type="file" accept=".ics,text/calendar" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} data-testid="input-file-ics" />
             <ImportTypePicker id="select-file-import-kind" value={fileKind} onChange={setFileKind} />
+            <JournalNotesCheckbox id="checkbox-file-journal" checked={fileJournal} onChange={setFileJournal} />
             <div>
               <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importing} data-testid="button-import">
                 <Upload className="h-4 w-4 mr-1.5" />
@@ -686,11 +705,8 @@ export function CalendarLinks() {
           </section>
 
           {/* export */}
-          <section className="card-md p-5 grid gap-3 content-start">
-            <div className="flex items-center gap-2">
-              <Download className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Export</h2>
-            </div>
+          <section className="grid min-w-0 grid-cols-1 gap-3 border-t pt-4">
+            <h2 className="text-sm font-semibold">Export</h2>
             <p className="text-sm text-muted-foreground">
               Download your {localCount} Cadence items as an .ics file, then import it into Google Calendar (Settings → Import &amp; export → Import).
               Repeats, reminders and notes are included.
@@ -936,28 +952,27 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routine settings" hint="Background time ranges on every day, including past days. These are not events.">
+          <Section title="Routine settings" hint="Background things for every day. Sleeping, eating, grooming...">
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
                   <div className="flex items-center gap-2">
                     <Input className="min-w-0 flex-1 font-medium" value={r.name} aria-label="Routine name"
                       onChange={(e) => updateRoutine(r.id, { name: e.target.value })} data-testid={`input-routine-name-${r.id}`} />
-                    <input type="color" value={r.color} aria-label={`${r.name} color`}
-                      className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border bg-transparent p-1"
-                      onChange={(e) => updateRoutine(r.id, { color: e.target.value })} data-testid={`input-routine-color-${r.id}`} />
                     <Button size="icon" variant="ghost" className="shrink-0" aria-label={`Remove ${r.name} routine`}
                       onClick={() => setDraft((d) => ({ ...d, routines: d.routines.filter((entry) => entry.id !== r.id) }))}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
+                  {/* The same colors as task tags. */}
+                  <ColorSwatches value={r.color} onChange={(color) => updateRoutine(r.id, { color })} />
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="From">
-                      <Input type="time" step={60} value={r.startTime} aria-label={`${r.name} start time`}
+                      <Input type="time" step={60} className="min-w-0" value={r.startTime} aria-label={`${r.name} start time`}
                         onChange={(e) => updateRoutine(r.id, { startTime: e.target.value })} data-testid={`input-routine-start-${r.id}`} />
                     </Field>
                     <Field label="To">
-                      <Input type="time" step={60} value={r.endTime} aria-label={`${r.name} end time`}
+                      <Input type="time" step={60} className="min-w-0" value={r.endTime} aria-label={`${r.name} end time`}
                         onChange={(e) => updateRoutine(r.id, { endTime: e.target.value })} data-testid={`input-routine-end-${r.id}`} />
                     </Field>
                   </div>
@@ -967,16 +982,13 @@ export function SettingsPage() {
               <Button variant="outline" className="justify-self-start" onClick={() => setDraft((d) => ({
                 ...d,
                 routines: [...d.routines, { id: crypto.randomUUID(), name: "New routine", startTime: "09:00", endTime: "10:00",
-                  color: "#5966AD" }],
+                  color: "#3f51b5" }],
               }))} data-testid="button-add-routine"><Plus className="h-4 w-4 mr-1.5" /> Add routine</Button>
             </div>
           </Section>
 
-          <Section title="Sunrise & sunset" hint={`Colors your timeline with the sky. Using ${draft.place || "your location"} (${draft.lat.toFixed(2)}, ${draft.lng.toFixed(2)}).`}>
-            <div className="grid sm:grid-cols-[1fr_140px_140px] gap-3">
-              <Field label="Place">
-                <Input value={draft.place} onChange={(e) => setDraft({ ...draft, place: e.target.value })} data-testid="input-place" />
-              </Field>
+          <Section title="Sunrise & sunset" hint={`Colors your timeline with the sky. Using ${draft.lat.toFixed(2)}, ${draft.lng.toFixed(2)}.`}>
+            <div className="grid grid-cols-2 gap-3">
               <Field label="Latitude">
                 <CoordInput value={draft.lat} limit={90} label="Latitude" onChange={(lat) => setDraft((d) => ({ ...d, lat }))} testId="input-lat" />
               </Field>
@@ -993,7 +1005,7 @@ export function SettingsPage() {
                   setLocating(true);
                   try {
                     const { lat, lng } = await getDeviceLocation();
-                    setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4), place: "My location" }));
+                    setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4) }));
                     toast({ title: "Location found", description: "Your settings will save automatically." });
                   } catch (err) {
                     toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead.` });
@@ -1106,8 +1118,8 @@ export function SettingsPage() {
                   className={cn("inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-foreground capitalize transition-colors", draft.colorTheme === name ? "border-primary bg-primary/10 font-semibold" : "hover:bg-muted")}
                   data-testid={`button-theme-${name}`}>
                   <span className="h-4 w-4 rounded-full" style={{ background: {
-                    tomato: "#cf493e", orange: "#e66b0a", blueberry: "#4d60ab",
-                    plum: "#95549d", avocado: "#6a8229", monochrome: "#62676b",
+                    ribbon: "#cf493e", carrot: "#e66b0a", butter: "#e0a80b", grass: "#6a8229",
+                    denim: "#4d60ab", plum: "#95549d", mouse: "#62676b",
                   }[name] }} />
                   {name}
                 </button>
@@ -1147,13 +1159,13 @@ function Section({ title, hint, children, defaultOpen = false }: { title: string
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && <div id={id} className="grid gap-4 border-t px-4 pb-4 pt-4">{children}</div>}
+      {open && <div id={id} className="grid grid-cols-1 gap-4 border-t px-4 pb-4 pt-4">{children}</div>}
     </section>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid min-w-0 gap-1.5">
       <Label>{label}</Label>
       {children}
     </div>
@@ -1161,8 +1173,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
+    // Wraps the control under the label when a narrow screen (or large text) leaves no room beside it.
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="min-w-0 flex-1 basis-40">
         <div className="text-sm font-medium">{label}</div>
         {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
       </div>

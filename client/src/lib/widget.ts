@@ -4,6 +4,7 @@ import {
   routineSchedules, sunTimes, todayStr, untimedForDay,
 } from "./cal";
 import { dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
+import { firstTagColor } from "@/components/taskTags";
 
 /**
  * The home screen widgets (PanelWidgets.java) can't read the app's database, so the app hands
@@ -31,16 +32,35 @@ const hslToHex = (hsl: string) => {
 const cssVarHex = (name: string) => hslToHex(getComputedStyle(document.documentElement).getPropertyValue(name));
 const hexOf = (i: Item) => (i.color && /^#[0-9a-f]{6}$/i.test(i.color) ? i.color : cssVarHex(KIND_META[kindOf(i)].cssVar));
 
-function theme(settings: Settings) {
-  const dark = settings.appearanceTheme === "dark";
+/** Blends two "#rrggbb" colors: t of the first over the second. */
+const mixHex = (a: string, b: string, t: number) => "#" + [1, 3, 5].map((i) =>
+  Math.round(parseInt(a.slice(i, i + 2), 16) * t + parseInt(b.slice(i, i + 2), 16) * (1 - t)).toString(16).padStart(2, "0")).join("");
+
+/**
+ * The widget colors for light or dark mode. The widgets follow the phone's system setting rather
+ * than the app's, so both are sent; the page's dark class is flipped for the reading and put back
+ * in the same task, so nothing repaints.
+ */
+function themeFor(dark: boolean) {
+  const root = document.documentElement;
+  const was = root.classList.contains("dark");
+  root.classList.toggle("dark", dark);
+  try {
+    return readTheme(dark);
+  } finally {
+    root.classList.toggle("dark", was);
+  }
+}
+
+function readTheme(dark: boolean) {
   const v = (name: string) => cssVarHex(`--${name}`);
   return {
     dark,
     card: v("card"), border: v("border"), foreground: v("foreground"), muted: v("muted"), mutedForeground: v("muted-foreground"),
     primary: v("primary"), destructive: v("destructive"), task: v("k-task"), habit: v("k-habit"), sleep: v("k-sleep"),
     skyNight: v("sky-night"), skyDawn: v("sky-dawn"), skyDay: v("sky-day"), skyDusk: v("sky-dusk"),
-    // The Right now card's warm tint (.wellness-now in index.css).
-    nowCard: dark ? "#3a2c24" : "#fff4e8", nowBorder: dark ? "#5b4131" : "#fbd9b8",
+    // The Right now card's tint of the color theme (.wellness-now in index.css).
+    nowCard: mixHex(v("primary"), v("card"), .16), nowBorder: mixHex(v("primary"), v("card"), dark ? .25 : .35),
   };
 }
 
@@ -60,6 +80,7 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       blocks: layoutBlocks(blocksForDay(items, day)).map(({ b, col, cols }) => ({
         title: b.item.title, start: b.start, end: b.end, fullStart: b.fullStart, fullEnd: b.fullEnd,
         continues: b.continues ?? "", col, cols, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),
+        accent: firstTagColor(b.item, settings) ?? "",
         // The line under the title, as the timeline shows it.
         sub: (b.continues === "before" || b.continues === "through"
           ? b.continues === "through" ? "continues" : "until " + fmtTime(b.item.endTime, true)
@@ -77,6 +98,8 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
         id: i.id, occ, title: i.title, done, overdue,
         due: isDeadlineTask(i) ? `Due ${fmtDate(i.date, { month: "short", day: "numeric" })}` : "",
         high: i.priority === "high",
+        // The first tag's color for the checkbox, or "" for the task yellow.
+        color: firstTagColor(i, settings) ?? "",
         time: isTimed(i) ? fmtTime(i.startTime, true) : "",
         rec: recOf(i).freq !== "none" ? recLabel(i) : "",
       })),
@@ -86,5 +109,5 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       })),
     };
   }
-  return { version: 2, generatedAt: Date.now(), theme: theme(settings), days };
+  return { version: 2, generatedAt: Date.now(), themes: { light: themeFor(false), dark: themeFor(true) }, days };
 }

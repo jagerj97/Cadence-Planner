@@ -1,9 +1,9 @@
-import { DEFAULT_SETTINGS, IMPORT_KINDS } from "@shared/schema";
-import type { Feed, InsertItem, Item, JournalEntry, Session, Settings } from "@shared/schema";
+import { COLOR_THEMES, DEFAULT_SETTINGS, IMPORT_KINDS, RENAMED_THEMES } from "@shared/schema";
+import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, type Session, type Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
-import { addDays, blocksForDay, fmtDur, parseYmd, remindersOf, todayStr } from "./cal";
+import { addDays, blocksForDay, fmtDur, listOf, parseYmd, remindersOf, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -76,9 +76,13 @@ const exclusive = <T>(work: () => Promise<T>): Promise<T> => {
   mutation = next.catch(() => {});
   return next;
 };
+// Current theme names, plus renamed ones that saved settings and backups may still hold.
+const KNOWN_THEMES = new Set<string>([...COLOR_THEMES, ...Object.keys(RENAMED_THEMES)]);
 const pref = async (): Promise<Settings> => {
   const saved = (await read<{ key: string; value: Settings }>("settings", "prefs"))?.value;
-  return { ...DEFAULT_SETTINGS, ...saved };
+  const merged = { ...DEFAULT_SETTINGS, ...saved };
+  // Themes that were renamed carry over to their new names.
+  return { ...merged, colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme };
 };
 const bodyJSON = async (input?: BodyInit | null) => input ? JSON.parse(String(input)) : {};
 const ok = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -103,6 +107,48 @@ const normTags = (body: string, tags: unknown) => {
   }
   return JSON.stringify([...found]);
 };
+/**
+ * An item's notes live on as a journal entry on the day the item begins, tagged with its kind
+ * (#events, #meetings...), except for habits. Saving the item keeps the entry's text, date and tag current, clearing
+ * the notes removes it, and editing the entry in the journal edits the notes. "Show notes in
+ * journal" in the item's details (journalOff) turns this off and on; deleting the entry turns it off.
+ */
+const kindTags = new Set(Object.values(KIND_TAGS));
+async function syncNotes(item: Item, notesChanged: boolean): Promise<Item> {
+  // Habits keep their notes to themselves; an item that becomes a habit gives up its entry.
+  const notes = item.kind === "habit" || item.journalOff ? "" : (item.notes || "").trim();
+  const tag = KIND_TAGS[item.kind as keyof typeof KIND_TAGS] ?? KIND_TAGS.event;
+  const linked = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
+  if (linked) {
+    if (!notes) {
+      await remove("journal", linked.id);
+      return put("items", { ...item, journalId: null });
+    }
+    const tags = normTags(notes, [...(JSON.parse(linked.tags) as string[]).filter((t) => !kindTags.has(t)), tag]);
+    if (linked.body !== notes || linked.date !== item.date || linked.tags !== tags) {
+      await put("journal", { ...linked, body: notes, date: item.date, tags, updatedAt: linked.body !== notes ? new Date().toISOString() : linked.updatedAt });
+    }
+    return item;
+  }
+  if (!notes || !notesChanged) return item;
+  const now = new Date().toISOString();
+  const entry = await put("journal", { date: item.date, body: notes, tags: normTags(notes, [tag]), itemId: item.id, createdAt: now, updatedAt: now });
+  return put("items", { ...item, journalId: entry.id });
+}
+/** Items saved before notes became journal entries get theirs once. */
+const backfillNotes = () => exclusive(async () => {
+  for (const item of await list<Item>("items")) {
+    if (item.journalId === undefined && !item.journalOff && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
+  }
+});
+/** Deletes an item; its notes stay in the journal as a plain entry. */
+async function removeItem(item: Item) {
+  const entry = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
+  if (entry) await put("journal", { ...entry, itemId: null });
+  await remove("items", item.id);
+}
+let notesBackfilled: Promise<void> | null = null;
+
 const normalizedUrl = (raw: string) => {
   const url = new URL(raw.trim().replace(/^webcal:\/\//i, "https://"));
   if (url.protocol !== "https:" || !url.hostname.includes(".") || url.port ||
@@ -202,7 +248,7 @@ function validateBackup(value: unknown): Backup {
         !record(entry.value) || !Array.isArray(entry.value.routines) ||
         !Array.isArray(entry.value.habitOrder) ||
         (entry.value.appearanceTheme !== undefined && !["light", "dark"].includes(entry.value.appearanceTheme)) ||
-        !["tomato", "orange", "blueberry", "plum", "avocado", "monochrome"].includes(entry.value.colorTheme) ||
+        !KNOWN_THEMES.has(entry.value.colorTheme) ||
         entry.value.routines.some((routine: unknown) => !record(routine) ||
           typeof routine.name !== "string" || !routine.name.trim() ||
           typeof routine.startTime !== "string" || typeof routine.endTime !== "string" ||
@@ -257,6 +303,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     catch (cause) { return fail(cause instanceof Error ? cause.message : "Invalid backup", 400); }
     try {
       await exclusive(() => restoreBackup(backup));
+      notesBackfilled = null;
       return ok({ restored: true });
     } catch {
       return fail("Could not restore this backup. Your existing data was not changed.", 500);
@@ -265,20 +312,33 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/items" && method === "GET") return ok(await list<Item>("items"));
   if (path === "/api/items" && method === "POST") {
     if (!validItem(data)) return fail("Enter a valid title, date and time");
-    return ok(await put("items", data));
+    const { journalId: _, ...fresh } = data;
+    return exclusive(async () => ok(await syncNotes(await put("items", fresh), true)));
   }
+  if (path === "/api/items/retag" && method === "POST") return exclusive(async () => {
+    const from = String(data.from || ""), to = data.to ? String(data.to) : null;
+    for (const item of await list<Item>("items")) {
+      const tags = listOf(item.tags);
+      if (!tags.includes(from)) continue;
+      const next = to ? [...new Set(tags.map((t) => (t === from ? to : t)))] : tags.filter((t) => t !== from);
+      await put("items", { ...item, tags: JSON.stringify(next) });
+    }
+    return ok({ ok: true });
+  });
   const itemRoute = /^\/api\/items\/(\d+)(?:\/(toggle|cycle|skip))?$/.exec(path);
   if (itemRoute) return exclusive(async () => {
     const id = Number(itemRoute[1]), item = await read<Item>("items", id);
     if (!item) return fail("Not found", 404);
     if (method === "DELETE" && !itemRoute[2]) {
-      await remove("items", id);
+      await removeItem(item);
       return ok({ ok: true });
     }
     if (method === "PATCH" && !itemRoute[2]) {
-      const merged = { ...item, ...data, ...(item.source.startsWith("feed:") && data.kind && data.kind !== item.kind ? { color: null } : {}) };
+      const merged = { ...item, ...data, journalId: item.journalId, ...(item.source.startsWith("feed:") && data.kind && data.kind !== item.kind ? { color: null } : {}) };
       if (!validItem(merged)) return fail("Enter a valid title, date and time");
-      return ok(await put("items", merged));
+      const notesChanged = typeof data.notes === "string" && data.notes.trim() !== (item.notes || "").trim() ||
+        item.kind === "habit" && merged.kind !== "habit" || data.journalOff === false;
+      return ok(await syncNotes(await put("items", merged), notesChanged));
     }
     if (method !== "POST" || !itemRoute[2]) return fail("Unsupported action", 405);
     const date = item.kind === "task" && item.availableFrom ? item.date : String(data.date || "");
@@ -303,8 +363,9 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/settings" && method === "PUT") {
     const next = { ...await pref(), ...data };
     if (!Array.isArray(next.routines) || !Array.isArray(next.habitOrder) || !Array.isArray(next.hiddenTodayPanels) || !Array.isArray(next.todayPanelOrder) ||
+        !Array.isArray(next.taskTags) || next.taskTags.some((t: any) => typeof t?.name !== "string" || !t.name || !/^#[0-9a-f]{6}$/i.test(t.color)) ||
         !["light", "dark"].includes(next.appearanceTheme) ||
-        !["tomato", "orange", "blueberry", "plum", "avocado", "monochrome"].includes(next.colorTheme) ||
+        !KNOWN_THEMES.has(next.colorTheme) ||
         next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime)) {
       return fail("Check routine settings, theme and habit order");
     }
@@ -317,7 +378,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       if (!data.name?.trim() || data.importKind && !IMPORT_KINDS.includes(data.importKind)) return fail("Choose a valid name and import type");
       return ok(await put("feeds", {
         name: data.name.trim(), url: normalizedUrl(data.url), color: data.color || "#4f6bd8",
-        importKind: data.importKind || null, lastSynced: null, eventCount: 0, lastError: null,
+        importKind: data.importKind || null, lastSynced: null, eventCount: 0, lastError: null, journalNotes: !!data.journalNotes,
       }));
     } catch { return fail("Enter a valid calendar URL"); }
   }
@@ -326,7 +387,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     const id = Number(feedRoute[1]);
     if (method === "DELETE") return exclusive(async () => {
       await remove("feeds", id);
-      for (const item of await list<Item>("items")) if (item.source === `feed:${id}`) await remove("items", item.id);
+      for (const item of await list<Item>("items")) if (item.source === `feed:${id}`) await removeItem(item);
       return ok({ ok: true });
     });
     if (method === "POST" && path.endsWith("/sync")) {
@@ -345,14 +406,15 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             const old = byUid.get(`${fresh.uid || fresh.title}\0${fresh.date}`);
             if (old) {
               seen.add(old.id);
-              await put("items", { ...old, ...fresh, id: old.id, kind: old.kind, color: old.color,
+              const saved = await put("items", { ...old, ...fresh, id: old.id, kind: old.kind, color: old.color, journalOff: old.journalOff,
                 completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && old.availableFrom ? {
                   availableFrom: old.availableFrom, startTime: null, endTime: null, endDate: null, allDay: false,
                 } : {}) });
-            } else await put("items", fresh);
+              await syncNotes(saved, (fresh.notes || "").trim() !== (old.notes || "").trim());
+            } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);
           }
-          for (const old of prior) if (!seen.has(old.id)) await remove("items", old.id);
+          for (const old of prior) if (!seen.has(old.id)) await removeItem(old);
           return ok(await put("feeds", { ...feed, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
         });
       } catch (cause) {
@@ -366,9 +428,9 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     try {
       if (data.importKind && !IMPORT_KINDS.includes(data.importKind)) return fail("Choose a valid import type");
       const rows = parseAndroidIcs(data.ics, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, "import", "map");
-      await exclusive(async () => { for (const item of rows) await put("items", {
-        ...item, kind: data.importKind || item.kind,
-      }); });
+      await exclusive(async () => { for (const item of rows) await syncNotes(await put("items", {
+        ...item, kind: data.importKind || item.kind, journalOff: !data.journalNotes,
+      }) as Item, true); });
       return ok({ imported: rows.length });
     } catch (cause) { return fail("Couldn't read calendar: " + String(cause instanceof Error ? cause.message : cause)); }
   }
@@ -381,7 +443,13 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   }
   if (path === "/api/sessions" && method === "GET") return ok(await list<Session>("sessions"));
   if (path === "/api/sessions" && method === "POST") return ok(await put("sessions", data));
+  const sessionRoute = /^\/api\/sessions\/(\d+)$/.exec(path);
+  if (sessionRoute && method === "DELETE") {
+    await remove("sessions", Number(sessionRoute[1]));
+    return ok({ ok: true });
+  }
   if (path === "/api/journal" && method === "GET") {
+    await (notesBackfilled ??= backfillNotes().catch(() => {}));
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   }
   if (path === "/api/journal" && method === "POST") {
@@ -396,13 +464,23 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (journalRoute) return exclusive(async () => {
     const id = Number(journalRoute[1]), entry = await read<JournalEntry>("journal", id);
     if (!entry) return fail("Not found", 404);
-    if (method === "DELETE") { await remove("journal", id); return ok({ ok: true }); }
-    if (method === "PATCH") return ok(await put("journal", {
-      ...entry, ...data,
-      body: typeof data.body === "string" ? data.body.trim() : entry.body,
-      tags: data.body !== undefined || data.tags ? normTags(data.body ?? "", data.tags ?? JSON.parse(entry.tags)) : entry.tags,
-      updatedAt: new Date().toISOString(),
-    }));
+    const item = entry.itemId ? await read<Item>("items", entry.itemId) : undefined;
+    if (method === "DELETE") {
+      await remove("journal", id);
+      if (item) await put("items", { ...item, journalId: null, journalOff: true });
+      return ok({ ok: true });
+    }
+    if (method === "PATCH") {
+      const saved = await put("journal", {
+        ...entry, ...data, itemId: entry.itemId,
+        body: typeof data.body === "string" ? data.body.trim() : entry.body,
+        tags: data.body !== undefined || data.tags ? normTags(data.body ?? "", data.tags ?? JSON.parse(entry.tags)) : entry.tags,
+        updatedAt: new Date().toISOString(),
+      });
+      // Editing the entry edits the item's notes.
+      if (item && saved.body && saved.body !== item.notes) await put("items", { ...item, notes: saved.body });
+      return ok(saved);
+    }
     return fail("Unsupported action", 405);
   });
   return fail("This feature isn't available offline", 501);

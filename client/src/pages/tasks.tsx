@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { usePlanner } from "@/components/planner";
+import { TagManager, tagTint, taskColor, taskTagsOf } from "@/components/taskTags";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   addDays,
@@ -18,13 +19,14 @@ import {
   recOf,
   toMin,
   todayStr,
+  taskAvailableFrom,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Plus, Check, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag } from "lucide-react";
+import { Plus, Check, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag, Hash, Settings2 } from "lucide-react";
 
 type Row = { i: Item; occ: string; done: boolean };
 type Filter = "today" | "upcoming" | "open" | "done";
@@ -40,11 +42,16 @@ function nextOcc(i: Item, from: string): string | null {
 
 export default function TasksPage() {
   const { data: items, isLoading } = useItems();
-  const { openEditor } = usePlanner();
   const [filter, setFilter] = useState<Filter>("today");
   const [showOlder, setShowOlder] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
+  const { settings: tagSettings } = useSettings();
+  const allTags = tagSettings.taskTags ?? [];
+  // A tag that was deleted stops filtering.
+  const activeTag = tagFilter && allTags.some((t) => t.name === tagFilter) ? tagFilter : null;
   const today = todayStr();
-  const tasks = (items ?? []).filter((i) => kindOf(i) === "task");
+  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && (!activeTag || taskTagsOf(i).includes(activeTag)));
 
   const rows = useMemo(() => {
     const open: Row[] = [];
@@ -86,12 +93,15 @@ export default function TasksPage() {
       push("week", "Next 7 days", week);
       push("later", "Later", later);
     } else if (filter === "open") {
+      // A task you can already do shows under "Before due" only, not again under its due date.
+      const shown = new Set(available);
+      const notShown = (rows: Row[]) => rows.filter((r) => !shown.has(r));
       push("overdue", "Overdue", overdue);
       push("today", "Today", o.filter((r) => r.occ === today));
       push("available", "Before due", available);
-      push("tomorrow", "Tomorrow", tom);
-      push("week", "Next 7 days", week);
-      push("later", "Later", later);
+      push("tomorrow", "Tomorrow", notShown(tom));
+      push("week", "Next 7 days", notShown(week));
+      push("later", "Later", notShown(later));
     } else push("done", "Completed", rows.done);
     return g;
   }, [rows, filter, today]);
@@ -106,12 +116,7 @@ export default function TasksPage() {
 
   return (
     <>
-      <PageHeader title="Tasks" sub={`${rows.open.length} open · ${dueToday} due today`}>
-        <Button variant="outline" onClick={() => openEditor({ kind: "task", date: today })} data-testid="button-new-task">
-          <Plus className="h-4 w-4 mr-1.5" />
-          New task
-        </Button>
-      </PageHeader>
+      <PageHeader title="Tasks" sub={`${rows.open.length} open · ${dueToday} due today`} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="max-w-3xl grid grid-cols-1 gap-4">
           <TaskQuickAdd />
@@ -141,6 +146,33 @@ export default function TasksPage() {
             ))}
           </div>
 
+          {/* Tag filter: tap a tag to show only its tasks, again to show all. */}
+          {allTags.length > 0 && (
+            <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 scroll-thin md:mx-0 md:flex-wrap md:px-0" role="group" aria-label="Filter by tag">
+              {allTags.map((t) => {
+                const on = activeTag === t.name;
+                return (
+                  <button key={t.name} type="button" onClick={() => setTagFilter(on ? null : t.name)} aria-pressed={on}
+                    className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
+                    style={on
+                      ? { background: t.color, borderColor: t.color, color: "white" }
+                      : { ...tagTint(t.color), borderColor: "transparent" }}
+                    data-testid={`filter-task-tag-${t.name}`}>
+                    <Hash className="h-3 w-3" />
+                    {t.name}
+                  </button>
+                );
+              })}
+              <button type="button" onClick={() => setManaging(true)}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                data-testid="button-manage-task-tags">
+                <Settings2 className="h-3.5 w-3.5" />
+                Manage
+              </button>
+            </div>
+          )}
+          <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => tagFilter === from && setTagFilter(to)} />
+
           {isLoading ? (
             <div className="grid gap-2">
               {[0, 1, 2].map((k) => (
@@ -157,7 +189,7 @@ export default function TasksPage() {
             </div>
           ) : (
             groups.map((g) => (
-              <section key={g.key} className="card-md" aria-label={g.label}>
+              <section key={g.key} className={cn("card-md", g.key === "today" && "wellness-tasks")} aria-label={g.label}>
                 <h2 className={cn("flex items-center justify-between px-4 pt-3 pb-1.5 text-sm font-semibold", g.key === "overdue" && "text-destructive")}>
                   {g.label}
                   <span className="text-xs font-normal text-muted-foreground tnum">{g.rows.length}</span>
@@ -209,7 +241,7 @@ function TaskRow({ r }: { r: Row }) {
       <button
         onClick={() => toggle.mutate({ id: i.id, date: recOf(i).freq === "none" ? i.date : occ })}
         className="h-5 w-5 shrink-0 rounded-md grid place-items-center border-[1.5px] transition-colors"
-        style={{ borderColor: "hsl(var(--k-task))", background: done ? "hsl(var(--k-task))" : "transparent" }}
+        style={{ borderColor: taskColor(i, settings), background: done ? taskColor(i, settings) : "transparent" }}
         aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`}
         data-testid={`button-toggle-task-${i.id}`}
       >
@@ -278,6 +310,7 @@ function TaskQuickAdd() {
         endTime: p.endTime,
         recurrence: JSON.stringify(p.recurrence),
         reminder: p.startTime ? settings.defaultReminder : null,
+        availableFrom: taskAvailableFrom(p.date, p.startTime, p.recurrence.freq),
         priority: high ? "high" : "normal",
       }),
     );
@@ -291,8 +324,8 @@ function TaskQuickAdd() {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && submit()}
-        placeholder="Add a task — “Submit report tomorrow 2pm !high” or “Water plants every sat”"
-        className="border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-11"
+        placeholder="Play with yarn tomorrow 2pm"
+        className="border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-11"
         aria-label="Add a task"
         data-testid="input-task-quick-add"
       />

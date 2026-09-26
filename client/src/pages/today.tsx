@@ -23,9 +23,10 @@ import {
   toMin,
   todayStr,
   untimedForDay,
+  taskAvailableFrom,
+  fillOf,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
-import { fillOf } from "@/pages/other";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SortableList } from "@/components/sortable";
@@ -33,8 +34,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -61,10 +63,10 @@ export default function Today() {
       el.scrollTop = 0; // other days start at 12am
       return;
     }
-    // Start today at the current hour when the timeline opens (it doesn't follow the clock after that).
-    // 8px is the column's top padding; the extra 16px keeps that hour's label readable above it.
-    const hourY = 8 + new Date().getHours() * HOUR_PX;
-    el.scrollTop = Math.max(0, hourY - 16);
+    // Today opens with the timeline starting 1.5 hours before now (it doesn't follow the clock after
+    // that). 8px is the column's top padding.
+    const now = new Date();
+    el.scrollTop = Math.max(0, 8 + ((now.getHours() * 60 + now.getMinutes() - 90) / 60) * HOUR_PX);
   }, [day, isLoading, shows("schedule")]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
@@ -103,7 +105,7 @@ export default function Today() {
                     key={i.id}
                     onClick={() => openDetails(i, day)}
                     className="rounded-md px-2 py-1 text-xs font-medium hover-elevate"
-                    style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${colorOf(i)}` }}
+                    style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${accentOf(i, settings)}` }}
                     data-testid={`chip-allday-${i.id}`}
                   >
                     {i.title}
@@ -247,6 +249,7 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
       endTime: p.endTime,
       recurrence: JSON.stringify(p.recurrence),
       reminder: p.startTime ? settings.defaultReminder : null,
+      availableFrom: p.kind === "task" ? taskAvailableFrom(p.date, p.startTime, p.recurrence.freq) : null,
     });
     await create.mutateAsync(item);
     toast({ title: `${KIND_META[p.kind].label} added`, description: summary(p) });
@@ -255,14 +258,14 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
   };
   return (
     <div className={cn("relative rounded bg-card text-card-foreground", appbar ? "border" : "card-md")}>
-      <div className="flex items-center gap-2 px-3">
-        <Sparkles className="h-4 w-4 text-primary shrink-0" />
+      <div className={cn("flex items-center", appbar ? "gap-1.5 px-2.5" : "gap-2 px-3")}>
+        <Plus className="h-4 w-4 text-primary shrink-0" />
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="Type it — “Gym 6-7pm every mon wed fri”"
-          className={cn("border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
+          placeholder="#event Catnap every sat 1pm"
+          className={cn("border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
           aria-label="Quick add"
           data-testid="input-quick-add"
         />
@@ -303,6 +306,25 @@ function summary(p: ReturnType<typeof parseQuick>) {
   if (r.freq === "weekdays") parts.push("weekdays");
   if (r.freq === "weekly") parts.push("weekly on " + (r.days || []).map((d) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]).join(", "));
   return parts.join(" · ");
+}
+
+/** A Today card's header: tapping it opens the card's page; its own buttons keep their taps. */
+function CardHeaderLink({ to, title, testId, children }: { to: string; title: string; testId: string; children: React.ReactNode }) {
+  const [, nav] = useLocation();
+  return (
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={(e) => !(e.target as HTMLElement).closest("button") && nav(to)}
+      onKeyDown={(e) => e.target === e.currentTarget && e.key === "Enter" && nav(to)}
+      className="flex cursor-pointer items-center justify-between rounded-t-[20px] px-4 pt-3 pb-2 hover:bg-muted/40"
+      aria-label={`Open ${title}`}
+      data-testid={testId}
+    >
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <div className="flex items-center gap-2">{children}</div>
+    </div>
+  );
 }
 
 function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: ReturnType<typeof usePlanner>["startFocus"] }) {
@@ -378,15 +400,12 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 
   return (
     <div className="card-md" data-testid="card-tasks">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <h2 className="text-sm font-semibold">Tasks</h2>
-        <div className="flex items-center gap-2">
+      <CardHeaderLink to="/tasks" title="Tasks" testId="link-tasks-page">
           <span className="text-xs text-muted-foreground">{rows.length ? `${left} left` : ""}</span>
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditor({ date: day, kind: "task" })} aria-label="Add task" data-testid="button-add-task">
             <Plus className="h-4 w-4" />
           </Button>
-        </div>
-      </div>
+      </CardHeaderLink>
       {rows.length === 0 ? (
         <div className="px-4 pb-4 text-sm text-muted-foreground">No tasks. Type one in the bar above — it lands here if it has no time.</div>
       ) : (
@@ -397,7 +416,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
                 <button
                   onClick={() => toggle.mutate({ id: i.id, date: occ })}
                   className="h-[18px] w-[18px] shrink-0 rounded grid place-items-center border-[1.5px]"
-                  style={{ borderColor: "hsl(var(--k-task))", background: done ? "hsl(var(--k-task))" : "transparent" }}
+                  style={{ borderColor: taskColor(i, settings), background: done ? taskColor(i, settings) : "transparent" }}
                   aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`}
                   data-testid={`button-toggle-task-${i.id}`}
                 >
@@ -445,9 +464,7 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
   const done = habits.filter((h) => completionsOf(h).has(day)).length;
   return (
     <div className="card-md" data-testid="card-habits">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <h2 className="text-sm font-semibold">Habits</h2>
-        <div className="flex items-center gap-2">
+      <CardHeaderLink to="/habits" title="Habits" testId="link-habits-page">
           {habits.length > 0 && (
             <span className="text-xs text-muted-foreground tnum">
               {done}/{habits.length}
@@ -456,8 +473,7 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditor({ date: day, kind: "habit", recurrence: '{"freq":"daily"}' })} aria-label="Add habit" data-testid="button-add-habit">
             <Plus className="h-4 w-4" />
           </Button>
-        </div>
-      </div>
+      </CardHeaderLink>
       {habits.length === 0 ? (
         <div className="px-4 pb-4 text-sm text-muted-foreground">No habits today. Try “Read 20 min every day #habit”.</div>
       ) : (

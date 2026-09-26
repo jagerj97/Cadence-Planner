@@ -216,6 +216,8 @@ final class WidgetDraw {
         int start = b.optInt("start"), end = b.optInt("end");
         int cols = Math.max(1, b.optInt("cols", 1)), col = b.optInt("col");
         int color = parse(b.optString("color"), theme.primary);
+        // A tagged task keeps its yellow tint but takes the tag color for its edge and checkbox.
+        int accent = b.optString("accent").isEmpty() ? color : parse(b.optString("accent"), color);
         boolean done = b.optBoolean("done");
         float gap = 4 * d;
         float top = fromBefore ? 0 : start / 60f * hourPx + d;
@@ -237,13 +239,13 @@ final class WidgetDraw {
         canvas.drawRect(rect, paint);
         paint.setColor(alpha(color, "sleep".equals(kind) ? 0.1f : 0.15f));
         canvas.drawRect(rect, paint);
-        paint.setColor(color);
+        paint.setColor(accent);
         canvas.drawRect(left, top, left + 3 * d, top + height, paint);
         if (nowMin >= start && nowMin < end) {
             Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
             ring.setStyle(Paint.Style.STROKE);
             ring.setStrokeWidth(3 * d); // 1.5px visible inside the clip
-            ring.setColor(color);
+            ring.setColor(accent);
             canvas.drawPath(shape, ring);
         }
 
@@ -254,7 +256,7 @@ final class WidgetDraw {
         if (checkable) {
             float box = 16 * d, by = lineTop + 2 * d;
             Paint mark = new Paint(Paint.ANTI_ALIAS_FLAG);
-            mark.setColor(color);
+            mark.setColor(accent);
             if (done) {
                 canvas.drawRoundRect(new RectF(x, by, x + box, by + box), 4 * d, 4 * d, mark);
                 check(canvas, x + box / 2, by + box / 2, box * 0.66f, theme.card, d);

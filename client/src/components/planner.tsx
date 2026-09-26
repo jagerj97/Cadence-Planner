@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Item, InsertItem, Kind, Recurrence } from "@shared/schema";
-import { KINDS } from "@shared/schema";
+import { DEFAULT_SETTINGS, KINDS } from "@shared/schema";
 import { useForm } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   KIND_META,
   DAY_SHORT,
   addDays,
+  availableFromFor,
   blocksForDay,
   dayDiff,
   dow,
@@ -26,7 +27,12 @@ import {
   fmtTime,
   fromMin,
   kindOf,
+  listOf,
   colorOf,
+  completionsOf,
+  fillOf,
+  markOf,
+  occursOn,
   recLabel,
   recOf,
   remindersOf,
@@ -35,7 +41,8 @@ import {
   ymd,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, Timer, X, Link2 } from "lucide-react";
+import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
+import { Check, Plus, Trash2, Timer, X, Link2 } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
@@ -87,7 +94,10 @@ type Ctx = {
   resumeFocus: () => void;
   stopFocus: (completed?: boolean) => void;
   addFocusTime: (min: number) => void;
+  /** Asks whether a change to a repeating item applies to just the one opened or the whole series. */
+  askRepeatScope: () => Promise<RepeatScope | null>;
 };
+type RepeatScope = "one" | "all";
 const PlannerCtx = createContext<Ctx | null>(null);
 export const usePlanner = () => {
   const c = useContext(PlannerCtx);
@@ -95,10 +105,45 @@ export const usePlanner = () => {
   return c;
 };
 
+/**
+ * Saves changes to an item. A repeating item (other than a habit, which always changes as a whole)
+ * opened on a given day asks "Just this one" or "All of them" first. Just this one skips that day in
+ * the series and saves a one-off copy with the changes, keeping that day's check-off. Resolves to
+ * the scope that was saved, or null if the question was dismissed.
+ */
+export function useSaveItem() {
+  const { askRepeatScope } = usePlanner();
+  const { create, update, skip } = useItemMutations();
+  const saveOne = async (series: Item, occDate: string, changes: Partial<InsertItem>) => {
+    const { id: _id, journalId: _journal, ...rest } = series;
+    // The form shows the series' first day; a changed date moves this one there.
+    const date = changes.date && changes.date !== series.date ? changes.date : occDate;
+    const span = dayDiff(changes.date ?? series.date, changes.endDate ?? series.endDate ?? series.date);
+    const marks = listOf(series.completions).filter((c) => c === occDate || c === occDate + "~h");
+    await skip.mutateAsync({ id: series.id, date: occDate });
+    await create.mutateAsync(blankItem({
+      ...rest, ...changes, date, endDate: addDays(date, Math.max(0, span)),
+      recurrence: '{"freq":"none"}', exceptions: "[]", uid: null, source: "local",
+      completions: JSON.stringify(marks.map((c) => c.replace(occDate, date))),
+      // The series already keeps these notes in the journal.
+      journalOff: (changes.notes ?? series.notes).trim() === series.notes.trim() ? true : undefined,
+    }));
+  };
+  return async (item: Item, changes: Partial<InsertItem>, occDate?: string): Promise<RepeatScope | null> => {
+    if (occDate && recOf(item).freq !== "none" && item.kind !== "habit" && (changes.kind ?? item.kind) !== "habit") {
+      const scope = await askRepeatScope();
+      if (scope === "one") await saveOne(item, occDate, changes);
+      if (scope === "all") await update.mutateAsync({ id: item.id, ...changes });
+      return scope;
+    }
+    await update.mutateAsync({ id: item.id, ...changes });
+    return "all";
+  };
+}
+
 export function PlannerProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() =>
-    window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-  );
+  // Dark is the default until saved settings say otherwise.
+  const [theme, setTheme] = useState<Theme>("dark");
   const [themeLoaded, setThemeLoaded] = useState(false);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -114,7 +159,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     }
   }, [savedSettings?.appearanceTheme]);
   useEffect(() => {
-    document.documentElement.dataset.colorTheme = settings.colorTheme || "orange";
+    document.documentElement.dataset.colorTheme = settings.colorTheme || DEFAULT_SETTINGS.colorTheme;
   }, [settings.colorTheme]);
 
   /* editor */
@@ -122,6 +167,12 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const [details, setDetails] = useState<{ target: Item; occDate?: string } | null>(null);
   const openEditor = useCallback((target: Item | Partial<InsertItem>, occDate?: string) => setEditing({ target, occDate }), []);
   const openDetails = useCallback((target: Item, occDate?: string) => setDetails({ target, occDate }), []);
+  const [scopeAsk, setScopeAsk] = useState<{ resolve: (scope: RepeatScope | null) => void } | null>(null);
+  const askRepeatScope = useCallback(() => new Promise<RepeatScope | null>((resolve) => setScopeAsk({ resolve })), []);
+  const answerScope = (scope: RepeatScope | null) => {
+    scopeAsk?.resolve(scope);
+    setScopeAsk(null);
+  };
 
   /* focus */
   const [focus, setFocus] = useState<FocusState | null>(() => {
@@ -343,6 +394,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     resumeFocus,
     stopFocus,
     addFocusTime,
+    askRepeatScope,
   };
 
   return (
@@ -360,30 +412,99 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         }}
       />
       <ItemEditor editing={editing} onClose={() => setEditing(null)} />
+      <Dialog open={!!scopeAsk} onOpenChange={(o) => !o && answerScope(null)}>
+        <DialogContent hideClose className="max-w-sm" data-testid="dialog-repeat-scope">
+          <DialogHeader className="text-left">
+            <DialogTitle>You're editing a repeating item</DialogTitle>
+            <DialogDescription className="sr-only">Change just this one, or every time it repeats</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => answerScope("one")} data-testid="button-scope-one">Just this one</Button>
+            <Button size="sm" onClick={() => answerScope("all")} data-testid="button-scope-all">All of them</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PlannerCtx.Provider>
+  );
+}
+
+/** "Show notes in journal", for an item's details and for calendar imports. */
+export function JournalNotesCheckbox({ id, checked, onChange, className }: { id: string; checked: boolean; onChange: (on: boolean) => void; className?: string }) {
+  return (
+    <label className={cn("flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground", className)}>
+      <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid={id} />
+      Show notes in journal
+    </label>
+  );
+}
+
+/** The details window's checkbox for a task, or check circle for a habit, for one day. */
+function DetailCheck({ item: i, day }: { item: Item; day: string }) {
+  const { toggle, cycle } = useItemMutations();
+  const { settings } = useSettings();
+  if (i.kind === "task") {
+    const done = completionsOf(i).has(day);
+    const c = taskColor(i, settings);
+    return (
+      <button type="button" onClick={() => toggle.mutate({ id: i.id, date: day })}
+        className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition-colors"
+        style={{ borderColor: c, background: done ? c : "transparent" }}
+        aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`} aria-pressed={done} data-testid="button-detail-check">
+        {done && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
+      </button>
+    );
+  }
+  const mk = markOf(i, day);
+  const c = colorOf(i);
+  return (
+    <button type="button" onClick={() => cycle.mutate({ id: i.id, date: day })}
+      className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 transition-colors"
+      style={{ borderColor: c, background: fillOf(mk, c, 90) }}
+      aria-label={`${i.title}: ${["not done", "half done", "done"][mk]}`} data-testid="button-detail-check">
+      {mk === 2 && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
+    </button>
   );
 }
 
 function ItemDetails({ details, onClose, onEdit }: {
   details: { target: Item; occDate?: string } | null; onClose: () => void; onEdit: () => void;
 }) {
-  const i = details?.target;
+  const { data: items } = useItems();
+  const { update } = useItemMutations();
+  const { settings } = useSettings();
+  // The live copy, so the journal checkbox and check marks reflect what was just saved.
+  const i = details && (items?.find((x) => x.id === details.target.id) ?? details.target);
   const routine = i?.source === "routine";
-  const d = details?.occDate || i?.date || "";
+  // Tasks and habits can be checked off from here, for the day they were opened from.
+  const checkDay = i ? (i.kind === "task" && i.availableFrom ? i.date : details?.occDate || (i.kind === "habit" ? todayStr() : i.date)) : "";
+  const checkable = !!i && !routine && i.id > 0 && (i.kind === "task" || i.kind === "habit") && occursOn(i, checkDay);
+  const tags = i?.kind === "task" ? itemTags(i, settings) : [];
+  // A deadline task shows its due date, whichever day it was opened from.
+  const d = i?.kind === "task" && i.availableFrom ? i.date : details?.occDate || i?.date || "";
   return (
     <Dialog open={!!details} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md" data-testid="dialog-item-details">
+      {/* Long titles, links, and notes wrap anywhere, and the window scrolls rather than growing off screen. */}
+      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto scroll-thin [overflow-wrap:anywhere]" data-testid="dialog-item-details">
         {i && <>
-          <DialogHeader className="pr-8 text-left">
-            <DialogTitle className="text-lg leading-snug">{i.title}</DialogTitle>
-            <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
-          </DialogHeader>
-          <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
-          <div className="grid gap-3 text-sm">
-            <div>
-              <div className="text-xs text-muted-foreground">{routine ? "Every day" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
-              <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
+          <div className="flex items-start gap-3 pr-8">
+            {checkable && <DetailCheck item={i} day={checkDay} />}
+            <DialogHeader className="min-w-0 flex-1 text-left">
+              <DialogTitle className="min-w-0 text-lg leading-snug">{i.title}</DialogTitle>
+              <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
+            </DialogHeader>
+          </div>
+          {tags.length > 0 && (
+            <div className="-mt-1 flex flex-wrap gap-1.5">
+              {tags.map((t) => <TagChip key={t.name} tag={t} />)}
             </div>
+          )}
+          <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
+          <div className="grid grid-cols-1 gap-3 text-sm">
+            {/* A habit has no start date to show, only the day it was opened from. */}
+            {(i.kind !== "habit" || details?.occDate) && <div>
+              <div className="text-xs text-muted-foreground">{routine ? "Every day" : i.kind === "task" && i.availableFrom ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
+              <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
+            </div>}
             {i.startTime && <div>
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date && !routine ? " (ends later)" : ""}</div>
@@ -396,9 +517,12 @@ function ItemDetails({ details, onClose, onEdit }: {
               <div className="text-xs text-muted-foreground">Repeats</div>
               <div>{recLabel(i)}</div>
             </div>}
-            {i.kind === "task" && i.availableFrom && <div className="text-muted-foreground">Available from {fmtDate(i.availableFrom)} · due {fmtDate(i.date)}</div>}
             {i.location && <div className="break-words">{i.location}</div>}
             {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground">{i.notes}</p>}
+            {i.notes?.trim() && !routine && i.kind !== "habit" && i.id > 0 && (
+              <JournalNotesCheckbox id="checkbox-notes-journal" checked={!i.journalOff && i.journalId != null}
+                onChange={(on) => update.mutate({ id: i.id, journalOff: !on })} />
+            )}
             {routine && <p className="text-xs text-muted-foreground">A routine is a background guide, not a calendar event.</p>}
           </div>
           <div className="flex justify-center">
@@ -443,8 +567,24 @@ export const clock = (sec: number) => {
 
 /* ============ item editor ============ */
 type TimeMode = "timed" | "anytime" | "allday" | "deadline";
+/** "Save for tomorrow" and the like: where a habit's repeating count starts instead of today. */
+const NEXT_PERIOD: Partial<Record<Recurrence["freq"], { label: string; date: (today: string) => string }>> = {
+  daily: { label: "tomorrow", date: (d) => addDays(d, 1) },
+  weekly: { label: "next week", date: (d) => addDays(d, 7) },
+  monthly: { label: "next month", date: (d) => shiftYmd(d, 0, 1) },
+  yearly: { label: "next year", date: (d) => shiftYmd(d, 1, 0) },
+};
+/** A date moved by whole years and months, keeping the day of the month where it can. */
+function shiftYmd(d: string, years: number, months: number) {
+  const [y, m, day] = d.split("-").map(Number);
+  const target = new Date(y + years, m - 1 + months, 1);
+  const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  return ymd(new Date(target.getFullYear(), target.getMonth(), Math.min(day, last)));
+}
+
 type FormVals = {
   title: string;
+  tags: string[];
   kind: Kind;
   date: string;
   availableFrom: string;
@@ -480,7 +620,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
   const existing = editing && "id" in editing.target && typeof (editing.target as Item).id === "number" ? (editing.target as Item) : null;
   const { settings } = useSettings();
   const { create, update, remove, skip } = useItemMutations();
-  const { startFocus } = usePlanner();
+  const saveItem = useSaveItem();
   const { toast } = useToast();
 
   const form = useForm<FormVals>({ defaultValues: toForm(blankItem({}), settings.defaultReminder) });
@@ -500,6 +640,14 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 
   const onSubmit = handleSubmit(async (f) => {
     if (!f.title.trim()) return;
+    // A habit has no end date and never stops repeating.
+    if (f.kind === "habit") f = { ...f, endDate: f.date, until: "", freq: f.freq === "none" ? "daily" : f.freq };
+    // Meetings happen within a day (a late one can still run past midnight, set by its times).
+    if (f.kind === "meeting") f = { ...f, endDate: f.date };
+    if (f.kind === "task") {
+      f = { ...f, endDate: f.date };
+      if (f.timeMode === "deadline") f.availableFrom = availableFromFor(f.date, f.availableFrom || todayStr());
+    }
     if (!f.date || (f.timeMode !== "deadline" && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366))) {
       toast({ title: "Check the end date", description: "Choose an end date on or after the start, within one year.", variant: "destructive" });
       return;
@@ -531,13 +679,19 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       extraReminders: JSON.stringify(f.timeMode === "deadline" || f.reminder === "none" ? []
         : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
+      tags: JSON.stringify(f.kind === "task" ? f.tags : []),
       autoTimer: f.timeMode === "timed" && f.kind !== "sleep" && f.autoTimer,
       location: f.location,
       notes: f.notes,
     };
-    if (existing) await update.mutateAsync({ id: existing.id, ...payload });
-    else await create.mutateAsync(blankItem(payload));
-    toast({ title: existing ? "Saved" : "Added to your plan", description: payload.title });
+    if (existing) {
+      const scope = await saveItem(existing, payload, editing?.occDate);
+      if (!scope) return;
+      toast({ title: scope === "one" ? "Saved this one" : "Saved", description: payload.title });
+    } else {
+      await create.mutateAsync(blankItem(payload));
+      toast({ title: "Added to your plan", description: payload.title });
+    }
     onClose();
   });
 
@@ -579,6 +733,10 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   onClick={() => {
                     setValue("kind", k);
                     if (k !== "task" && v.timeMode === "deadline") setValue("timeMode", "anytime");
+                    if (k === "task" && v.timeMode === "anytime" && v.freq === "none") {
+                      setValue("timeMode", "deadline");
+                      setValue("availableFrom", availableFromFor(v.date));
+                    }
                     if (k === "habit" && v.freq === "none") setValue("freq", "daily");
                     if (k === "sleep") {
                       setValue("timeMode", "timed");
@@ -603,21 +761,25 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="f-date">{v.timeMode === "deadline" ? "Due date" : v.freq !== "none" ? "Starts" : "Date"}</Label>
+            {/* Habits repeat forever with no start or end; only a monthly or yearly one needs a day to fall on. */}
+            {(v.kind !== "habit" || v.freq === "monthly" || v.freq === "yearly") && <div className="grid gap-1.5">
+              <Label htmlFor="f-date">{v.timeMode === "deadline" ? "Due date" : v.kind === "habit" ? "Repeats on" : v.freq !== "none" ? "Starts" : "Date"}</Label>
               <Input id="f-date" type="date" {...register("date", {
                 onChange: (e) => {
                   if (v.timeMode !== "deadline" && e.target.value && v.date && v.endDate) setValue("endDate", addDays(e.target.value, dayDiff(v.date, v.endDate)));
                 },
               })} data-testid="input-date" />
-            </div>
+            </div>}
             <div className="grid gap-1.5">
               <Label>When</Label>
               <Select value={v.timeMode} onValueChange={(x) => {
+                // Radix reports "" when the value briefly has no matching option (a new task gets its kind and
+                // "before due date" together); ignore it rather than clearing the choice.
+                if (!x) return;
                 setValue("timeMode", x as TimeMode);
                 if (x === "deadline") {
                   setValue("freq", "none");
-                  setValue("availableFrom", v.availableFrom && v.availableFrom <= v.date ? v.availableFrom : (todayStr() <= v.date ? todayStr() : v.date));
+                  setValue("availableFrom", v.availableFrom && v.availableFrom <= v.date ? v.availableFrom : availableFromFor(v.date));
                 }
               }}>
                 <SelectTrigger data-testid="select-timemode">
@@ -633,12 +795,11 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             </div>
           </div>
 
-          {v.timeMode === "deadline" ? (
-            <div className="grid gap-1.5">
-              <Label htmlFor="f-available-from">Available from</Label>
-              <Input id="f-available-from" type="date" max={v.date} {...register("availableFrom")} data-testid="input-available-from" />
-              <span className="text-xs text-muted-foreground">You can check this task off from this day until its due date. It appears on the calendar on its due date.</span>
-            </div>
+          {/* Tasks only have a due date, and habits and meetings have no end date; a deadline task's first day is set for you. */}
+          {v.kind === "habit" || v.kind === "meeting" ? null : v.kind === "task" ? (
+            v.timeMode === "deadline" && (
+              <span className="-mt-1 text-xs text-muted-foreground">You can check it off any day up to its due date. It shows on the calendar on the due date.</span>
+            )
           ) : (
             <div className="grid gap-1.5">
               <Label htmlFor="f-end-date">End date</Label>
@@ -690,7 +851,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Doesn't repeat</SelectItem>
+                  {v.kind !== "habit" && <SelectItem value="none">Doesn't repeat</SelectItem>}
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekdays">Weekdays (Mon–Fri)</SelectItem>
                   <SelectItem value="weekly">Weekly on…</SelectItem>
@@ -779,7 +940,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
           )}
 
           {v.timeMode !== "deadline" && v.freq !== "none" && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={cn("grid gap-3", v.kind !== "habit" && "grid-cols-2")}>
               <div className="grid gap-1.5">
                 <Label htmlFor="f-interval">Every</Label>
                 <div className="flex items-center gap-2">
@@ -789,10 +950,10 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   </span>
                 </div>
               </div>
-              <div className="grid gap-1.5">
+              {v.kind !== "habit" && <div className="grid gap-1.5">
                 <Label htmlFor="f-until">Repeat until (optional)</Label>
                 <Input id="f-until" type="date" {...register("until")} data-testid="input-until" />
-              </div>
+              </div>}
             </div>
           )}
 
@@ -807,6 +968,13 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
               </span>
               <Switch checked={v.autoTimer} onCheckedChange={(x) => setValue("autoTimer", x)} data-testid="switch-autotimer" />
             </label>
+          )}
+
+          {v.kind === "task" && (
+            <div className="grid gap-1.5">
+              <Label>Tags</Label>
+              <TaskTagField value={v.tags} onChange={(t) => setValue("tags", t)} />
+            </div>
           )}
 
           {v.kind === "task" && (
@@ -870,18 +1038,15 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
               </>
             )}
             <div className="flex-1" />
-            {v.kind !== "sleep" && (
-              <Button
-                type="button"
-                variant="outline"
+            {/* A habit repeating every few days, weeks, months or years can start its count from the next one instead of now. */}
+            {v.kind === "habit" && v.interval > 1 && NEXT_PERIOD[v.freq] && (
+              <Button type="button" variant="outline" disabled={create.isPending || update.isPending} data-testid="button-save-next"
                 onClick={() => {
-                  startFocus({ title: v.title || "Focus", itemId: existing?.id ?? null, minutes: durMin });
-                  onClose();
-                }}
-                data-testid="button-editor-focus"
-              >
-                <Timer className="h-4 w-4 mr-1.5" />
-                Start timer
+                  // Monthly and yearly habits keep their chosen day, a period later; the others start from today.
+                  setValue("date", NEXT_PERIOD[v.freq]!.date(v.freq === "monthly" || v.freq === "yearly" ? v.date : todayStr()));
+                  void onSubmit();
+                }}>
+                Save for {NEXT_PERIOD[v.freq]!.label}
               </Button>
             )}
             <Button type="submit" disabled={create.isPending || update.isPending} data-testid="button-save">
@@ -896,12 +1061,14 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 
 function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const r = recOf(i as Item);
-  const timeMode: TimeMode = i.kind === "task" && i.availableFrom ? "deadline" : i.allDay ? "allday" : i.startTime ? "timed" : "anytime";
+  const isNew = !("id" in i && typeof (i as Item).id === "number");
+  const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || (isNew && !i.startTime && !i.allDay && r.freq === "none"))
+    ? "deadline" : i.allDay ? "allday" : i.startTime ? "timed" : "anytime";
   return {
     title: i.title || "",
     kind: ((KINDS as readonly string[]).includes(i.kind as string) ? i.kind : "event") as Kind,
     date: i.date || todayStr(),
-    availableFrom: i.availableFrom || (todayStr() <= i.date ? todayStr() : i.date),
+    availableFrom: i.availableFrom || availableFromFor(i.date),
     endDate: i.endDate || (i.startTime && i.endTime && toMin(i.endTime) <= toMin(i.startTime) ? addDays(i.date, 1) : i.date),
     timeMode,
     startTime: i.startTime || "09:00",
@@ -913,6 +1080,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     reminder: i.reminder == null ? (i.title ? "none" : defReminder == null ? "none" : String(defReminder)) : String(i.reminder),
     extraReminders: i.reminder == null ? [] : remindersOf(i as Item).filter((n) => n !== i.reminder).map(String),
     priority: i.priority || "normal",
+    tags: taskTagsOf(i),
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
     notes: i.notes || "",

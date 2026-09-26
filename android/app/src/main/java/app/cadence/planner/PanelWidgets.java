@@ -9,6 +9,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.SpannableStringBuilder;
@@ -58,8 +59,16 @@ final class PanelWidgets {
         return days == null ? null : days.optJSONObject(LocalDate.now().toString());
     }
 
-    static WidgetTheme theme(JSONObject snapshot) {
-        return new WidgetTheme(snapshot.optJSONObject("theme"));
+    /** Whether the phone is in dark mode; the widgets follow it rather than the app's own setting. */
+    static boolean systemDark(Context context) {
+        return (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    /** The snapshot's colors for the phone's current light or dark mode (older snapshots have one "theme"). */
+    static WidgetTheme theme(Context context, JSONObject snapshot) {
+        JSONObject themes = snapshot.optJSONObject("themes");
+        if (themes == null) return new WidgetTheme(snapshot.optJSONObject("theme"));
+        return new WidgetTheme(themes.optJSONObject(systemDark(context) ? "dark" : "light"));
     }
 
     /** Saves a new snapshot from the app and redraws every widget. */
@@ -92,11 +101,6 @@ final class PanelWidgets {
         String suffix = h < 12 ? "AM" : "PM";
         int h12 = h % 12 == 0 ? 12 : h % 12;
         return r == 0 ? h12 + " " + suffix : String.format(Locale.US, "%d:%02d %s", h12, r, suffix);
-    }
-
-    static String clock(int minutes) {
-        int m = ((minutes % 1440) + 1440) % 1440, h = m / 60, r = m % 60;
-        return String.format(Locale.US, "%d:%02d %s", h % 12 == 0 ? 12 : h % 12, r, h < 12 ? "AM" : "PM");
     }
 
     static String duration(int minutes) {
@@ -137,7 +141,7 @@ final class PanelWidgets {
 
     static void render(Context context, AppWidgetManager manager, Class<?> provider, int id, boolean full) {
         JSONObject snapshot = snapshot(context);
-        WidgetTheme theme = theme(snapshot);
+        WidgetTheme theme = theme(context, snapshot);
         JSONObject day = today(snapshot);
         RemoteViews views;
         if (provider == Now.class) views = renderNow(context, theme, day);
@@ -154,9 +158,6 @@ final class PanelWidgets {
         paintCard(v, theme, theme.nowCard, theme.nowBorder);
         int now = nowMinutes();
         v.setTextColor(R.id.now_heading, theme.foreground);
-        v.setTextViewText(R.id.now_clock, clock(now));
-        v.setTextColor(R.id.now_clock, theme.mutedForeground);
-        v.setInt(R.id.now_pill, "setColorFilter", theme.dark ? 0x1affffff : 0xb3ffffff);
         v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800001, null));
 
         JSONObject current = null, next = null;
@@ -301,7 +302,14 @@ final class PanelWidgets {
             SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             String today = LocalDate.now().toString();
             boolean newDay = !today.equals(prefs.getString("lastDay", ""));
-            prefs.edit().putString("lastDay", today).apply();
+            // Switching the phone between light and dark redraws everything in the new colors.
+            boolean dark = systemDark(context);
+            boolean modeChanged = prefs.contains("lastDark") && prefs.getBoolean("lastDark", false) != dark;
+            prefs.edit().putString("lastDay", today).putBoolean("lastDark", dark).apply();
+            if (modeChanged) {
+                refreshAll(context, true);
+                return;
+            }
             // Right now every minute; the rest every five minutes or when the day changes.
             if (newDay || LocalTime.now().getMinute() % 5 == 0 || !ACTION_TICK.equals(intent.getAction())) {
                 refreshAll(context, newDay);
@@ -372,7 +380,7 @@ final class PanelWidgets {
         @Override public void onCreate() {}
         @Override public void onDataSetChanged() {
             JSONObject snapshot = snapshot(context);
-            theme = theme(snapshot);
+            theme = theme(context, snapshot);
             JSONObject day = today(snapshot);
             JSONArray list = day == null ? null : day.optJSONArray(tasks ? "tasks" : "habits");
             rows = list == null ? new JSONArray() : list;
@@ -390,7 +398,10 @@ final class PanelWidgets {
             String title = r.optString("title");
             if (tasks) {
                 boolean done = r.optBoolean("done");
-                mark(v, done ? R.drawable.mark_box_done : R.drawable.mark_box, done, theme.task, theme.card);
+                // A tagged task's checkbox takes its tag's color, as in the app.
+                String tagColor = r.optString("color");
+                int box = tagColor.isEmpty() ? theme.task : WidgetDraw.parse(tagColor, theme.task);
+                mark(v, done ? R.drawable.mark_box_done : R.drawable.mark_box, done, box, theme.card);
                 SpannableStringBuilder t = new SpannableStringBuilder(title);
                 if (done) t.setSpan(new StrikethroughSpan(), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 v.setTextViewText(R.id.row_title, t);
@@ -469,7 +480,7 @@ final class PanelWidgets {
         @Override public void onCreate() {}
         @Override public void onDataSetChanged() {
             JSONObject snapshot = snapshot(context);
-            theme = theme(snapshot);
+            theme = theme(context, snapshot);
             day = today(snapshot);
             widthDp = Math.max(160, widthDp(AppWidgetManager.getInstance(context), widgetId, 320) - 4);
             now = nowMinutes();

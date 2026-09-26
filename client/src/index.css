@@ -23,9 +23,10 @@
   --sidebar-accent: 28 100% 94%;
   --sidebar-accent-foreground: 0 0% 13%;
   --sidebar-ring: 25 100% 45%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 13%;
-  --popover-border: 0 0% 88%;
+  /* Pop-up menus share the cards' colors, so they follow the theme with them. */
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
+  --popover-border: var(--border);
   --primary: 25 100% 45%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 93%;
@@ -133,9 +134,10 @@
   --sidebar-accent: 0 0% 20%;
   --sidebar-accent-foreground: 0 0% 93%;
   --sidebar-ring: 26 100% 55%;
-  --popover: 0 0% 18%;
-  --popover-foreground: 0 0% 93%;
-  --popover-border: 0 0% 24%;
+  /* Pop-up menus share the cards' colors, so they follow the theme with them. */
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
+  --popover-border: var(--border);
   --primary: 26 100% 55%;
   --primary-foreground: 0 0% 8%;
   --secondary: 0 0% 20%;
@@ -374,25 +376,27 @@
   color: hsl(var(--appbar-fg));
   border-bottom: 1px solid hsl(var(--border));
 }
-:root[data-color-theme="tomato"] { --primary: 5 65% 42%; --ring: 5 65% 42%; --sidebar-primary: 5 65% 42%; --sidebar-ring: 5 65% 42%; --accent: 6 72% 94%; --accent-foreground: 5 65% 30%; --sidebar-accent: 6 72% 94%; }
-:root[data-color-theme="blueberry"] { --primary: 228 43% 40%; --ring: 228 43% 40%; --sidebar-primary: 228 43% 40%; --sidebar-ring: 228 43% 40%; --accent: 227 57% 94%; --accent-foreground: 228 43% 30%; --sidebar-accent: 227 57% 94%; }
+:root[data-color-theme="ribbon"] { --primary: 5 65% 42%; --ring: 5 65% 42%; --sidebar-primary: 5 65% 42%; --sidebar-ring: 5 65% 42%; --accent: 6 72% 94%; --accent-foreground: 5 65% 30%; --sidebar-accent: 6 72% 94%; }
+:root[data-color-theme="denim"] { --primary: 228 43% 40%; --ring: 228 43% 40%; --sidebar-primary: 228 43% 40%; --sidebar-ring: 228 43% 40%; --accent: 227 57% 94%; --accent-foreground: 228 43% 30%; --sidebar-accent: 227 57% 94%; }
+:root[data-color-theme="butter"] { --primary: 46 96% 46%; --ring: 46 96% 46%; --sidebar-primary: 46 96% 46%; --sidebar-ring: 46 96% 46%; --accent: 48 90% 91%; --accent-foreground: 40 90% 24%; --sidebar-accent: 48 90% 91%; --primary-foreground: 30 20% 10%; --sidebar-primary-foreground: 30 20% 10%; }
 :root[data-color-theme="plum"] { --primary: 291 39% 39%; --ring: 291 39% 39%; --sidebar-primary: 291 39% 39%; --sidebar-ring: 291 39% 39%; --accent: 291 42% 94%; --accent-foreground: 291 39% 29%; --sidebar-accent: 291 42% 94%; }
-:root[data-color-theme="avocado"] { --primary: 82 53% 29%; --ring: 82 53% 29%; --sidebar-primary: 82 53% 29%; --sidebar-ring: 82 53% 29%; --accent: 80 43% 92%; --accent-foreground: 82 53% 23%; --sidebar-accent: 80 43% 92%; }
-:root[data-color-theme="monochrome"] {
+:root[data-color-theme="grass"] { --primary: 82 53% 29%; --ring: 82 53% 29%; --sidebar-primary: 82 53% 29%; --sidebar-ring: 82 53% 29%; --accent: 80 43% 92%; --accent-foreground: 82 53% 23%; --sidebar-accent: 80 43% 92%; }
+:root[data-color-theme="mouse"] {
   --primary: 220 8% 28%; --ring: 220 8% 28%; --sidebar-primary: 220 8% 28%; --sidebar-ring: 220 8% 28%;
   --background: 0 0% 97%; --sidebar: 0 0% 98%; --border: 0 0% 87%; --muted: 0 0% 94%;
   --accent: 0 0% 91%; --accent-foreground: 220 8% 24%; --sidebar-accent: 0 0% 91%;
 }
-.dark[data-color-theme="tomato"] { --primary: 7 76% 70%; --ring: 7 76% 70%; --sidebar-primary: 7 76% 70%; --sidebar-ring: 7 76% 70%; --accent: 6 29% 23%; --accent-foreground: 6 75% 82%; --sidebar-accent: 6 29% 23%; }
-.dark[data-color-theme="blueberry"] { --primary: 228 66% 75%; --ring: 228 66% 75%; --sidebar-primary: 228 66% 75%; --sidebar-ring: 228 66% 75%; --accent: 228 25% 24%; --accent-foreground: 228 77% 85%; --sidebar-accent: 228 25% 24%; }
+.dark[data-color-theme="ribbon"] { --primary: 7 76% 70%; --ring: 7 76% 70%; --sidebar-primary: 7 76% 70%; --sidebar-ring: 7 76% 70%; --accent: 6 29% 23%; --accent-foreground: 6 75% 82%; --sidebar-accent: 6 29% 23%; }
+.dark[data-color-theme="denim"] { --primary: 228 66% 75%; --ring: 228 66% 75%; --sidebar-primary: 228 66% 75%; --sidebar-ring: 228 66% 75%; --accent: 228 25% 24%; --accent-foreground: 228 77% 85%; --sidebar-accent: 228 25% 24%; }
+.dark[data-color-theme="butter"] { --primary: 48 92% 62%; --ring: 48 92% 62%; --sidebar-primary: 48 92% 62%; --sidebar-ring: 48 92% 62%; --accent: 46 28% 21%; --accent-foreground: 48 90% 78%; --sidebar-accent: 46 28% 21%; }
 .dark[data-color-theme="plum"] { --primary: 291 55% 73%; --ring: 291 55% 73%; --sidebar-primary: 291 55% 73%; --sidebar-ring: 291 55% 73%; --accent: 291 25% 24%; --accent-foreground: 291 63% 85%; --sidebar-accent: 291 25% 24%; }
-.dark[data-color-theme="avocado"] { --primary: 80 48% 67%; --ring: 80 48% 67%; --sidebar-primary: 80 48% 67%; --sidebar-ring: 80 48% 67%; --accent: 80 20% 23%; --accent-foreground: 80 50% 81%; --sidebar-accent: 80 20% 23%; }
-.dark[data-color-theme="monochrome"] {
+.dark[data-color-theme="grass"] { --primary: 80 48% 67%; --ring: 80 48% 67%; --sidebar-primary: 80 48% 67%; --sidebar-ring: 80 48% 67%; --accent: 80 20% 23%; --accent-foreground: 80 50% 81%; --sidebar-accent: 80 20% 23%; }
+.dark[data-color-theme="mouse"] {
   --primary: 0 0% 79%; --ring: 0 0% 79%; --sidebar-primary: 0 0% 79%; --sidebar-ring: 0 0% 79%;
   --background: 0 0% 10%; --card: 0 0% 16%; --sidebar: 0 0% 14%; --border: 0 0% 26%; --muted: 0 0% 19%;
   --accent: 0 0% 24%; --accent-foreground: 0 0% 90%; --sidebar-accent: 0 0% 24%;
 }
-.dark[data-color-theme]:not([data-color-theme="orange"]) { --primary-foreground: 23 8% 12%; --sidebar-primary-foreground: 23 8% 12%; }
+.dark[data-color-theme]:not([data-color-theme="carrot"]) { --primary-foreground: 23 8% 12%; --sidebar-primary-foreground: 23 8% 12%; }
 .fab { box-shadow: 0 3px 6px hsl(0 0% 0% / 0.2), 0 3px 6px hsl(0 0% 0% / 0.26); transition: box-shadow .2s, transform .2s; }
 .fab:hover { box-shadow: 0 10px 20px hsl(0 0% 0% / 0.22), 0 6px 6px hsl(0 0% 0% / 0.26); transform: translateY(-1px); }
 .btn-caps { text-transform: none; letter-spacing: .005em; }
@@ -409,13 +413,14 @@
 }
 
 /* Cadence x contemporary wellness: warm brand, airy modules, calm data surfaces. */
+/* The Right now card fades from the chosen color theme (--primary) at its top left, like the Habits card. */
 .wellness-now {
-  background: linear-gradient(115deg, hsl(30 100% 95%), hsl(34 100% 97%) 60%, hsl(0 0% 100%));
-  border-color: hsl(29 90% 88%);
+  background: linear-gradient(145deg, hsl(var(--primary) / .22), transparent 60%), hsl(var(--card));
+  border-color: hsl(var(--primary) / .35);
 }
 .dark .wellness-now {
-  background: linear-gradient(115deg, hsl(23 28% 22%), hsl(23 8% 16%));
-  border-color: hsl(24 30% 28%);
+  background: linear-gradient(145deg, hsl(var(--primary) / .16), transparent 70%), hsl(var(--card));
+  border-color: hsl(var(--primary) / .24);
 }
 .wellness-stat {
   position: relative;
@@ -447,6 +452,15 @@
 .dark .wellness-habits {
   background: linear-gradient(145deg, hsl(155 16% 20%), hsl(var(--card)) 60%);
   border-color: hsl(155 13% 29%);
+}
+/* The Tasks page's Today card, in the task yellow. */
+.wellness-tasks {
+  background: linear-gradient(145deg, hsl(46 90% 93%), hsl(var(--card)) 48%);
+  border-color: hsl(44 60% 84%);
+}
+.dark .wellness-tasks {
+  background: linear-gradient(145deg, hsl(44 24% 20%), hsl(var(--card)) 60%);
+  border-color: hsl(44 18% 29%);
 }
 .wellness-bottom {
   background: hsl(var(--card) / .95);
