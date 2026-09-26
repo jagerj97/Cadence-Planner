@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronLeft, ChevronRight, Hash, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
@@ -156,12 +157,6 @@ function Composer({
   const [body, setBody] = useState(initial);
   const [extra, setExtra] = useState<string[]>(initialTags.filter((t) => !hashtagsIn(initial).includes(t)));
   const ref = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    // Bring the composer into view; the keyboard waits until the user taps it.
-    const f = () => ref.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-    window.addEventListener("cadence:journal-compose", f);
-    return () => window.removeEventListener("cadence:journal-compose", f);
-  }, []);
   const inline = hashtagsIn(body);
   const all = [...new Set([...inline, ...extra])];
   const submit = async () => {
@@ -318,6 +313,13 @@ export default function JournalPage() {
   const { data: entries, isLoading } = useJournal();
   const { create } = useJournalMutations();
   const [q, setQ] = useState("");
+  const [composing, setComposing] = useState(false);
+  // The app bar's + opens the entry window here.
+  useEffect(() => {
+    const f = () => { setQ(""); setComposing(true); };
+    window.addEventListener("cadence:journal-compose", f);
+    return () => window.removeEventListener("cadence:journal-compose", f);
+  }, []);
   const all = entries ?? [];
 
   const dayEntries = all.filter((e) => e.date === day).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -364,9 +366,9 @@ export default function JournalPage() {
       </PageHeader>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4 p-4 md:p-6 max-w-6xl">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4 p-4 md:p-6 max-w-6xl">
           {/* search (top on phones) */}
-          <aside className="grid content-start gap-4 lg:order-2" aria-label="Search and tags">
+          <aside className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-2" aria-label="Search and tags">
             <div className="card-md p-3">
               <div className="flex items-center gap-2 rounded border px-2.5 focus-within:border-primary">
                 <Search className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -431,7 +433,7 @@ export default function JournalPage() {
             )}
           </aside>
 
-          <section className="grid content-start gap-4 lg:order-1" aria-label="Entries">
+          <section className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">
             {query ? (
               <>
                 <div className="flex items-center gap-2 text-sm">
@@ -448,13 +450,32 @@ export default function JournalPage() {
               </>
             ) : (
               <>
-                <div className="card-md p-4">
-                  <Composer
-                    submitLabel="Add entry"
-                    busy={create.isPending}
-                    onSubmit={(body, tags) => create.mutateAsync({ date: day, body, tags })}
-                  />
-                </div>
+                {/* Looks like the Tasks page's add field; tapping it opens the entry window. */}
+                <button type="button" onClick={() => setComposing(true)}
+                  className="flex w-full items-center gap-2 card-md px-3 h-11 text-left text-base text-muted-foreground"
+                  data-testid="button-journal-new">
+                  <Plus className="h-4 w-4 text-primary shrink-0" />
+                  <span className="truncate">Write an entry…</span>
+                </button>
+                <Dialog open={composing} onOpenChange={setComposing}>
+                  <DialogContent className="max-w-lg" data-testid="dialog-journal-new"
+                    // Start typing right away.
+                    onOpenAutoFocus={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).querySelector("textarea")?.focus(); }}>
+                    <DialogHeader className="text-left">
+                      <DialogTitle>New entry</DialogTitle>
+                      <DialogDescription>{fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}</DialogDescription>
+                    </DialogHeader>
+                    <Composer
+                      submitLabel="Add entry"
+                      busy={create.isPending}
+                      onCancel={() => setComposing(false)}
+                      onSubmit={async (body, tags) => {
+                        await create.mutateAsync({ date: day, body, tags });
+                        setComposing(false);
+                      }}
+                    />
+                  </DialogContent>
+                </Dialog>
                 {isLoading ? (
                   <Skeleton className="h-24" />
                 ) : dayEntries.length === 0 ? (
