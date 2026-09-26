@@ -18,6 +18,7 @@ import {
   recOf,
   toMin,
   todayStr,
+  taskAvailableFrom,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,12 +87,15 @@ export default function TasksPage() {
       push("week", "Next 7 days", week);
       push("later", "Later", later);
     } else if (filter === "open") {
+      // A task you can already do shows under "Before due" only, not again under its due date.
+      const shown = new Set(available);
+      const notShown = (rows: Row[]) => rows.filter((r) => !shown.has(r));
       push("overdue", "Overdue", overdue);
       push("today", "Today", o.filter((r) => r.occ === today));
       push("available", "Before due", available);
-      push("tomorrow", "Tomorrow", tom);
-      push("week", "Next 7 days", week);
-      push("later", "Later", later);
+      push("tomorrow", "Tomorrow", notShown(tom));
+      push("week", "Next 7 days", notShown(week));
+      push("later", "Later", notShown(later));
     } else push("done", "Completed", rows.done);
     return g;
   }, [rows, filter, today]);
@@ -278,6 +282,7 @@ function TaskQuickAdd() {
         endTime: p.endTime,
         recurrence: JSON.stringify(p.recurrence),
         reminder: p.startTime ? settings.defaultReminder : null,
+        availableFrom: taskAvailableFrom(p.date, p.startTime, JSON.stringify(p.recurrence)),
         priority: high ? "high" : "normal",
       }),
     );

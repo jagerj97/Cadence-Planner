@@ -23,6 +23,7 @@ import {
   toMin,
   todayStr,
   untimedForDay,
+  taskAvailableFrom,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
 import { fillOf } from "@/pages/other";
@@ -247,6 +248,7 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
       endTime: p.endTime,
       recurrence: JSON.stringify(p.recurrence),
       reminder: p.startTime ? settings.defaultReminder : null,
+      availableFrom: p.kind === "task" ? taskAvailableFrom(p.date, p.startTime, JSON.stringify(p.recurrence)) : null,
     });
     await create.mutateAsync(item);
     toast({ title: `${KIND_META[p.kind].label} added`, description: summary(p) });

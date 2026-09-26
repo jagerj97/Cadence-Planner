@@ -369,7 +369,8 @@ function ItemDetails({ details, onClose, onEdit }: {
 }) {
   const i = details?.target;
   const routine = i?.source === "routine";
-  const d = details?.occDate || i?.date || "";
+  // A deadline task shows its due date, whichever day it was opened from.
+  const d = i?.kind === "task" && i.availableFrom ? i.date : details?.occDate || i?.date || "";
   return (
     <Dialog open={!!details} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md" data-testid="dialog-item-details">
@@ -381,7 +382,7 @@ function ItemDetails({ details, onClose, onEdit }: {
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
           <div className="grid gap-3 text-sm">
             <div>
-              <div className="text-xs text-muted-foreground">{routine ? "Every day" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
+              <div className="text-xs text-muted-foreground">{routine ? "Every day" : i.kind === "task" && i.availableFrom ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
               <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
             </div>
             {i.startTime && <div>
@@ -396,7 +397,6 @@ function ItemDetails({ details, onClose, onEdit }: {
               <div className="text-xs text-muted-foreground">Repeats</div>
               <div>{recLabel(i)}</div>
             </div>}
-            {i.kind === "task" && i.availableFrom && <div className="text-muted-foreground">Available from {fmtDate(i.availableFrom)} · due {fmtDate(i.date)}</div>}
             {i.location && <div className="break-words">{i.location}</div>}
             {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground">{i.notes}</p>}
             {routine && <p className="text-xs text-muted-foreground">A routine is a background guide, not a calendar event.</p>}
@@ -480,7 +480,6 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
   const existing = editing && "id" in editing.target && typeof (editing.target as Item).id === "number" ? (editing.target as Item) : null;
   const { settings } = useSettings();
   const { create, update, remove, skip } = useItemMutations();
-  const { startFocus } = usePlanner();
   const { toast } = useToast();
 
   const form = useForm<FormVals>({ defaultValues: toForm(blankItem({}), settings.defaultReminder) });
@@ -500,6 +499,13 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 
   const onSubmit = handleSubmit(async (f) => {
     if (!f.title.trim()) return;
+    if (f.kind === "task") {
+      f = { ...f, endDate: f.date };
+      if (f.timeMode === "deadline") {
+        const start = f.availableFrom || todayStr();
+        f.availableFrom = start > f.date ? f.date : start;
+      }
+    }
     if (!f.date || (f.timeMode !== "deadline" && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366))) {
       toast({ title: "Check the end date", description: "Choose an end date on or after the start, within one year.", variant: "destructive" });
       return;
@@ -579,6 +585,10 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   onClick={() => {
                     setValue("kind", k);
                     if (k !== "task" && v.timeMode === "deadline") setValue("timeMode", "anytime");
+                    if (k === "task" && v.timeMode === "anytime" && v.freq === "none") {
+                      setValue("timeMode", "deadline");
+                      setValue("availableFrom", todayStr() <= v.date ? todayStr() : v.date);
+                    }
                     if (k === "habit" && v.freq === "none") setValue("freq", "daily");
                     if (k === "sleep") {
                       setValue("timeMode", "timed");
@@ -614,6 +624,9 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             <div className="grid gap-1.5">
               <Label>When</Label>
               <Select value={v.timeMode} onValueChange={(x) => {
+                // Radix reports "" when the value briefly has no matching option (a new task gets its kind and
+                // "before due date" together); ignore it rather than clearing the choice.
+                if (!x) return;
                 setValue("timeMode", x as TimeMode);
                 if (x === "deadline") {
                   setValue("freq", "none");
@@ -633,12 +646,11 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             </div>
           </div>
 
-          {v.timeMode === "deadline" ? (
-            <div className="grid gap-1.5">
-              <Label htmlFor="f-available-from">Available from</Label>
-              <Input id="f-available-from" type="date" max={v.date} {...register("availableFrom")} data-testid="input-available-from" />
-              <span className="text-xs text-muted-foreground">You can check this task off from this day until its due date. It appears on the calendar on its due date.</span>
-            </div>
+          {/* Tasks only have a due date: no end date, and a deadline task's first day is set for you. */}
+          {v.kind === "task" ? (
+            v.timeMode === "deadline" && (
+              <span className="-mt-1 text-xs text-muted-foreground">You can check it off any day up to its due date. It shows on the calendar on the due date.</span>
+            )
           ) : (
             <div className="grid gap-1.5">
               <Label htmlFor="f-end-date">End date</Label>
@@ -870,20 +882,6 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
               </>
             )}
             <div className="flex-1" />
-            {v.kind !== "sleep" && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  startFocus({ title: v.title || "Focus", itemId: existing?.id ?? null, minutes: durMin });
-                  onClose();
-                }}
-                data-testid="button-editor-focus"
-              >
-                <Timer className="h-4 w-4 mr-1.5" />
-                Start timer
-              </Button>
-            )}
             <Button type="submit" disabled={create.isPending || update.isPending} data-testid="button-save">
               {existing ? "Save" : "Add"}
             </Button>
@@ -896,7 +894,9 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 
 function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const r = recOf(i as Item);
-  const timeMode: TimeMode = i.kind === "task" && i.availableFrom ? "deadline" : i.allDay ? "allday" : i.startTime ? "timed" : "anytime";
+  const isNew = !("id" in i && typeof (i as Item).id === "number");
+  const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || (isNew && !i.startTime && !i.allDay && recOf(i as Item).freq === "none"))
+    ? "deadline" : i.allDay ? "allday" : i.startTime ? "timed" : "anytime";
   return {
     title: i.title || "",
     kind: ((KINDS as readonly string[]).includes(i.kind as string) ? i.kind : "event") as Kind,

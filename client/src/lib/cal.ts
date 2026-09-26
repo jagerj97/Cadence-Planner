@@ -238,6 +238,14 @@ export function isTimed(i: Item) {
 export function isDeadlineTask(i: Item) {
   return i.kind === "task" && !!i.availableFrom;
 }
+/**
+ * Tasks default to "anytime before the due date". They only ask for a due date; the first day they can be
+ * checked off is today (or the due date, if that's earlier). Timed or repeating tasks can't be deadline tasks.
+ */
+export function taskAvailableFrom(due: string, startTime?: string | null, recurrence?: string | null): string | null {
+  if (startTime || (recurrence && JSON.parse(recurrence).freq !== "none")) return null;
+  return todayStr() <= due ? todayStr() : due;
+}
 export function canDoTaskOn(i: Item, day: string) {
   return isDeadlineTask(i) && i.availableFrom! <= day && day <= i.date;
 }
