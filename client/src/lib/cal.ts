@@ -158,21 +158,25 @@ export function routineSchedules(settings: Settings): Item[] {
   }));
 }
 
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+
 export function occursOn(i: Item, d: string): boolean {
   const r = recOf(i);
   // The schedule in Settings describes every night, including nights before it was saved.
   if ((i.uid === "cadence:sleep-schedule" || i.uid?.startsWith("cadence:routine:")) && i.kind === "sleep" && r.freq === "daily") {
     return !exceptionsOf(i).has(d);
   }
-  if (d < i.date) return false;
-  if (r.until && d > r.until) return false;
+  // Habits have no start or end: their pattern runs back and forward forever, anchored on their date.
+  const habit = i.kind === "habit";
+  if (!habit && d < i.date) return false;
+  if (!habit && r.until && d > r.until) return false;
   if (r.freq !== "none" && exceptionsOf(i).has(d)) return false;
   const iv = Math.max(1, r.interval || 1);
   switch (r.freq) {
     case "none":
       return d === i.date;
     case "daily":
-      return dayDiff(i.date, d) % iv === 0;
+      return mod(dayDiff(i.date, d), iv) === 0;
     case "weekdays": {
       const w = dow(d);
       return w >= 1 && w <= 5;
@@ -181,16 +185,16 @@ export function occursOn(i: Item, d: string): boolean {
       const days = r.days && r.days.length ? r.days : [dow(i.date)];
       if (!days.includes(dow(d))) return false;
       const weeks = Math.floor(dayDiff(startOfWeek(i.date), startOfWeek(d)) / 7);
-      return weeks % iv === 0;
+      return mod(weeks, iv) === 0;
     }
     case "monthly": {
       const a = parseYmd(i.date), b = parseYmd(d);
       if (a.getDate() !== b.getDate()) return false;
       const months = (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
-      return months % iv === 0;
+      return mod(months, iv) === 0;
     }
     case "yearly":
-      return i.date.slice(5) === d.slice(5) && (parseYmd(d).getFullYear() - parseYmd(i.date).getFullYear()) % iv === 0;
+      return i.date.slice(5) === d.slice(5) && mod(parseYmd(d).getFullYear() - parseYmd(i.date).getFullYear(), iv) === 0;
   }
   return false;
 }
@@ -323,14 +327,20 @@ export function layoutBlocks(blocks: Block[]) {
 }
 
 
+/** Where a habit's history begins: its date, or its earliest mark if one was logged before that. */
+export function historyStart(i: Item) {
+  const marks = listOf(i.completions) as string[];
+  return marks.reduce((m, c) => (c.slice(0, 10) < m ? c.slice(0, 10) : m), i.date);
+}
 export function streakOf(i: Item, today: string) {
   const done = touchedOf(i);
+  const start = historyStart(i);
   let cur = 0;
   let d = today;
   // today not required to count yet
   if (!done.has(d)) d = addDays(d, -1);
   for (let n = 0; n < 400; n++) {
-    if (d < i.date) break;
+    if (d < start) break;
     if (occursOn(i, d)) {
       if (done.has(d)) cur++;
       else break;
@@ -342,7 +352,7 @@ export function streakOf(i: Item, today: string) {
 export function bestStreak(i: Item, today: string) {
   const done = touchedOf(i);
   let best = 0, cur = 0;
-  let d = i.date;
+  let d = historyStart(i);
   for (let n = 0; n < 800 && d <= today; n++) {
     if (occursOn(i, d)) {
       if (done.has(d)) {
@@ -358,9 +368,10 @@ export function rateOf(i: Item, today: string, days = 30) {
   const done = completionsOf(i);
   const half = partialsOf(i);
   let due = 0, hit = 0;
+  const start = historyStart(i);
   for (let n = 0; n < days; n++) {
     const d = addDays(today, -n);
-    if (d < i.date) break;
+    if (d < start) break;
     if (occursOn(i, d)) {
       due++;
       if (done.has(d)) hit++;

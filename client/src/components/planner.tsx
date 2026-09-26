@@ -382,10 +382,11 @@ function ItemDetails({ details, onClose, onEdit }: {
           </DialogHeader>
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
           <div className="grid grid-cols-1 gap-3 text-sm">
-            <div>
+            {/* A habit has no start date to show, only the day it was opened from. */}
+            {(i.kind !== "habit" || details?.occDate) && <div>
               <div className="text-xs text-muted-foreground">{routine ? "Every day" : i.kind === "task" && i.availableFrom ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
               <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
-            </div>
+            </div>}
             {i.startTime && <div>
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date && !routine ? " (ends later)" : ""}</div>
@@ -500,6 +501,10 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 
   const onSubmit = handleSubmit(async (f) => {
     if (!f.title.trim()) return;
+    // A habit has no end date and never stops repeating.
+    if (f.kind === "habit") f = { ...f, endDate: f.date, until: "", freq: f.freq === "none" ? "daily" : f.freq };
+    // Meetings happen within a day (a late one can still run past midnight, set by its times).
+    if (f.kind === "meeting") f = { ...f, endDate: f.date };
     if (f.kind === "task") {
       f = { ...f, endDate: f.date };
       if (f.timeMode === "deadline") {
@@ -614,14 +619,15 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="f-date">{v.timeMode === "deadline" ? "Due date" : v.freq !== "none" ? "Starts" : "Date"}</Label>
+            {/* Habits repeat forever with no start or end; only a monthly or yearly one needs a day to fall on. */}
+            {(v.kind !== "habit" || v.freq === "monthly" || v.freq === "yearly") && <div className="grid gap-1.5">
+              <Label htmlFor="f-date">{v.timeMode === "deadline" ? "Due date" : v.kind === "habit" ? "Repeats on" : v.freq !== "none" ? "Starts" : "Date"}</Label>
               <Input id="f-date" type="date" {...register("date", {
                 onChange: (e) => {
                   if (v.timeMode !== "deadline" && e.target.value && v.date && v.endDate) setValue("endDate", addDays(e.target.value, dayDiff(v.date, v.endDate)));
                 },
               })} data-testid="input-date" />
-            </div>
+            </div>}
             <div className="grid gap-1.5">
               <Label>When</Label>
               <Select value={v.timeMode} onValueChange={(x) => {
@@ -647,8 +653,8 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             </div>
           </div>
 
-          {/* Tasks only have a due date: no end date, and a deadline task's first day is set for you. */}
-          {v.kind === "task" ? (
+          {/* Tasks only have a due date, and habits and meetings have no end date; a deadline task's first day is set for you. */}
+          {v.kind === "habit" || v.kind === "meeting" ? null : v.kind === "task" ? (
             v.timeMode === "deadline" && (
               <span className="-mt-1 text-xs text-muted-foreground">You can check it off any day up to its due date. It shows on the calendar on the due date.</span>
             )
@@ -703,7 +709,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Doesn't repeat</SelectItem>
+                  {v.kind !== "habit" && <SelectItem value="none">Doesn't repeat</SelectItem>}
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekdays">Weekdays (Mon–Fri)</SelectItem>
                   <SelectItem value="weekly">Weekly on…</SelectItem>
@@ -792,7 +798,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
           )}
 
           {v.timeMode !== "deadline" && v.freq !== "none" && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={cn("grid gap-3", v.kind !== "habit" && "grid-cols-2")}>
               <div className="grid gap-1.5">
                 <Label htmlFor="f-interval">Every</Label>
                 <div className="flex items-center gap-2">
@@ -802,10 +808,10 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   </span>
                 </div>
               </div>
-              <div className="grid gap-1.5">
+              {v.kind !== "habit" && <div className="grid gap-1.5">
                 <Label htmlFor="f-until">Repeat until (optional)</Label>
                 <Input id="f-until" type="date" {...register("until")} data-testid="input-until" />
-              </div>
+              </div>}
             </div>
           )}
 

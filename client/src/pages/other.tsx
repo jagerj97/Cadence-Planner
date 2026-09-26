@@ -18,6 +18,7 @@ import {
   markOf,
   occursOn,
   orderHabits,
+  dayDiff,
   parseYmd,
   rateOf,
   recLabel,
@@ -75,7 +76,7 @@ export function HabitsPage() {
   const { openEditor, openDetails } = usePlanner();
   const { settings } = useSettings();
   const today = todayStr();
-  const [span, setSpan] = useState(28);
+  const [showOlder, setShowOlder] = useState(false);
   const habits = orderHabits((items ?? []).filter((i) => kindOf(i) === "habit"), settings);
   const dueNow = habits.filter((h) => occursOn(h, today));
   // Today's habits are reordered by dragging; habits not due today keep their slots in the full order.
@@ -86,10 +87,13 @@ export function HabitsPage() {
   };
   const habitById = new Map(habits.map((h) => [h.id, h]));
   const doneToday = dueNow.filter((h) => completionsOf(h).has(today)).length;
-  // newest first, like writing down the page
-  const first = habits.reduce((m, h) => (h.date < m ? h.date : m), today);
-  const all = Math.max(1, Math.round((parseYmd(today).getTime() - parseYmd(first).getTime()) / 864e5) + 1);
-  const days = Array.from({ length: Math.min(span, all) }, (_, n) => addDays(today, -n));
+  // Newest first, like writing down the page. The last week shows; "Show older" reaches back to the oldest mark.
+  const week = addDays(today, -7);
+  const oldest = habits.reduce((m, h) => {
+    const marks = (JSON.parse(h.completions || "[]") as string[]).map((c) => c.slice(0, 10)).sort();
+    return marks.length && marks[0] < m ? marks[0] : m;
+  }, week);
+  const days = Array.from({ length: dayDiff(showOlder ? oldest : week, today) + 1 }, (_, n) => addDays(today, -n));
   const weekStart = settings.weekStartsOn ?? 0;
 
   return (
@@ -209,7 +213,7 @@ export function HabitsPage() {
                             </span>
                           </td>
                           {habits.map((h) => {
-                            const due = occursOn(h, d) && d >= h.date;
+                            const due = occursOn(h, d);
                             const mk = markOf(h, d);
                             const hit = mk === 2;
                             return (
@@ -238,12 +242,14 @@ export function HabitsPage() {
                     })}
                   </tbody>
                 </table>
-                {all > span && <div className="flex justify-center pt-2">
-                  <Button variant="ghost" size="sm" onClick={() => setSpan((n) => n + 28)} data-testid="button-habits-more">
-                    Show 4 more weeks
-                  </Button>
-                </div>}
               </div>
+              {oldest < week && (
+                <button type="button" aria-expanded={showOlder} onClick={() => setShowOlder((v) => !v)}
+                  className="w-full border-t px-4 py-2.5 text-center text-xs font-medium text-muted-foreground hover:bg-muted/40"
+                  data-testid="button-habits-show-older">
+                  {showOlder ? "Show less" : "Show older"}
+                </button>
+              )}
             </section>
           </div>
         )}
