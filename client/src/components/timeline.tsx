@@ -190,8 +190,8 @@ export function DayColumn({
           role="img"
           aria-label={`${b.item.title} routine, ${fmtTime(b.item.startTime)} to ${fmtTime(b.item.endTime)}`}
           data-testid={`routine-${day}-${b.item.id}-${b.start}`}
-          onClick={(event) => event.stopPropagation()}
-          className="absolute inset-x-0 flex items-start overflow-hidden border-l-2 border-dashed px-1 pt-1 sm:px-2 text-left select-none"
+          // Routines are a background overlay: taps go through to the grid to add an item.
+          className="pointer-events-none absolute inset-x-0 flex items-start overflow-hidden border-l-2 border-dashed px-1 pt-1 sm:px-2 text-left select-none"
           style={{
             top: (b.start / 60) * hourPx,
             height: ((b.end - b.start) / 60) * hourPx,

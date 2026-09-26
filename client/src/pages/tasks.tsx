@@ -41,7 +41,6 @@ function nextOcc(i: Item, from: string): string | null {
 
 export default function TasksPage() {
   const { data: items, isLoading } = useItems();
-  const { openEditor } = usePlanner();
   const [filter, setFilter] = useState<Filter>("today");
   const [showOlder, setShowOlder] = useState(false);
   const today = todayStr();
@@ -110,12 +109,7 @@ export default function TasksPage() {
 
   return (
     <>
-      <PageHeader title="Tasks" sub={`${rows.open.length} open · ${dueToday} due today`}>
-        <Button variant="outline" onClick={() => openEditor({ kind: "task", date: today })} data-testid="button-new-task">
-          <Plus className="h-4 w-4 mr-1.5" />
-          New task
-        </Button>
-      </PageHeader>
+      <PageHeader title="Tasks" sub={`${rows.open.length} open · ${dueToday} due today`} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="max-w-3xl grid grid-cols-1 gap-4">
           <TaskQuickAdd />
