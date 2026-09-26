@@ -298,7 +298,7 @@ function Clamp({ children }: { children: React.ReactNode }) {
       <div
         ref={ref}
         className="overflow-hidden"
-        style={clamped ? { maxHeight: CLAMP_PX, maskImage: "linear-gradient(to bottom, black 55%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, black 55%, transparent)" } : undefined}
+        style={clamped ? { maxHeight: CLAMP_PX, maskImage: "linear-gradient(to bottom, black 72%, rgb(0 0 0 / .2))", WebkitMaskImage: "linear-gradient(to bottom, black 72%, rgb(0 0 0 / .2))" } : undefined}
       >
         {children}
       </div>
