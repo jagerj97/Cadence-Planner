@@ -266,20 +266,17 @@ function EntryCard({ e, onTag, showDate }: { e: JournalEntry; onTag: (t: string)
           }}
         />
       ) : (
-        <div className="grid gap-2.5">
-          <Clamp>
-            <Body text={e.body} onTag={onTag} />
-          </Clamp>
-          <TagChips tags={extraTags} onClick={onTag} item={item} />
-        </div>
+        <Clamp footer={<TagChips tags={extraTags} onClick={onTag} item={item} />}>
+          <Body text={e.body} onTag={onTag} />
+        </Clamp>
       )}
     </article>
   );
 }
 
-/** Long entries show their first few lines, fading out, with a chevron to open the rest. */
+/** Long entries show their first few lines, fading out, with a chevron under their tags to open the rest. */
 const CLAMP_PX = 168;
-function Clamp({ children }: { children: React.ReactNode }) {
+function Clamp({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [long, setLong] = useState(false);
   const [open, setOpen] = useState(false);
@@ -294,17 +291,18 @@ function Clamp({ children }: { children: React.ReactNode }) {
   }, []);
   const clamped = long && !open;
   return (
-    <div className="grid gap-1">
+    <div className="grid gap-2.5">
       <div
         ref={ref}
         className="overflow-hidden"
-        style={clamped ? { maxHeight: CLAMP_PX, maskImage: "linear-gradient(to bottom, black 72%, rgb(0 0 0 / .2))", WebkitMaskImage: "linear-gradient(to bottom, black 72%, rgb(0 0 0 / .2))" } : undefined}
+        style={clamped ? { maxHeight: CLAMP_PX, maskImage: "linear-gradient(to bottom, black 55%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, black 55%, transparent)" } : undefined}
       >
         {children}
       </div>
+      {footer}
       {long && (
         <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={open ? "Show less" : "Show the whole entry"}
-          className="mx-auto grid h-7 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" data-testid="button-entry-expand">
+          className="-mb-3 -mt-2 mx-auto grid h-6 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" data-testid="button-entry-expand">
           <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
         </button>
       )}
