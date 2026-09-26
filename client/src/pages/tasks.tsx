@@ -290,8 +290,8 @@ function TaskQuickAdd() {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && submit()}
-        placeholder="Add a task — “Submit report tomorrow 2pm !high” or “Water plants every sat”"
-        className="border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-11"
+        placeholder="e.g. Submit report tomorrow 2pm !high"
+        className="border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-11"
         aria-label="Add a task"
         data-testid="input-task-quick-add"
       />
