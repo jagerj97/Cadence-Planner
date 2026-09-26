@@ -349,6 +349,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/settings" && method === "PUT") {
     const next = { ...await pref(), ...data };
     if (!Array.isArray(next.routines) || !Array.isArray(next.habitOrder) || !Array.isArray(next.hiddenTodayPanels) || !Array.isArray(next.todayPanelOrder) ||
+        !Array.isArray(next.taskTags) || next.taskTags.some((t: any) => typeof t?.name !== "string" || !t.name || !/^#[0-9a-f]{6}$/i.test(t.color)) ||
         !["light", "dark"].includes(next.appearanceTheme) ||
         !["tomato", "orange", "blueberry", "plum", "avocado", "monochrome"].includes(next.colorTheme) ||
         next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime)) {

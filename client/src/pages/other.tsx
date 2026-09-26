@@ -35,7 +35,8 @@ import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS } from "@shared/schema";
-import type { ColorTheme, ImportKind, Routine, Session, Settings } from "@shared/schema";
+import type { ColorTheme, ImportKind, Routine, Session, Settings, TaskTag } from "@shared/schema";
+import { ColorSwatches, TagChip } from "@/components/taskTags";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { SiGooglecalendar, SiApple } from "react-icons/si";
@@ -1101,6 +1102,10 @@ export function SettingsPage() {
             </div>
           </Section>
 
+          <Section title="Task tags" hint="Colors for task checkboxes. Add tags from a task's window.">
+            <TaskTagSettings tags={draft.taskTags ?? []} onChange={(taskTags) => setDraft({ ...draft, taskTags })} />
+          </Section>
+
           <Section title="Calendar links" hint="Subscribe, connect, import and export calendars">
             <CalendarLinks />
           </Section>
@@ -1160,6 +1165,34 @@ const toM = (t: string) => {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + (m || 0);
 };
+/** Change a task tag's color or delete it (deleted tags drop off their tasks). */
+function TaskTagSettings({ tags, onChange }: { tags: TaskTag[]; onChange: (tags: TaskTag[]) => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  if (!tags.length) return <p className="text-sm text-muted-foreground">No task tags yet. Use “add tag” when adding or editing a task.</p>;
+  return (
+    <ul className="grid grid-cols-1 gap-1">
+      {tags.map((t) => (
+        <li key={t.name} className="grid gap-2 py-1.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <button type="button" onClick={() => setEditing(editing === t.name ? null : t.name)} aria-expanded={editing === t.name}
+              className="flex min-w-0 flex-1 items-center gap-2 text-left" data-testid={`button-edit-task-tag-${t.name}`}>
+              <TagChip tag={t} />
+              <span className="text-xs text-muted-foreground">{editing === t.name ? "Done" : "Change color"}</span>
+            </button>
+            <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Delete tag ${t.name}`}
+              onClick={() => onChange(tags.filter((x) => x.name !== t.name))} data-testid={`button-delete-task-tag-${t.name}`}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+          {editing === t.name && (
+            <ColorSwatches value={t.color} onChange={(color) => onChange(tags.map((x) => (x.name === t.name ? { ...x, color } : x)))} />
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Section({ title, hint, children, defaultOpen = false }: { title: string; hint?: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const id = `section-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;

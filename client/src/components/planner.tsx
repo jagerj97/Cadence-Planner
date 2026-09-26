@@ -27,6 +27,9 @@ import {
   fromMin,
   kindOf,
   colorOf,
+  completionsOf,
+  markOf,
+  occursOn,
   recLabel,
   recOf,
   remindersOf,
@@ -35,7 +38,8 @@ import {
   ymd,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, Timer, X, Link2 } from "lucide-react";
+import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
+import { Check, Plus, Trash2, Timer, X, Link2 } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
@@ -412,10 +416,15 @@ function ItemDetails({ details, onClose, onEdit }: {
   details: { target: Item; occDate?: string } | null; onClose: () => void; onEdit: () => void;
 }) {
   const { data: items } = useItems();
-  const { update } = useItemMutations();
-  // The live copy, so the journal checkbox reflects what was just saved.
+  const { update, toggle, cycle } = useItemMutations();
+  const { settings } = useSettings();
+  // The live copy, so the journal checkbox and check marks reflect what was just saved.
   const i = details && (items?.find((x) => x.id === details.target.id) ?? details.target);
   const routine = i?.source === "routine";
+  // Tasks and habits can be checked off from here, for the day they were opened from.
+  const checkDay = i ? (i.kind === "task" && i.availableFrom ? i.date : details?.occDate || (i.kind === "habit" ? todayStr() : i.date)) : "";
+  const checkable = !!i && !routine && i.id > 0 && (i.kind === "task" || i.kind === "habit") && occursOn(i, checkDay);
+  const tags = i?.kind === "task" ? itemTags(i, settings) : [];
   // A deadline task shows its due date, whichever day it was opened from.
   const d = i?.kind === "task" && i.availableFrom ? i.date : details?.occDate || i?.date || "";
   return (
@@ -423,10 +432,41 @@ function ItemDetails({ details, onClose, onEdit }: {
       {/* Long titles, links, and notes wrap anywhere, and the window scrolls rather than growing off screen. */}
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto scroll-thin [overflow-wrap:anywhere]" data-testid="dialog-item-details">
         {i && <>
-          <DialogHeader className="pr-8 text-left">
-            <DialogTitle className="min-w-0 text-lg leading-snug">{i.title}</DialogTitle>
-            <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
-          </DialogHeader>
+          <div className="flex items-start gap-3 pr-8">
+            {checkable && i.kind === "task" && (() => {
+              const done = completionsOf(i).has(checkDay);
+              const c = taskColor(i, settings);
+              return (
+                <button type="button" onClick={() => toggle.mutate({ id: i.id, date: checkDay })}
+                  className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition-colors"
+                  style={{ borderColor: c, background: done ? c : "transparent" }}
+                  aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`} aria-pressed={done} data-testid="button-detail-check">
+                  {done && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
+                </button>
+              );
+            })()}
+            {checkable && i.kind === "habit" && (() => {
+              const mk = markOf(i, checkDay);
+              const c = colorOf(i);
+              return (
+                <button type="button" onClick={() => cycle.mutate({ id: i.id, date: checkDay })}
+                  className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 transition-colors"
+                  style={{ borderColor: c, background: mk === 2 ? c : mk === 1 ? `linear-gradient(90deg, ${c} 50%, transparent 50%)` : "transparent" }}
+                  aria-label={`${i.title}: ${["not done", "half done", "done"][mk]}`} data-testid="button-detail-check">
+                  {mk === 2 && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
+                </button>
+              );
+            })()}
+            <DialogHeader className="min-w-0 flex-1 text-left">
+              <DialogTitle className="min-w-0 text-lg leading-snug">{i.title}</DialogTitle>
+              <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
+            </DialogHeader>
+          </div>
+          {tags.length > 0 && (
+            <div className="-mt-1 flex flex-wrap gap-1.5">
+              {tags.map((t) => <TagChip key={t.name} tag={t} />)}
+            </div>
+          )}
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
           <div className="grid grid-cols-1 gap-3 text-sm">
             {/* A habit has no start date to show, only the day it was opened from. */}
@@ -501,6 +541,7 @@ export const clock = (sec: number) => {
 type TimeMode = "timed" | "anytime" | "allday" | "deadline";
 type FormVals = {
   title: string;
+  tags: string[];
   kind: Kind;
   date: string;
   availableFrom: string;
@@ -599,6 +640,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       extraReminders: JSON.stringify(f.timeMode === "deadline" || f.reminder === "none" ? []
         : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
+      tags: JSON.stringify(f.kind === "task" ? f.tags : []),
       autoTimer: f.timeMode === "timed" && f.kind !== "sleep" && f.autoTimer,
       location: f.location,
       notes: f.notes,
@@ -897,6 +939,13 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 
           {v.kind === "task" && (
             <div className="grid gap-1.5">
+              <Label>Tags</Label>
+              <TaskTagField value={v.tags} onChange={(t) => setValue("tags", t)} />
+            </div>
+          )}
+
+          {v.kind === "task" && (
+            <div className="grid gap-1.5">
               <Label>Priority</Label>
               <div className="flex gap-1.5">
                 {["low", "normal", "high"].map((p) => (
@@ -987,6 +1036,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     reminder: i.reminder == null ? (i.title ? "none" : defReminder == null ? "none" : String(defReminder)) : String(i.reminder),
     extraReminders: i.reminder == null ? [] : remindersOf(i as Item).filter((n) => n !== i.reminder).map(String),
     priority: i.priority || "normal",
+    tags: taskTagsOf(i),
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
     notes: i.notes || "",

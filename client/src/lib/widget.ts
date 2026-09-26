@@ -4,6 +4,7 @@ import {
   routineSchedules, sunTimes, todayStr, untimedForDay,
 } from "./cal";
 import { dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
+import { itemTags } from "@/components/taskTags";
 
 /**
  * The home screen widgets (PanelWidgets.java) can't read the app's database, so the app hands
@@ -81,6 +82,8 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
         id: i.id, occ, title: i.title, done, overdue,
         due: isDeadlineTask(i) ? `Due ${fmtDate(i.date, { month: "short", day: "numeric" })}` : "",
         high: i.priority === "high",
+        // The first tag's color for the checkbox, or "" for the task yellow.
+        color: itemTags(i, settings)[0]?.color ?? "",
         time: isTimed(i) ? fmtTime(i.startTime, true) : "",
         rec: recOf(i).freq !== "none" ? recLabel(i) : "",
       })),

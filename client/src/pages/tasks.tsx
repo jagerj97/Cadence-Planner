@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { usePlanner } from "@/components/planner";
+import { taskColor } from "@/components/taskTags";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   addDays,
@@ -207,7 +208,7 @@ function TaskRow({ r }: { r: Row }) {
       <button
         onClick={() => toggle.mutate({ id: i.id, date: recOf(i).freq === "none" ? i.date : occ })}
         className="h-5 w-5 shrink-0 rounded-md grid place-items-center border-[1.5px] transition-colors"
-        style={{ borderColor: "hsl(var(--k-task))", background: done ? "hsl(var(--k-task))" : "transparent" }}
+        style={{ borderColor: taskColor(i, settings), background: done ? taskColor(i, settings) : "transparent" }}
         aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`}
         data-testid={`button-toggle-task-${i.id}`}
       >

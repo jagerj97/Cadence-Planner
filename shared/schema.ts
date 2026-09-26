@@ -40,6 +40,8 @@ export type Item = {
   journalId?: number | null;
   /** True when the user chose to keep this item's notes out of the journal. */
   journalOff?: boolean;
+  /** A task's tags (JSON string[] of names from Settings.taskTags). */
+  tags?: string;
 };
 /** A new item: title and date are required, everything else falls back to a default. */
 export type InsertItem = Pick<Item, "title" | "date"> & Partial<Omit<Item, "id" | "title" | "date">>;
@@ -78,6 +80,8 @@ export type JournalEntry = {
   updatedAt: string;
 };
 
+/** A task tag and the color it gives a task's checkbox. */
+export type TaskTag = { name: string; color: string };
 export type Routine = { id: string; name: string; startTime: string; endTime: string; color: string };
 export const COLOR_THEMES = ["tomato", "orange", "blueberry", "plum", "avocado", "monochrome"] as const;
 export type ColorTheme = (typeof COLOR_THEMES)[number];
@@ -101,6 +105,7 @@ export type Settings = {
   habitOrder: number[];
   hiddenTodayPanels: string[]; // Today page panels the user turned off (see TODAY_PANELS)
   todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
+  taskTags: TaskTag[];
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -123,4 +128,5 @@ export const DEFAULT_SETTINGS: Settings = {
   habitOrder: [],
   hiddenTodayPanels: [],
   todayPanelOrder: [],
+  taskTags: [],
 };

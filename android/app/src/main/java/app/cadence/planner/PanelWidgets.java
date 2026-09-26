@@ -382,7 +382,10 @@ final class PanelWidgets {
             String title = r.optString("title");
             if (tasks) {
                 boolean done = r.optBoolean("done");
-                mark(v, done ? R.drawable.mark_box_done : R.drawable.mark_box, done, theme.task, theme.card);
+                // A tagged task's checkbox takes its tag's color, as in the app.
+                String tagColor = r.optString("color");
+                int box = tagColor.isEmpty() ? theme.task : WidgetDraw.parse(tagColor, theme.task);
+                mark(v, done ? R.drawable.mark_box_done : R.drawable.mark_box, done, box, theme.card);
                 SpannableStringBuilder t = new SpannableStringBuilder(title);
                 if (done) t.setSpan(new StrikethroughSpan(), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 v.setTextViewText(R.id.row_title, t);

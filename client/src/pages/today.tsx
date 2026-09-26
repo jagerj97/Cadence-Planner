@@ -34,6 +34,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
 import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
@@ -408,7 +409,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
                 <button
                   onClick={() => toggle.mutate({ id: i.id, date: occ })}
                   className="h-[18px] w-[18px] shrink-0 rounded grid place-items-center border-[1.5px]"
-                  style={{ borderColor: "hsl(var(--k-task))", background: done ? "hsl(var(--k-task))" : "transparent" }}
+                  style={{ borderColor: taskColor(i, settings), background: done ? taskColor(i, settings) : "transparent" }}
                   aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`}
                   data-testid={`button-toggle-task-${i.id}`}
                 >
