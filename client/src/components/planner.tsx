@@ -143,7 +143,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     }
   }, [savedSettings?.appearanceTheme]);
   useEffect(() => {
-    document.documentElement.dataset.colorTheme = settings.colorTheme || "orange";
+    document.documentElement.dataset.colorTheme = settings.colorTheme || "carrot";
   }, [settings.colorTheme]);
 
   /* editor */

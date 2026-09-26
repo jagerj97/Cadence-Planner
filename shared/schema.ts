@@ -83,7 +83,10 @@ export type JournalEntry = {
 /** A task tag and the color it gives a task's checkbox. */
 export type TaskTag = { name: string; color: string };
 export type Routine = { id: string; name: string; startTime: string; endTime: string; color: string };
-export const COLOR_THEMES = ["tomato", "orange", "blueberry", "plum", "avocado", "monochrome"] as const;
+// Red, orange, yellow, green, blue, indigo, violet and grey, each named for a food.
+export const COLOR_THEMES = ["tomato", "carrot", "lemon", "avocado", "blueberry", "blackberry", "plum", "mushroom"] as const;
+/** Theme names from before the full set, and what they became. */
+export const RENAMED_THEMES: Record<string, ColorTheme> = { orange: "carrot", monochrome: "mushroom" };
 export type ColorTheme = (typeof COLOR_THEMES)[number];
 export type Settings = {
   name: string;
@@ -123,7 +126,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lat: 39.7029,
   lng: -75.1118,
   routines: [{ id: "sleep", name: "Sleep", startTime: "23:00", endTime: "07:00", color: "#5966AD" }],
-  colorTheme: "orange",
+  colorTheme: "carrot",
   appearanceTheme: "dark",
   habitOrder: [],
   hiddenTodayPanels: [],

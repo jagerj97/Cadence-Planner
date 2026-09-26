@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, IMPORT_KINDS } from "@shared/schema";
+import { COLOR_THEMES, DEFAULT_SETTINGS, IMPORT_KINDS, RENAMED_THEMES } from "@shared/schema";
 import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, type Session, type Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
@@ -78,7 +78,9 @@ const exclusive = <T>(work: () => Promise<T>): Promise<T> => {
 };
 const pref = async (): Promise<Settings> => {
   const saved = (await read<{ key: string; value: Settings }>("settings", "prefs"))?.value;
-  return { ...DEFAULT_SETTINGS, ...saved };
+  const merged = { ...DEFAULT_SETTINGS, ...saved };
+  // Orange and Monochrome became Carrot and Mushroom.
+  return { ...merged, colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme };
 };
 const bodyJSON = async (input?: BodyInit | null) => input ? JSON.parse(String(input)) : {};
 const ok = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -244,7 +246,7 @@ function validateBackup(value: unknown): Backup {
         !record(entry.value) || !Array.isArray(entry.value.routines) ||
         !Array.isArray(entry.value.habitOrder) ||
         (entry.value.appearanceTheme !== undefined && !["light", "dark"].includes(entry.value.appearanceTheme)) ||
-        !["tomato", "orange", "blueberry", "plum", "avocado", "monochrome"].includes(entry.value.colorTheme) ||
+        ![...COLOR_THEMES, ...Object.keys(RENAMED_THEMES)].includes(entry.value.colorTheme) ||
         entry.value.routines.some((routine: unknown) => !record(routine) ||
           typeof routine.name !== "string" || !routine.name.trim() ||
           typeof routine.startTime !== "string" || typeof routine.endTime !== "string" ||
@@ -351,7 +353,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     if (!Array.isArray(next.routines) || !Array.isArray(next.habitOrder) || !Array.isArray(next.hiddenTodayPanels) || !Array.isArray(next.todayPanelOrder) ||
         !Array.isArray(next.taskTags) || next.taskTags.some((t: any) => typeof t?.name !== "string" || !t.name || !/^#[0-9a-f]{6}$/i.test(t.color)) ||
         !["light", "dark"].includes(next.appearanceTheme) ||
-        !["tomato", "orange", "blueberry", "plum", "avocado", "monochrome"].includes(next.colorTheme) ||
+        ![...COLOR_THEMES, ...Object.keys(RENAMED_THEMES)].includes(next.colorTheme) ||
         next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime)) {
       return fail("Check routine settings, theme and habit order");
     }
