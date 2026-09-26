@@ -73,7 +73,7 @@ export function HabitsPage() {
   const { data: items } = useItems();
   const { cycle } = useItemMutations();
   const saveOrder = useSaveSettings();
-  const { openEditor, openDetails } = usePlanner();
+  const { openDetails } = usePlanner();
   const { settings } = useSettings();
   const today = todayStr();
   const [showOlder, setShowOlder] = useState(false);
@@ -98,12 +98,7 @@ export function HabitsPage() {
 
   return (
     <>
-      <PageHeader title="Habits" sub={dueNow.length ? `${doneToday} of ${dueNow.length} done today` : "Build routines that stick"}>
-        <Button variant="outline" onClick={() => openEditor({ kind: "habit", date: today, recurrence: '{"freq":"daily"}' })} data-testid="button-add-habit">
-          <Plus className="h-4 w-4 mr-1.5" />
-          New habit
-        </Button>
-      </PageHeader>
+      <PageHeader title="Habits" sub={dueNow.length ? `${doneToday} of ${dueNow.length} done today` : "Build routines that stick"} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         {habits.length === 0 ? (
           <Empty
