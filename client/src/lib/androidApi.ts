@@ -428,6 +428,11 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   }
   if (path === "/api/sessions" && method === "GET") return ok(await list<Session>("sessions"));
   if (path === "/api/sessions" && method === "POST") return ok(await put("sessions", data));
+  const sessionRoute = /^\/api\/sessions\/(\d+)$/.exec(path);
+  if (sessionRoute && method === "DELETE") {
+    await remove("sessions", Number(sessionRoute[1]));
+    return ok({ ok: true });
+  }
   if (path === "/api/journal" && method === "GET") {
     await (notesBackfilled ??= backfillNotes().catch(() => {}));
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));

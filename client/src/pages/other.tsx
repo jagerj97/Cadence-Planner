@@ -35,7 +35,7 @@ import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS } from "@shared/schema";
-import type { ColorTheme, ImportKind, Routine, Settings } from "@shared/schema";
+import type { ColorTheme, ImportKind, Routine, Session, Settings } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { SiGooglecalendar, SiApple } from "react-icons/si";
@@ -45,7 +45,6 @@ import {
   Check,
   Play,
   Pause,
-  Square,
   RefreshCw,
   Trash2,
   Upload,
@@ -270,6 +269,7 @@ export function FocusPage() {
   const { settings } = useSettings();
   const { data: items } = useItems();
   const { data: sessions } = useSessions();
+  const { toast } = useToast();
   const [label, setLabel] = useState("");
   const [duration, setDuration] = useState(String(settings.focusMinutes));
   useEffect(() => setDuration(String(settings.focusMinutes)), [settings.focusMinutes]);
@@ -285,6 +285,9 @@ export function FocusPage() {
   }, [items, today]);
 
   const todays = (sessions ?? []).filter((s) => s.date === today);
+  const [openSession, setOpenSession] = useState<Session | null>(null);
+  const sessionWhen = (s: Session) =>
+    `${new Date(s.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${fmtDur(s.actualSec / 60)}`;
   const totalToday = todays.reduce((a, s) => a + s.actualSec, 0) / 60;
   const week = Array.from({ length: 7 }, (_, n) => addDays(today, n - 6)).map((d) => ({
     d,
@@ -332,9 +335,6 @@ export function FocusPage() {
                 )}
                 <Button variant="outline" onClick={() => stopFocus(true)} data-testid="button-timer-finish">
                   <Check className="h-4 w-4 mr-1.5" /> Finish
-                </Button>
-                <Button variant="ghost" onClick={() => stopFocus(false)} aria-label="Stop" data-testid="button-timer-stop">
-                  <Square className="h-4 w-4" />
                 </Button>
               </div>
             ) : (
@@ -441,17 +441,38 @@ export function FocusPage() {
               ) : (
                 <ul className="pb-2">
                   {todays.map((s) => (
-                    <li key={s.id} className="flex items-center gap-2 px-4 py-1.5 text-sm" data-testid={`row-session-${s.id}`}>
-                      <Timer className="h-3.5 w-3.5 text-[hsl(var(--k-focus))]" />
-                      <span className="truncate flex-1">{s.title}</span>
-                      <span className="text-xs text-muted-foreground tnum">
-                        {new Date(s.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · {fmtDur(s.actualSec / 60)}
-                      </span>
+                    <li key={s.id}>
+                      <button type="button" onClick={() => setOpenSession(s)} className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-sm hover:bg-muted/50" data-testid={`row-session-${s.id}`}>
+                        <Timer className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--k-focus))]" />
+                        <span className="truncate flex-1">{s.title}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground tnum">{sessionWhen(s)}</span>
+                      </button>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
+            {/* A logged session opens a window where it can be deleted. */}
+            <Dialog open={!!openSession} onOpenChange={(o) => !o && setOpenSession(null)}>
+              <DialogContent className="max-w-sm" data-testid="dialog-session">
+                <DialogHeader className="pr-8 text-left">
+                  <DialogTitle className="min-w-0 break-words">{openSession?.title}</DialogTitle>
+                  <DialogDescription>{openSession && sessionWhen(openSession)}</DialogDescription>
+                </DialogHeader>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setOpenSession(null)}>Cancel</Button>
+                  <Button variant="destructive" size="sm" data-testid="button-delete-session" onClick={async () => {
+                    if (!openSession) return;
+                    await apiRequest("DELETE", `/api/sessions/${openSession.id}`);
+                    queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+                    setOpenSession(null);
+                    toast({ title: "Session deleted" });
+                  }}>
+                    <Trash2 className="h-4 w-4 mr-1.5" /> Delete session
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </aside>
         </div>
       </div>
