@@ -1,9 +1,13 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Home,
   CalendarRange,
   NotebookPen,
+  CheckSquare as TaskIcon,
+  Calendar as EventIcon,
+  Users,
+  Target,
   Repeat,
   Timer,
   CheckSquare,
@@ -13,7 +17,9 @@ import {
 } from "lucide-react";
 import { usePlanner, clock } from "./planner";
 import { fromMin, todayStr } from "@/lib/cal";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Kind } from "@shared/schema";
+import { QuickAdd } from "@/pages/today";
 import { cn } from "@/lib/utils";
 
 
@@ -59,7 +65,15 @@ function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/** The + opens the new item window set to the kind that fits the page (the journal page writes an entry). */
+const ADD_KINDS: { kind: Kind | "journal"; label: string; icon: typeof Home; color: string }[] = [
+  { kind: "task", label: "Task", icon: TaskIcon, color: "hsl(var(--k-task))" },
+  { kind: "event", label: "Event", icon: EventIcon, color: "hsl(var(--k-event))" },
+  { kind: "meeting", label: "Meeting", icon: Users, color: "hsl(var(--k-meeting))" },
+  { kind: "habit", label: "Habit", icon: Repeat, color: "hsl(var(--k-habit))" },
+  { kind: "focus", label: "Focus", icon: Target, color: "hsl(var(--k-focus))" },
+];
+
+/** Away from Today, the + opens the new item window set to the kind that fits the page. */
 function kindForPage(loc: string): Kind | "journal" {
   if (loc.startsWith("/tasks")) return "task";
   if (loc.startsWith("/habits")) return "habit";
@@ -69,14 +83,16 @@ function kindForPage(loc: string): Kind | "journal" {
 }
 
 function AddMenu() {
+  const [open, setOpen] = useState(false);
   const [loc, nav] = useLocation();
   const { openEditor } = usePlanner();
   const day = loc.startsWith("/day/") ? loc.slice(5) : todayStr();
+  useEffect(() => setOpen(false), [loc]);
 
-  const add = () => {
-    const kind = kindForPage(loc);
+  const pick = (kind: Kind | "journal") => {
+    setOpen(false);
     if (kind === "journal") {
-      nav(loc.startsWith("/journal") ? loc : "/journal");
+      if (!loc.startsWith("/journal")) nav("/journal");
       setTimeout(() => window.dispatchEvent(new Event("cadence:journal-compose")), 80);
       return;
     }
@@ -92,15 +108,54 @@ function AddMenu() {
     });
   };
 
+  // Today keeps the full menu with quick add; other pages go straight to the matching item.
+  const onToday = loc === "/" || loc.startsWith("/day/");
+  if (!onToday) {
+    return (
+      <button
+        onClick={() => pick(kindForPage(loc))}
+        className="grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        aria-label="Add something"
+        data-testid="button-add"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+    );
+  }
+
   return (
-    <button
-      onClick={add}
-      className="grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-      aria-label="Add something"
-      data-testid="button-add"
-    >
-      <Plus className="h-6 w-6" />
-    </button>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors", open && "bg-black/10 dark:bg-white/15")}
+          aria-label="Add something"
+          aria-expanded={open}
+          data-testid="button-add"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] p-0 rounded shadow-lg">
+        <div className="p-3 border-b">
+          <QuickAdd appbar day={day} onDone={() => setOpen(false)} />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-2">
+          {ADD_KINDS.map((k) => (
+            <button
+              key={k.kind}
+              onClick={() => pick(k.kind)}
+              className="flex items-center gap-3 rounded px-3 py-2.5 text-sm hover:bg-muted text-left"
+              data-testid={`button-add-${k.kind}`}
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white" style={{ background: k.color }}>
+                <k.icon className="h-4 w-4" />
+              </span>
+              {k.label}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
