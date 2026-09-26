@@ -163,7 +163,7 @@ function TagPicker({ taken, onAdd }: { taken: string[]; onAdd: (t: string) => vo
 
 const FORMATS = [
   { mark: "**", label: "Bold", letter: "B", style: "font-bold", find: /\*\*[^*\n]+?\*\*/g },
-  { mark: "*", label: "Italic", letter: "I", style: "italic font-serif", find: /(?<!\*)\*[^*\n]+?\*(?!\*)/g },
+  { mark: "*", label: "Italic", letter: "I", style: "italic", find: /(?<!\*)\*[^*\n]+?\*(?!\*)/g },
   { mark: "__", label: "Underline", letter: "U", style: "underline underline-offset-2", find: /__[^_\n]+?__/g },
 ] as const;
 type Format = (typeof FORMATS)[number];
