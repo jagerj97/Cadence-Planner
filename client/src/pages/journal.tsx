@@ -11,9 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronLeft, ChevronRight, Hash, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Baseline, Bold, ChevronDown, ChevronLeft, Italic, Underline, ChevronRight, Hash, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
@@ -26,11 +26,34 @@ function tagColor(t: string, item?: Item): string | undefined {
 }
 const tagStyle = (color?: string) => color ? { background: `color-mix(in srgb, ${color} 18%, transparent)`, color: `color-mix(in srgb, ${color} 75%, hsl(var(--foreground)))` } : undefined;
 
-/** body text with #hashtags highlighted and clickable */
+/** Entries mark **bold**, *italic* and __underline__ in their text (the composer's format buttons add them). */
+const FORMAT = /(\*\*[^*\n]+?\*\*|__[^_\n]+?__|\*[^*\n]+?\*)/;
+function Rich({ text, onTag }: { text: string; onTag: (t: string) => void }) {
+  return (
+    <>
+      {text.split(FORMAT).map((part, i) => {
+        if (i % 2 === 0) return <Tagged key={i} text={part} onTag={onTag} />;
+        if (part.startsWith("**")) return <strong key={i} className="font-semibold"><Rich text={part.slice(2, -2)} onTag={onTag} /></strong>;
+        if (part.startsWith("__")) return <u key={i}><Rich text={part.slice(2, -2)} onTag={onTag} /></u>;
+        return <em key={i}><Rich text={part.slice(1, -1)} onTag={onTag} /></em>;
+      })}
+    </>
+  );
+}
+
+/** body text with formatting, and #hashtags highlighted and clickable */
 function Body({ text, onTag }: { text: string; onTag: (t: string) => void }) {
-  const parts = text.split(/((?:^|\s)#[\p{L}\p{N}_-]+)/gu);
   return (
     <p className="text-[16px] leading-relaxed whitespace-pre-wrap break-words">
+      <Rich text={text} onTag={onTag} />
+    </p>
+  );
+}
+
+function Tagged({ text, onTag }: { text: string; onTag: (t: string) => void }) {
+  const parts = text.split(/((?:^|\s)#[\p{L}\p{N}_-]+)/gu);
+  return (
+    <>
       {parts.map((p, i) => {
         const m = p.match(/^(\s?)#([\p{L}\p{N}_-]+)$/u);
         if (!m) return <span key={i}>{p}</span>;
@@ -43,7 +66,7 @@ function Body({ text, onTag }: { text: string; onTag: (t: string) => void }) {
           </span>
         );
       })}
-    </p>
+    </>
   );
 }
 
@@ -138,7 +161,16 @@ function TagPicker({ taken, onAdd }: { taken: string[]; onAdd: (t: string) => vo
   );
 }
 
-/** textarea + tag input, used for new and edited entries */
+const FORMATS = [
+  { mark: "**", label: "Bold", icon: Bold },
+  { mark: "*", label: "Italic", icon: Italic },
+  { mark: "__", label: "Underline", icon: Underline },
+] as const;
+
+/**
+ * Textarea, tags and format buttons, used for new and edited entries. The new entry window uses the
+ * "keep" look: a borderless note with its day as the heading and a toolbar along the bottom.
+ */
 function Composer({
   initial = "",
   initialTags = [],
@@ -146,6 +178,8 @@ function Composer({
   onSubmit,
   onCancel,
   busy,
+  keep,
+  heading,
 }: {
   initial?: string;
   initialTags?: string[];
@@ -153,12 +187,31 @@ function Composer({
   onSubmit: (body: string, tags: string[]) => Promise<unknown> | void;
   onCancel?: () => void;
   busy?: boolean;
+  keep?: boolean;
+  heading?: React.ReactNode;
 }) {
+  const [formatting, setFormatting] = useState(false);
   const [body, setBody] = useState(initial);
   const [extra, setExtra] = useState<string[]>(initialTags.filter((t) => !hashtagsIn(initial).includes(t)));
   const ref = useRef<HTMLTextAreaElement>(null);
   const inline = hashtagsIn(body);
   const all = [...new Set([...inline, ...extra])];
+  // Wraps the selection in a format's marks, or unwraps it if it already has them.
+  const format = (mark: string) => {
+    const el = ref.current;
+    if (!el) return;
+    const a = el.selectionStart, b = el.selectionEnd;
+    const before = body.slice(0, a), sel = body.slice(a, b), after = body.slice(b);
+    const n = mark.length;
+    // A lone * next to ** belongs to bold, not italic.
+    const around = before.endsWith(mark) && after.startsWith(mark) && (mark !== "*" || !before.endsWith("**") || before.endsWith("***"));
+    let next: string, s: number, e: number;
+    if (around) [next, s, e] = [before.slice(0, -n) + sel + after.slice(n), a - n, b - n];
+    else if (sel.length > 2 * n && sel.startsWith(mark) && sel.endsWith(mark)) [next, s, e] = [before + sel.slice(n, -n) + after, a, b - 2 * n];
+    else [next, s, e] = [before + mark + sel + mark + after, a + n, b + n];
+    setBody(next);
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(s, e); });
+  };
   const submit = async () => {
     if (!body.trim()) return;
     await onSubmit(body, all);
@@ -167,8 +220,10 @@ function Composer({
       setExtra([]);
     }
   };
+  const iconBtn = "grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground";
   return (
-    <div className="grid gap-3">
+    <div className={cn("grid", keep ? "gap-2" : "gap-3")}>
+      {heading}
       <Textarea
         ref={ref}
         value={body}
@@ -176,20 +231,40 @@ function Composer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         }}
-        placeholder="Jot something down. Use #hashtags to tag it."
-        className="min-h-[96px] resize-y text-[16px] leading-relaxed"
+        placeholder={keep ? "Take a note…" : "Jot something down. Use #hashtags to tag it."}
+        className={keep
+          ? "min-h-[128px] resize-none rounded-none border-0 bg-transparent px-4 py-1 text-[16px] leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          : "min-h-[96px] resize-y text-[16px] leading-relaxed"}
         data-testid="input-journal-body"
       />
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={cn("flex flex-wrap items-center gap-2", keep && "px-4")}>
         <TagChips tags={all} onRemove={(t) => (inline.includes(t) ? setBody(body.replace(new RegExp(`(^|\\s)#${t}\\b`, "i"), "$1")) : setExtra(extra.filter((x) => x !== t)))} />
         <TagPicker taken={all} onAdd={(t) => !all.includes(t) && setExtra((x) => [...x, t])} />
-        <div className="ml-auto flex items-center gap-2">
+      </div>
+      {formatting && (
+        <div className={cn("flex items-center gap-1", keep ? "px-2" : "-mx-2")} role="toolbar" aria-label="Text formatting">
+          {FORMATS.map(({ mark, label, icon: Icon }) => (
+            // pointerdown keeps the textarea's selection
+            <button key={label} type="button" className={iconBtn} onPointerDown={(e) => e.preventDefault()} onClick={() => format(mark)}
+              aria-label={label} title={label} data-testid={`button-format-${label.toLowerCase()}`}>
+              <Icon className="h-[18px] w-[18px]" />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className={cn("flex items-center gap-1", keep ? "px-2 pb-2" : "-mx-2")}>
+        <button type="button" className={cn(iconBtn, formatting && "bg-muted text-foreground")} onPointerDown={(e) => e.preventDefault()}
+          onClick={() => setFormatting((v) => !v)} aria-pressed={formatting} aria-label="Text formatting" title="Text formatting" data-testid="button-journal-format">
+          <Baseline className="h-[18px] w-[18px]" />
+        </button>
+        <div className="ml-auto flex items-center gap-1">
           {onCancel && (
             <Button variant="ghost" size="sm" onClick={onCancel} data-testid="button-journal-cancel">
               Cancel
             </Button>
           )}
-          <Button size="sm" onClick={submit} disabled={!body.trim() || busy} data-testid="button-journal-save">
+          <Button variant={keep ? "ghost" : "default"} size="sm" onClick={submit} disabled={!body.trim() || busy}
+            className={cn(keep && "font-semibold text-primary hover:text-primary")} data-testid="button-journal-save">
             {submitLabel}
           </Button>
         </div>
@@ -458,14 +533,13 @@ export default function JournalPage() {
                   <span className="truncate">Write an entry…</span>
                 </button>
                 <Dialog open={composing} onOpenChange={setComposing}>
-                  <DialogContent className="max-w-lg" data-testid="dialog-journal-new"
+                  <DialogContent hideClose className="max-w-lg gap-0 overflow-hidden rounded-xl p-0" data-testid="dialog-journal-new"
                     // Start typing right away.
                     onOpenAutoFocus={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).querySelector("textarea")?.focus(); }}>
-                    <DialogHeader className="text-left">
-                      <DialogTitle>New entry</DialogTitle>
-                      <DialogDescription>{fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}</DialogDescription>
-                    </DialogHeader>
+                    <DialogDescription className="sr-only">New journal entry</DialogDescription>
                     <Composer
+                      keep
+                      heading={<DialogTitle className="px-4 pt-4 text-lg font-medium text-muted-foreground">{fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}</DialogTitle>}
                       submitLabel="Add entry"
                       busy={create.isPending}
                       onCancel={() => setComposing(false)}
