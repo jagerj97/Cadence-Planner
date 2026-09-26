@@ -333,8 +333,8 @@ export function FocusPage() {
                     <Play className="h-4 w-4" />
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => stopFocus(true)} data-testid="button-timer-finish">
-                  <Check className="h-4 w-4 mr-1.5" /> Finish
+                <Button variant="outline" size="icon" onClick={() => stopFocus(true)} aria-label="Finish" title="Finish" data-testid="button-timer-finish">
+                  <Check className="h-4 w-4" />
                 </Button>
               </div>
             ) : (
@@ -460,7 +460,6 @@ export function FocusPage() {
                   <DialogDescription>{openSession && sessionWhen(openSession)}</DialogDescription>
                 </DialogHeader>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setOpenSession(null)}>Cancel</Button>
                   <Button variant="destructive" size="sm" data-testid="button-delete-session" onClick={async () => {
                     if (!openSession) return;
                     await apiRequest("DELETE", `/api/sessions/${openSession.id}`);
