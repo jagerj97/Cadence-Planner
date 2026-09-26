@@ -127,7 +127,7 @@ function AddMenu() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors", open && "bg-black/10 dark:bg-white/15")}
+          className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors", open && "bg-primary/15 text-primary hover:bg-primary/15 dark:hover:bg-primary/15")}
           aria-label="Add something"
           aria-expanded={open}
           data-testid="button-add"
@@ -135,7 +135,7 @@ function AddMenu() {
           <Plus className="h-6 w-6" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] p-0 rounded shadow-lg">
+      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden rounded-[20px] p-0 shadow-lg">
         <div className="p-3 border-b">
           <QuickAdd appbar day={day} onDone={() => setOpen(false)} />
         </div>

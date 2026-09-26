@@ -35,7 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, Sparkles, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -258,12 +258,11 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
   return (
     <div className={cn("relative rounded bg-card text-card-foreground", appbar ? "border" : "card-md")}>
       <div className="flex items-center gap-2 px-3">
-        <Sparkles className="h-4 w-4 text-primary shrink-0" />
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="Type it — “Gym 6-7pm every mon wed fri”"
+          placeholder="#event Art Class every wed 6pm"
           className={cn("border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
           aria-label="Quick add"
           data-testid="input-quick-add"
