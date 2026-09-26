@@ -100,7 +100,7 @@ public class MainActivity extends Activity {
             return WindowInsetsCompat.CONSUMED;
         });
         setContentView(content, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        applyAppearance(getSharedPreferences("cadence_appearance", MODE_PRIVATE).getBoolean("dark", false));
+        applyAppearance(getSharedPreferences("cadence_appearance", MODE_PRIVATE).getBoolean("dark", true));
         WebSettings settings = browser.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);

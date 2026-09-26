@@ -119,7 +119,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lng: -75.1118,
   routines: [{ id: "sleep", name: "Sleep", startTime: "23:00", endTime: "07:00", color: "#5966AD" }],
   colorTheme: "orange",
-  appearanceTheme: "light",
+  appearanceTheme: "dark",
   habitOrder: [],
   hiddenTodayPanels: [],
   todayPanelOrder: [],

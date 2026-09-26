@@ -155,7 +155,7 @@ export default function TasksPage() {
             </div>
           ) : (
             groups.map((g) => (
-              <section key={g.key} className="card-md" aria-label={g.label}>
+              <section key={g.key} className={cn("card-md", g.key === "today" && "wellness-tasks")} aria-label={g.label}>
                 <h2 className={cn("flex items-center justify-between px-4 pt-3 pb-1.5 text-sm font-semibold", g.key === "overdue" && "text-destructive")}>
                   {g.label}
                   <span className="text-xs font-normal text-muted-foreground tnum">{g.rows.length}</span>

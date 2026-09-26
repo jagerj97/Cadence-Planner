@@ -450,6 +450,15 @@
   background: linear-gradient(145deg, hsl(155 16% 20%), hsl(var(--card)) 60%);
   border-color: hsl(155 13% 29%);
 }
+/* The Tasks page's Today card, in the task yellow. */
+.wellness-tasks {
+  background: linear-gradient(145deg, hsl(46 90% 93%), hsl(var(--card)) 48%);
+  border-color: hsl(44 60% 84%);
+}
+.dark .wellness-tasks {
+  background: linear-gradient(145deg, hsl(44 24% 20%), hsl(var(--card)) 60%);
+  border-color: hsl(44 18% 29%);
+}
 .wellness-bottom {
   background: hsl(var(--card) / .95);
   border-top: 1px solid hsl(var(--border) / .7);

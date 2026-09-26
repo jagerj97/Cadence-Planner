@@ -122,9 +122,8 @@ export function useEditOccurrence() {
 }
 
 export function PlannerProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() =>
-    window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-  );
+  // Dark is the default until saved settings say otherwise.
+  const [theme, setTheme] = useState<Theme>("dark");
   const [themeLoaded, setThemeLoaded] = useState(false);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
