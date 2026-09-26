@@ -567,16 +567,15 @@ export function CalendarLinks() {
   };
   return (
     <>
-          <section className="card-md p-5 grid gap-2">
+          <section className="grid gap-1">
             <h2 className="text-sm font-semibold">Your calendar stays on this phone</h2>
             <p className="text-sm text-muted-foreground">You can import subscribed calendars and save an iCal file below. A phone-only calendar cannot provide a public subscription URL that Google Calendar can reach.</p>
           </section>
           {/* subscribe */}
-          <section id="calendars" className="card-md p-5 grid gap-4 content-start">
-            <div className="flex items-center gap-2">
-              <RefreshCw className="h-4 w-4 text-primary" />
+          <section id="calendars" className="grid min-w-0 gap-3 border-t pt-4">
+            <div>
               <h2 className="text-sm font-semibold">Connected calendars</h2>
-              <span className="ml-auto text-xs text-muted-foreground">Auto-syncs every 15 min while open</span>
+              <p className="text-xs text-muted-foreground">Auto-syncs every 15 min while open</p>
             </div>
 
             <div className="rounded-md bg-muted/60 p-4 text-sm grid gap-2">
@@ -595,8 +594,8 @@ export function CalendarLinks() {
                 <li>Under “Settings for my calendars”, pick your calendar → “Integrate calendar”.</li>
                 <li>Copy the <span className="text-foreground font-medium">Secret address in iCal format</span> and paste it below.</li>
               </ol>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
-              <SiApple className="h-3.5 w-3.5" /> Add an internet-accessible iCal subscription URL, including webcal links. The phone app requires HTTPS. One-time .ics files can be uploaded below.
+              <div className="flex items-start gap-2 text-xs text-muted-foreground pt-1">
+              <SiApple className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Add an internet-accessible iCal subscription URL, including webcal links. The phone app requires HTTPS. One-time .ics files can be uploaded below.
               </div>
             </div>
 
@@ -666,11 +665,8 @@ export function CalendarLinks() {
           </section>
 
           {/* import */}
-          <section className="card-md p-5 grid gap-3 content-start">
-            <div className="flex items-center gap-2">
-              <Upload className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Import a file</h2>
-            </div>
+          <section className="grid min-w-0 gap-3 border-t pt-4">
+            <h2 className="text-sm font-semibold">Import a file</h2>
             <p className="text-sm text-muted-foreground">
               Upload any .ics file (Google: Settings → Import &amp; export → Export). Imported items are editable in Cadence, and repeating
               items keep their schedule.
@@ -686,11 +682,8 @@ export function CalendarLinks() {
           </section>
 
           {/* export */}
-          <section className="card-md p-5 grid gap-3 content-start">
-            <div className="flex items-center gap-2">
-              <Download className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Export</h2>
-            </div>
+          <section className="grid min-w-0 gap-3 border-t pt-4">
+            <h2 className="text-sm font-semibold">Export</h2>
             <p className="text-sm text-muted-foreground">
               Download your {localCount} Cadence items as an .ics file, then import it into Google Calendar (Settings → Import &amp; export → Import).
               Repeats, reminders and notes are included.
@@ -953,11 +946,11 @@ export function SettingsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="From">
-                      <Input type="time" step={60} value={r.startTime} aria-label={`${r.name} start time`}
+                      <Input type="time" step={60} className="min-w-0" value={r.startTime} aria-label={`${r.name} start time`}
                         onChange={(e) => updateRoutine(r.id, { startTime: e.target.value })} data-testid={`input-routine-start-${r.id}`} />
                     </Field>
                     <Field label="To">
-                      <Input type="time" step={60} value={r.endTime} aria-label={`${r.name} end time`}
+                      <Input type="time" step={60} className="min-w-0" value={r.endTime} aria-label={`${r.name} end time`}
                         onChange={(e) => updateRoutine(r.id, { endTime: e.target.value })} data-testid={`input-routine-end-${r.id}`} />
                     </Field>
                   </div>
@@ -1144,13 +1137,13 @@ function Section({ title, hint, children, defaultOpen = false }: { title: string
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && <div id={id} className="grid gap-4 border-t px-4 pb-4 pt-4">{children}</div>}
+      {open && <div id={id} className="grid grid-cols-1 gap-4 border-t px-4 pb-4 pt-4">{children}</div>}
     </section>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid min-w-0 gap-1.5">
       <Label>{label}</Label>
       {children}
     </div>
@@ -1158,8 +1151,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
+    // Wraps the control under the label when a narrow screen (or large text) leaves no room beside it.
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="min-w-0 flex-1 basis-40">
         <div className="text-sm font-medium">{label}</div>
         {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
       </div>
