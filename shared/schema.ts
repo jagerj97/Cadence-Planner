@@ -38,6 +38,8 @@ export type Item = {
   uid: string | null;
   /** The journal entry holding this item's notes; null once it's removed, missing if never synced. */
   journalId?: number | null;
+  /** True when the user chose to keep this item's notes out of the journal. */
+  journalOff?: boolean;
 };
 /** A new item: title and date are required, everything else falls back to a default. */
 export type InsertItem = Pick<Item, "title" | "date"> & Partial<Omit<Item, "id" | "title" | "date">>;
@@ -51,6 +53,8 @@ export type Feed = {
   lastSynced: string | null;
   eventCount: number;
   lastError: string | null;
+  /** Whether this calendar's event notes become journal entries. */
+  journalNotes?: boolean;
 };
 
 export type Session = {

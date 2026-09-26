@@ -466,6 +466,16 @@ export function FocusPage() {
 
 /* ====================== SYNC ====================== */
 const FEED_COLORS = ["#4f6bd8", "#0b8a6a", "#c2562b", "#8a4fd8", "#b8860b", "#d8457a"];
+/** Imported events' notes go to the journal only when asked; each item's details can change it later. */
+function JournalNotesCheckbox({ id, checked, onChange }: { id: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground sm:pb-2.5">
+      <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid={id} />
+      Show notes in journal
+    </label>
+  );
+}
+
 const IMPORT_LABELS: Record<ImportKind, string> = {
   event: "Events",
   task: "Tasks",
@@ -503,6 +513,8 @@ export function CalendarLinks() {
   const [url, setUrl] = useState("");
   const [feedKind, setFeedKind] = useState<"auto" | ImportKind>("auto");
   const [fileKind, setFileKind] = useState<"auto" | ImportKind>("auto");
+  const [feedJournal, setFeedJournal] = useState(false);
+  const [fileJournal, setFileJournal] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -520,6 +532,7 @@ export function CalendarLinks() {
       setBusy(null);
       queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/journal"] });
     }
   };
 
@@ -530,7 +543,7 @@ export function CalendarLinks() {
       const color = FEED_COLORS[(feeds?.length ?? 0) % FEED_COLORS.length];
       const f = await (await apiRequest("POST", "/api/feeds", {
         name: name.trim() || "Calendar", url: url.trim(), color,
-        importKind: feedKind === "auto" ? null : feedKind,
+        importKind: feedKind === "auto" ? null : feedKind, journalNotes: feedJournal,
       })).json();
       queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
       setUrl("");
@@ -550,9 +563,10 @@ export function CalendarLinks() {
     try {
       const ics = await file.text();
       const r = await (await apiRequest("POST", "/api/import", {
-        ics, tz: TZ, importKind: fileKind === "auto" ? null : fileKind,
+        ics, tz: TZ, importKind: fileKind === "auto" ? null : fileKind, journalNotes: fileJournal,
       })).json();
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/journal"] });
       toast({ title: "Import complete", description: `${r.imported} items added from ${file.name}` });
     } catch (e: any) {
       toast({ title: "Import failed", description: String(e.message).replace(/^\d+: /, ""), variant: "destructive" });
@@ -578,7 +592,7 @@ export function CalendarLinks() {
             <p className="text-sm text-muted-foreground">You can import subscribed calendars and save an iCal file below. A phone-only calendar cannot provide a public subscription URL that Google Calendar can reach.</p>
           </section>
           {/* subscribe */}
-          <section id="calendars" className="grid min-w-0 gap-3 border-t pt-4">
+          <section id="calendars" className="grid min-w-0 grid-cols-1 gap-3 border-t pt-4">
             <div>
               <h2 className="text-sm font-semibold">Connected calendars</h2>
               <p className="text-xs text-muted-foreground">Auto-syncs every 15 min while open</p>
@@ -618,6 +632,7 @@ export function CalendarLinks() {
             </div>
             <div className="flex flex-col sm:flex-row sm:items-end gap-2">
               <ImportTypePicker id="select-feed-import-kind" value={feedKind} onChange={setFeedKind} />
+              <JournalNotesCheckbox id="checkbox-feed-journal" checked={feedJournal} onChange={setFeedJournal} />
               <Button onClick={addFeed} disabled={!url.trim() || adding} data-testid="button-add-feed">
                 <Link2 className="h-4 w-4 mr-1.5" />
                 {adding ? "Connecting…" : "Connect"}
@@ -625,7 +640,7 @@ export function CalendarLinks() {
             </div>
 
             {feeds && feeds.length > 0 ? (
-              <ul className="grid gap-2">
+              <ul className="grid grid-cols-1 gap-2">
                 {feeds.map((f) => (
                   <li key={f.id} className="flex items-center gap-3 rounded-md border px-3 py-2.5" data-testid={`row-feed-${f.id}`}>
                     <span className="h-3 w-3 rounded-full shrink-0" style={{
@@ -671,7 +686,7 @@ export function CalendarLinks() {
           </section>
 
           {/* import */}
-          <section className="grid min-w-0 gap-3 border-t pt-4">
+          <section className="grid min-w-0 grid-cols-1 gap-3 border-t pt-4">
             <h2 className="text-sm font-semibold">Import a file</h2>
             <p className="text-sm text-muted-foreground">
               Upload any .ics file (Google: Settings → Import &amp; export → Export). Imported items are editable in Cadence, and repeating
@@ -679,6 +694,7 @@ export function CalendarLinks() {
             </p>
             <input ref={fileRef} type="file" accept=".ics,text/calendar" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} data-testid="input-file-ics" />
             <ImportTypePicker id="select-file-import-kind" value={fileKind} onChange={setFileKind} />
+            <JournalNotesCheckbox id="checkbox-file-journal" checked={fileJournal} onChange={setFileJournal} />
             <div>
               <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importing} data-testid="button-import">
                 <Upload className="h-4 w-4 mr-1.5" />
@@ -688,7 +704,7 @@ export function CalendarLinks() {
           </section>
 
           {/* export */}
-          <section className="grid min-w-0 gap-3 border-t pt-4">
+          <section className="grid min-w-0 grid-cols-1 gap-3 border-t pt-4">
             <h2 className="text-sm font-semibold">Export</h2>
             <p className="text-sm text-muted-foreground">
               Download your {localCount} Cadence items as an .ics file, then import it into Google Calendar (Settings → Import &amp; export → Import).

@@ -367,7 +367,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
 function ItemDetails({ details, onClose, onEdit }: {
   details: { target: Item; occDate?: string } | null; onClose: () => void; onEdit: () => void;
 }) {
-  const i = details?.target;
+  const { data: items } = useItems();
+  const { update } = useItemMutations();
+  // The live copy, so the journal checkbox reflects what was just saved.
+  const i = details && (items?.find((x) => x.id === details.target.id) ?? details.target);
   const routine = i?.source === "routine";
   // A deadline task shows its due date, whichever day it was opened from.
   const d = i?.kind === "task" && i.availableFrom ? i.date : details?.occDate || i?.date || "";
@@ -401,6 +404,13 @@ function ItemDetails({ details, onClose, onEdit }: {
             </div>}
             {i.location && <div className="break-words">{i.location}</div>}
             {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground">{i.notes}</p>}
+            {i.notes?.trim() && !routine && i.kind !== "habit" && i.id > 0 && (
+              <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={!i.journalOff && i.journalId != null}
+                  onChange={(e) => update.mutate({ id: i.id, journalOff: !e.target.checked })} data-testid="checkbox-notes-journal" />
+                Show notes in journal
+              </label>
+            )}
             {routine && <p className="text-xs text-muted-foreground">A routine is a background guide, not a calendar event.</p>}
           </div>
           <div className="flex justify-center">

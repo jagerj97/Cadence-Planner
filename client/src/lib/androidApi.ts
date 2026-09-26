@@ -106,13 +106,13 @@ const normTags = (body: string, tags: unknown) => {
 /**
  * An item's notes live on as a journal entry on the day the item begins, tagged with its kind
  * (#events, #meetings...), except for habits. Saving the item keeps the entry's text, date and tag current, clearing
- * the notes removes it, and editing the entry in the journal edits the notes. An entry deleted
- * from the journal comes back only when the notes are changed again.
+ * the notes removes it, and editing the entry in the journal edits the notes. "Show notes in
+ * journal" in the item's details (journalOff) turns this off and on; deleting the entry turns it off.
  */
 const kindTags = new Set(Object.values(KIND_TAGS));
 async function syncNotes(item: Item, notesChanged: boolean): Promise<Item> {
   // Habits keep their notes to themselves; an item that becomes a habit gives up its entry.
-  const notes = item.kind === "habit" ? "" : (item.notes || "").trim();
+  const notes = item.kind === "habit" || item.journalOff ? "" : (item.notes || "").trim();
   const tag = KIND_TAGS[item.kind as keyof typeof KIND_TAGS] ?? KIND_TAGS.event;
   const linked = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
   if (linked) {
@@ -134,9 +134,15 @@ async function syncNotes(item: Item, notesChanged: boolean): Promise<Item> {
 /** Items saved before notes became journal entries get theirs once. */
 const backfillNotes = () => exclusive(async () => {
   for (const item of await list<Item>("items")) {
-    if (item.journalId === undefined && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
+    if (item.journalId === undefined && !item.journalOff && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
   }
 });
+/** Deletes an item; its notes stay in the journal as a plain entry. */
+async function removeItem(item: Item) {
+  const entry = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
+  if (entry) await put("journal", { ...entry, itemId: null });
+  await remove("items", item.id);
+}
 let notesBackfilled: Promise<void> | null = null;
 
 const normalizedUrl = (raw: string) => {
@@ -310,17 +316,14 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     const id = Number(itemRoute[1]), item = await read<Item>("items", id);
     if (!item) return fail("Not found", 404);
     if (method === "DELETE" && !itemRoute[2]) {
-      // The notes stay in the journal as a plain entry.
-      const entry = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
-      if (entry) await put("journal", { ...entry, itemId: null });
-      await remove("items", id);
+      await removeItem(item);
       return ok({ ok: true });
     }
     if (method === "PATCH" && !itemRoute[2]) {
       const merged = { ...item, ...data, journalId: item.journalId, ...(item.source.startsWith("feed:") && data.kind && data.kind !== item.kind ? { color: null } : {}) };
       if (!validItem(merged)) return fail("Enter a valid title, date and time");
       const notesChanged = typeof data.notes === "string" && data.notes.trim() !== (item.notes || "").trim() ||
-        item.kind === "habit" && merged.kind !== "habit";
+        item.kind === "habit" && merged.kind !== "habit" || data.journalOff === false;
       return ok(await syncNotes(await put("items", merged), notesChanged));
     }
     if (method !== "POST" || !itemRoute[2]) return fail("Unsupported action", 405);
@@ -360,7 +363,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       if (!data.name?.trim() || data.importKind && !IMPORT_KINDS.includes(data.importKind)) return fail("Choose a valid name and import type");
       return ok(await put("feeds", {
         name: data.name.trim(), url: normalizedUrl(data.url), color: data.color || "#4f6bd8",
-        importKind: data.importKind || null, lastSynced: null, eventCount: 0, lastError: null,
+        importKind: data.importKind || null, lastSynced: null, eventCount: 0, lastError: null, journalNotes: !!data.journalNotes,
       }));
     } catch { return fail("Enter a valid calendar URL"); }
   }
@@ -369,7 +372,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     const id = Number(feedRoute[1]);
     if (method === "DELETE") return exclusive(async () => {
       await remove("feeds", id);
-      for (const item of await list<Item>("items")) if (item.source === `feed:${id}`) await remove("items", item.id);
+      for (const item of await list<Item>("items")) if (item.source === `feed:${id}`) await removeItem(item);
       return ok({ ok: true });
     });
     if (method === "POST" && path.endsWith("/sync")) {
@@ -388,14 +391,15 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             const old = byUid.get(`${fresh.uid || fresh.title}\0${fresh.date}`);
             if (old) {
               seen.add(old.id);
-              await put("items", { ...old, ...fresh, id: old.id, kind: old.kind, color: old.color,
+              const saved = await put("items", { ...old, ...fresh, id: old.id, kind: old.kind, color: old.color, journalOff: old.journalOff,
                 completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && old.availableFrom ? {
                   availableFrom: old.availableFrom, startTime: null, endTime: null, endDate: null, allDay: false,
                 } : {}) });
-            } else await put("items", fresh);
+              await syncNotes(saved, (fresh.notes || "").trim() !== (old.notes || "").trim());
+            } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);
           }
-          for (const old of prior) if (!seen.has(old.id)) await remove("items", old.id);
+          for (const old of prior) if (!seen.has(old.id)) await removeItem(old);
           return ok(await put("feeds", { ...feed, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
         });
       } catch (cause) {
@@ -409,9 +413,9 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     try {
       if (data.importKind && !IMPORT_KINDS.includes(data.importKind)) return fail("Choose a valid import type");
       const rows = parseAndroidIcs(data.ics, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, "import", "map");
-      await exclusive(async () => { for (const item of rows) await put("items", {
-        ...item, kind: data.importKind || item.kind,
-      }); });
+      await exclusive(async () => { for (const item of rows) await syncNotes(await put("items", {
+        ...item, kind: data.importKind || item.kind, journalOff: !data.journalNotes,
+      }) as Item, true); });
       return ok({ imported: rows.length });
     } catch (cause) { return fail("Couldn't read calendar: " + String(cause instanceof Error ? cause.message : cause)); }
   }
@@ -443,7 +447,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     const item = entry.itemId ? await read<Item>("items", entry.itemId) : undefined;
     if (method === "DELETE") {
       await remove("journal", id);
-      if (item) await put("items", { ...item, journalId: null });
+      if (item) await put("items", { ...item, journalId: null, journalOff: true });
       return ok({ ok: true });
     }
     if (method === "PATCH") {
