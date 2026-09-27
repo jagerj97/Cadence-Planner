@@ -751,6 +751,8 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                       setValue("availableFrom", availableFromFor(v.date));
                     }
                     if (k === "habit" && v.freq === "none") setValue("freq", "daily");
+                    // Habits are at a set time or all day.
+                    if (k === "habit" && (v.timeMode === "anytime" || v.timeMode === "deadline")) setValue("timeMode", "allday");
                     if (k === "sleep") {
                       setValue("timeMode", "timed");
                       setValue("startTime", settings.bedTime);
@@ -800,7 +802,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="timed">At a set time</SelectItem>
-                  <SelectItem value="anytime">Anytime that day</SelectItem>
+                  {v.kind !== "habit" && <SelectItem value="anytime">Anytime that day</SelectItem>}
                   {v.kind !== "task" && <SelectItem value="allday">All day</SelectItem>}
                   {v.kind === "task" && <SelectItem value="deadline">A time before due date</SelectItem>}
                 </SelectContent>
@@ -1101,7 +1103,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const isNew = !("id" in i && typeof (i as Item).id === "number");
   const lead = i.kind === "task" ? i.leadDays ?? 0 : 0;
   const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || lead > 0 || (isNew && !i.startTime && !i.allDay && r.freq === "none"))
-    ? "deadline" : i.allDay && i.kind !== "task" ? "allday" : i.startTime ? "timed" : "anytime";
+    ? "deadline" : i.allDay && i.kind !== "task" ? "allday" : i.startTime ? "timed" : i.kind === "habit" ? "allday" : "anytime";
   return {
     title: i.title || "",
     kind: ((KINDS as readonly string[]).includes(i.kind as string) ? i.kind : "event") as Kind,
