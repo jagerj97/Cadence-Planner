@@ -63,6 +63,9 @@ import {
 
 /* ====================== HABITS ====================== */
 const MARK_LABEL = ["not done", "half done", "done"] as const;
+/** The tracker's date column: pinned while the habits scroll, with a fade on its right edge once they have. */
+const STICKY_DATE = "sticky left-0 z-10 bg-[var(--date-bg,hsl(var(--card)))] after:pointer-events-none after:absolute after:inset-y-0 after:left-full after:w-7 after:opacity-0 group-data-[scrolled=true]:after:opacity-100 after:transition-opacity after:bg-gradient-to-r after:from-[var(--date-bg,hsl(var(--card)))] after:from-20% after:to-transparent";
+
 export function HabitsPage() {
   const { data: items } = useItems();
   const { cycle } = useItemMutations();
@@ -71,6 +74,7 @@ export function HabitsPage() {
   const { settings } = useSettings();
   const today = todayStr();
   const [showOlder, setShowOlder] = useState(false);
+  const [trackerScrolled, setTrackerScrolled] = useState(false);
   const habits = orderHabits((items ?? []).filter((i) => kindOf(i) === "habit"), settings);
   const dueNow = habits.filter((h) => occursOn(h, today));
   // Today's habits are reordered by dragging; habits not due today keep their slots in the full order.
@@ -160,17 +164,20 @@ export function HabitsPage() {
                 <h2 className="text-base font-semibold tracking-tight">Tracker</h2>
                 <span className="text-xs text-muted-foreground">Tap once for half, twice for full</span>
               </div>
-              <div className="habit-paper px-2 pb-2">
-                <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
+              {/* Each habit column is at least 36px wide; with more habits than fit, the tracker scrolls
+                  sideways while the dates stay put and habits fade out as they slide under them. */}
+              <div className="group habit-paper overflow-x-auto pr-2 pb-2 scroll-thin" data-scrolled={trackerScrolled}
+                onScroll={(e) => setTrackerScrolled(e.currentTarget.scrollLeft > 0)} data-testid="habit-tracker-scroll">
+                <table className="w-full table-fixed border-separate border-spacing-0 text-sm" style={{ minWidth: 76 + habits.length * 36 }}>
                   <colgroup>
-                    <col className="w-[68px]" />
+                    <col className="w-[76px]" />
                     {habits.map((h) => (
                       <col key={h.id} />
                     ))}
                   </colgroup>
-                  <thead className="sticky -top-4 md:-top-6 z-10 [&_th]:bg-card">
+                  <thead className="[&_th]:bg-card">
                     <tr>
-                      <th />
+                      <th className={STICKY_DATE} />
                       {habits.map((h) => (
                         <th key={h.id} className="h-20 md:h-36 align-bottom pb-2 font-medium" scope="col">
                           <button
@@ -192,7 +199,9 @@ export function HabitsPage() {
                       const isT = d === today;
                       return (
                         <tr key={d} className={cn(weekEdge && "[&>td]:border-b [&>td]:border-foreground/15")}>
-                          <td className={cn("py-1 pl-2 pr-1 text-xs tnum whitespace-nowrap", isT ? "font-semibold text-primary" : "text-muted-foreground")}>
+                          <td className={cn(STICKY_DATE, "py-1 pl-4 pr-1 text-xs tnum whitespace-nowrap", isT ? "font-semibold text-primary" : "text-muted-foreground")}
+                            // Today's tint covers the date too, matching the row's bg-primary/5.
+                            style={isT ? { "--date-bg": "color-mix(in srgb, hsl(var(--primary)) 5%, hsl(var(--card)))" } as React.CSSProperties : undefined}>
                             <span className="inline-block w-7">{DAY_SHORT[dt.getDay()].slice(0, 2)}</span>
                             <span className={cn(dt.getDate() === 1 && "font-semibold text-foreground")}>
                               {dt.getDate() === 1 ? fmtDate(d, { month: "short" }) + " 1" : dt.getDate()}
