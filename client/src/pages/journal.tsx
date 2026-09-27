@@ -183,7 +183,7 @@ function formatAt(f: Format, text: string, a: number, b: number) {
 
 /** Tags that turn an entry into a planner item of that kind, when picked (see Composer). */
 const CONVERTIBLE = new Map((["task", "event", "meeting", "focus"] as Kind[]).map((k) => [KIND_TAGS[k], k]));
-const KIND_NOUN: Partial<Record<Kind, string>> = { task: "a task", event: "an event", meeting: "a meeting", focus: "a focus session" };
+const KIND_NOUN: Partial<Record<Kind, string>> = { task: "a task", event: "an event", meeting: "a meeting", focus: "a focus time" };
 export type ConvertTo = { kind: Kind; title: string; body: string; tags: string[] };
 
 /**
