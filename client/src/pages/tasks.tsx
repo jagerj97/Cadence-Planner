@@ -48,10 +48,10 @@ export default function TasksPage() {
   const [managing, setManaging] = useState(false);
   const { settings: tagSettings } = useSettings();
   const allTags = tagSettings.taskTags ?? [];
-  // Several tags can be picked; a task needs all of them. A tag that was deleted stops filtering.
+  // Several tags can be picked; tasks with any of them show. A tag that was deleted stops filtering.
   const activeTags = tagFilter.filter((n) => allTags.some((t) => t.name === n));
   const today = todayStr();
-  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && activeTags.every((n) => taskTagsOf(i).includes(n)));
+  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && (activeTags.length === 0 || activeTags.some((n) => taskTagsOf(i).includes(n))));
 
   const rows = useMemo(() => {
     const open: Row[] = [];
@@ -146,7 +146,7 @@ export default function TasksPage() {
             ))}
           </div>
 
-          {/* Tag filter: tap tags to show only tasks with all of them; tap again to drop one. Manage comes first and is always there. */}
+          {/* Tag filter: tap tags to show tasks with any of them; tap again to drop one. Manage comes first and is always there. */}
           <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 scroll-thin md:mx-0 md:flex-wrap md:px-0" role="group" aria-label="Filter by tag">
             <button type="button" onClick={() => setManaging(true)}
               className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
