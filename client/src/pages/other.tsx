@@ -6,7 +6,6 @@ import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSett
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   DAY_SHORT,
-  KIND_META,
   addDays,
   bestStreak,
   blocksForDay,
@@ -676,9 +675,9 @@ export function CalendarLinks() {
                   <li key={f.id} className="flex items-center gap-1 rounded-md border pl-3 pr-1 py-1.5" data-testid={`row-feed-${f.id}`}>
                     {/* Tapping a calendar opens its settings. */}
                     <button type="button" onClick={() => setEditing(f)} className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left" data-testid={`button-edit-feed-${f.id}`}>
-                      <span className="h-3 w-3 rounded-full shrink-0" style={{
-                        background: f.useColor ? f.color : f.importKind ? `hsl(var(${KIND_META[f.importKind].cssVar}))` : "hsl(var(--muted-foreground))",
-                      }} />
+                      {/* A chosen color shows as a dot; without one, an empty grey ring. */}
+                      <span className={cn("h-3 w-3 rounded-full shrink-0", !f.useColor && "border-[1.5px] border-muted-foreground")}
+                        style={f.useColor ? { background: f.color } : undefined} />
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">{f.name}</div>
                         <div className="text-xs text-muted-foreground truncate">
