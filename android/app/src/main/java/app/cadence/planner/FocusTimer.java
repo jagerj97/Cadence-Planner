@@ -22,7 +22,7 @@ import java.util.Locale;
 
 /**
  * The ongoing "timer running" notification, like the Clock app's: a live countdown with
- * Pause/Resume and Stop. The timer's state is the JSON the web app saves in "cadence_focus"
+ * Pause/Resume and Finish. The timer's state is the JSON the web app saves in "cadence_focus"
  * (plannedSec, accSec, runStart, ...), so the buttons work even when the app is closed.
  */
 final class FocusTimer {
@@ -140,7 +140,7 @@ final class FocusTimer {
                 .setShowWhen(false)
                 .addAction(action(context, "Resume", ACTION_RESUME, 2));
         }
-        notification.addAction(action(context, "Stop", ACTION_STOP, 3));
+        notification.addAction(action(context, "Finish", ACTION_STOP, 3));
         manager.notify(NOTIFICATION_ID, notification.build());
     }
 
@@ -168,7 +168,7 @@ final class FocusTimer {
                         isBreak ? "Break's over" : "Focus session complete",
                         isBreak ? "Ready for the next block?" : state.optString("title", ""));
                 } else if (ACTION_STOP.equals(action)) {
-                    // Leave the stopped session for the web app to log the next time it runs.
+                    // Finish: leave the session for the web app to log the next time it runs.
                     JSONObject stopped = new JSONObject(state.toString());
                     stopped.put("accSec", elapsedSec(state, now));
                     stopped.put("runStart", JSONObject.NULL);

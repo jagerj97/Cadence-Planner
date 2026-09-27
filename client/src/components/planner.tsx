@@ -266,7 +266,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     const sync = () => {
       try {
         const stopped: FocusState | null = JSON.parse(bridge.takeFocusStop?.() || "null");
-        if (stopped) logSession(stopped, stopped.accSec, false);
+        // The notification's Finish logs the session like the app's Finish button.
+        if (stopped) logSession(stopped, stopped.accSec, true);
       } catch { /* ignore */ }
       try {
         const saved: FocusState | null = JSON.parse(bridge.getFocus() || "null");
