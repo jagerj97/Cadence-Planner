@@ -119,7 +119,7 @@ function AddMenu() {
         aria-label="Add something"
         data-testid="button-add"
       >
-        <Plus className="h-6 w-6" />
+        <AddIcon />
       </button>
     );
   }
@@ -134,7 +134,7 @@ function AddMenu() {
           data-testid="button-add"
         >
           {/* The + turns into an x while the menu is open, like the settings gear. */}
-          <Plus className={cn("h-6 w-6 transition-transform duration-300", open && "rotate-[135deg]")} />
+          <AddIcon open={open} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden rounded-[20px] p-0 shadow-lg">
@@ -158,6 +158,19 @@ function AddMenu() {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * The app bar's +, drawn as big as the gear beside it (lucide's + fills 14 of its 24 units, the gear
+ * about 20) with the same 2px lines. Open, it turns into an x the size of the settings x (12px across).
+ */
+const ADD_PX = 34;
+const X_SCALE = (12 * Math.SQRT2) / (14 * ADD_PX / 24); // the +'s arms, turned 45°, span 12px
+function AddIcon({ open = false }: { open?: boolean }) {
+  return (
+    <Plus size={ADD_PX} className="transition-[transform,stroke-width] duration-300"
+      style={{ transform: open ? `rotate(135deg) scale(${X_SCALE})` : undefined, strokeWidth: (2 * 24) / ADD_PX / (open ? X_SCALE : 1) }} />
   );
 }
 
