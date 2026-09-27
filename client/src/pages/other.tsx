@@ -234,10 +234,10 @@ export function HabitsPage() {
                                   <button
                                     onClick={() => cycle.mutate({ id: h.id, date: d })}
                                     className={cn(
-                                      "inline-grid h-6 w-6 place-items-center rounded-[5px] border-[1.5px] transition-colors",
+                                      "inline-grid h-6 w-6 place-items-center rounded-full border-[1.5px] transition-colors",
                                       mk === 0 && "hover:bg-muted",
                                     )}
-                                    style={{ background: fillOf(mk, colorOf(h), 135), borderColor: mk ? colorOf(h) : "hsl(var(--foreground) / .22)" }}
+                                    style={{ background: fillOf(mk, colorOf(h), 90), borderColor: mk ? colorOf(h) : "hsl(var(--foreground) / .22)" }}
                                     aria-label={`${h.title}, ${fmtDate(d, { weekday: "short", month: "short", day: "numeric" })}: ${MARK_LABEL[mk]}`}
                                     data-testid={`button-habit-${h.id}-${d}`}
                                   >
