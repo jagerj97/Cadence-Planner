@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
-  <!-- The plain logo for "Let Cadence outside", and the source of the plain app icon (run android/tools/make_icon.py after changing it). -->
+  <!-- The logotype: Cadence without the cat, for "Let Cadence outside", and the source of the plain app icon (run android/tools/make_icon.py after changing it). -->
   <defs>
     <linearGradient id="swirl" gradientUnits="userSpaceOnUse" x1="785.0205" y1="762.2656" x2="282.5652" y2="259.8103">
       <stop offset="0.0039" stop-color="#58595B"/><stop offset="0.2029" stop-color="#757779"/><stop offset="0.4062" stop-color="#8A8C8F"/>
