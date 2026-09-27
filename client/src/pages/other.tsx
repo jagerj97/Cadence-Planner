@@ -984,7 +984,7 @@ export function SettingsPage() {
   if (isLoading) return null;
   return (
     <>
-      <PageHeader title="Settings" sub="Make Cadence fit how you live">
+      <PageHeader title="Settings">
         <span role="status" className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="settings-save-status">
               {saveStatus === "saved" ? "Saved automatically" : saveStatus === "saving" ? "Saving…" : "Couldn't save"}
               {saveStatus === "error" && <button type="button" className="text-primary underline" onClick={() => {
