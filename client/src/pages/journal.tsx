@@ -551,7 +551,15 @@ export default function JournalPage() {
   }, [all, query]);
 
   // Tapping the tag being searched clears the search.
-  const searchTag = (t: string) => setQ((q) => (q.trim().toLowerCase() === `#${t}` ? "" : `#${t}`));
+  // Tags are toggled in the search, so several can be picked at once (entries need all of them).
+  const toggleTerm = (q: string, term: string, to?: string | null) => {
+    const terms = q.trim().split(/\s+/).filter(Boolean);
+    const has = terms.some((x) => x.toLowerCase() === term);
+    const next = has ? terms.flatMap((x) => (x.toLowerCase() === term ? (to ? [to] : []) : [x])) : to === undefined ? [...terms, term] : terms;
+    return next.join(" ");
+  };
+  const searchTag = (t: string) => setQ((q) => toggleTerm(q, `#${t}`));
+  const picked = new Set(query.split(/\s+/).filter((x) => x.startsWith("#")));
 
   return (
     <>
@@ -606,9 +614,10 @@ export default function JournalPage() {
                         onClick={() => searchTag(t)}
                         className={cn(
                           "inline-flex items-center gap-1 rounded-full h-7 px-2.5 text-xs font-medium transition-colors",
-                          query === `#${t}` ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-accent hover:text-accent-foreground",
+                          picked.has(`#${t}`) ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-accent hover:text-accent-foreground",
                         )}
-                        style={query === `#${t}` ? undefined : tagStyle(tagColor(t))}
+                        style={picked.has(`#${t}`) ? undefined : tagStyle(tagColor(t))}
+                        aria-pressed={picked.has(`#${t}`)}
                         data-testid={`button-tag-${t}`}
                       >
                         #{t}
@@ -644,7 +653,7 @@ export default function JournalPage() {
             )}
           </aside>
           <JournalTagManager open={managing} onOpenChange={setManaging} tags={tagCounts}
-            onRenamed={(from, to) => query === `#${from}` && setQ(to ? `#${to}` : "")} />
+            onRenamed={(from, to) => setQ((q) => toggleTerm(q, `#${from}`, to ? `#${to}` : null))} />
 
           <section className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">
             {query ? (

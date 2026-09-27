@@ -44,14 +44,14 @@ export default function TasksPage() {
   const { data: items, isLoading } = useItems();
   const [filter, setFilter] = useState<Filter>("today");
   const [showOlder, setShowOlder] = useState(false);
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [managing, setManaging] = useState(false);
   const { settings: tagSettings } = useSettings();
   const allTags = tagSettings.taskTags ?? [];
-  // A tag that was deleted stops filtering.
-  const activeTag = tagFilter && allTags.some((t) => t.name === tagFilter) ? tagFilter : null;
+  // Several tags can be picked; a task needs all of them. A tag that was deleted stops filtering.
+  const activeTags = tagFilter.filter((n) => allTags.some((t) => t.name === n));
   const today = todayStr();
-  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && (!activeTag || taskTagsOf(i).includes(activeTag)));
+  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && activeTags.every((n) => taskTagsOf(i).includes(n)));
 
   const rows = useMemo(() => {
     const open: Row[] = [];
@@ -146,7 +146,7 @@ export default function TasksPage() {
             ))}
           </div>
 
-          {/* Tag filter: tap a tag to show only its tasks, again to show all. Manage comes first and is always there. */}
+          {/* Tag filter: tap tags to show only tasks with all of them; tap again to drop one. Manage comes first and is always there. */}
           <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 scroll-thin md:mx-0 md:flex-wrap md:px-0" role="group" aria-label="Filter by tag">
             <button type="button" onClick={() => setManaging(true)}
               className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
@@ -155,9 +155,9 @@ export default function TasksPage() {
               Manage
             </button>
             {allTags.map((t) => {
-              const on = activeTag === t.name;
+              const on = activeTags.includes(t.name);
               return (
-                <button key={t.name} type="button" onClick={() => setTagFilter(on ? null : t.name)} aria-pressed={on}
+                <button key={t.name} type="button" onClick={() => setTagFilter((f) => (on ? f.filter((n) => n !== t.name) : [...f, t.name]))} aria-pressed={on}
                   className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
                   style={on
                     ? { background: t.color, borderColor: t.color, color: "white" }
@@ -169,7 +169,7 @@ export default function TasksPage() {
               );
             })}
           </div>
-          <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => tagFilter === from && setTagFilter(to)} />
+          <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => setTagFilter((f) => f.map((n) => (n === from ? to : n)))} />
 
           {isLoading ? (
             <div className="grid gap-2">
