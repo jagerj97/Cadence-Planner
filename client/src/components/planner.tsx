@@ -297,12 +297,13 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     if (!bridge) return;
     const sync = () => {
       try {
-        const stopped: FocusState | null = JSON.parse(bridge.takeFocusStop?.() || "null");
+        const stopped: (FocusState & { stoppedAt?: number }) | null = JSON.parse(bridge.takeFocusStop?.() || "null");
         // The notification's Finish logs the session like the app's Finish button.
         if (stopped) {
           logSession(stopped, stopped.accSec, true);
-          // It was stopped while the app was closed, so it ended about its focused time after it began.
-          offerCalendar(stopped, stopped.accSec, Date.parse(stopped.startedAt) + stopped.accSec * 1000);
+          // The notification's Finish opens the app and says when it stopped (older builds didn't: then it
+          // ended about its focused time after it began).
+          offerCalendar(stopped, stopped.accSec, stopped.stoppedAt ?? Date.parse(stopped.startedAt) + stopped.accSec * 1000);
         }
       } catch { /* ignore */ }
       try {
@@ -437,7 +438,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       <WhatsNew />
       <Dialog open={!!calendarOffer} onOpenChange={(o) => !o && setCalendarOffer(null)}>
         <DialogContent hideClose className="max-w-sm" data-testid="dialog-focus-calendar">
-          <DialogTitle className="text-base leading-snug">
+          <DialogTitle className="text-[15px] font-normal leading-relaxed tracking-normal">
             That was a great focus session! It's saved here, do you want it saved on your calendar too?
           </DialogTitle>
           <DialogDescription className="sr-only">Adds the session to your calendar at the times it took place</DialogDescription>
@@ -450,7 +451,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       <Dialog open={!!scopeAsk} onOpenChange={(o) => !o && answerScope(null)}>
         <DialogContent hideClose className="max-w-sm" data-testid="dialog-repeat-scope">
           <DialogHeader className="text-left">
-            <DialogTitle>You're editing a repeating item</DialogTitle>
+            <DialogTitle className="text-[15px] font-normal leading-relaxed tracking-normal">You're editing a repeating item</DialogTitle>
             <DialogDescription className="sr-only">Change just this one, or every time it repeats</DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">

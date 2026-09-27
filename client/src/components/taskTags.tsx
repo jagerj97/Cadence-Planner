@@ -227,7 +227,7 @@ export function TaskTagList({ onPick, picked, onRenamed, countOf, confirmDelete 
       )}
       <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <DialogContent hideClose className="max-w-sm" data-testid="dialog-confirm-delete-task-tag">
-          <DialogTitle className="text-base leading-snug">Are you sure? This will delete this tag everywhere!</DialogTitle>
+          <DialogTitle className="text-[15px] font-normal leading-relaxed tracking-normal">Are you sure? This will delete this tag everywhere!</DialogTitle>
           <DialogDescription className="sr-only">Deletes #{deleting?.name} from every task and entry</DialogDescription>
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setDeleting(null)} data-testid="button-cancel-delete-task-tag">Cancel</Button>

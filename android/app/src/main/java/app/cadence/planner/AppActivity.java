@@ -244,7 +244,8 @@ public class AppActivity extends Activity {
 
     /** Fires a window event in the web app, e.g. so it picks up a widget tap. */
     void dispatchToPage(String event) {
-        runOnUiThread(() -> browser.evaluateJavascript("window.dispatchEvent(new Event('" + event + "'))", null));
+        // Before the page exists (a cold start) there's no one to tell; it reads the state when it loads.
+        runOnUiThread(() -> { if (browser != null) browser.evaluateJavascript("window.dispatchEvent(new Event('" + event + "'))", null); });
     }
 
     /** What a widget's + button asked for ("add-task" / "add-habit"); the page reads it via takeLaunchAction. */
@@ -253,6 +254,11 @@ public class AppActivity extends Activity {
     private void readLaunchAction(Intent intent) {
         String add = intent == null ? null : intent.getStringExtra(PanelWidgets.EXTRA_ADD);
         if ("add-task".equals(add) || "add-habit".equals(add)) launchAction = add;
+        // The timer notification's Finish: finish the session here; the page logs it and asks about the calendar.
+        if (intent != null && FocusTimer.ACTION_STOP.equals(intent.getAction())) {
+            intent.setAction(null); // not again if the activity is recreated
+            FocusTimer.finish(this);
+        }
     }
 
     @Override protected void onNewIntent(Intent intent) {
