@@ -576,7 +576,7 @@ type FormVals = {
   kind: Kind;
   date: string;
   availableFrom: string;
-  /** For "anytime before due date": from today (one-off), or a number of days or weeks before each due date. */
+  /** For "a time before due date": anytime up to it (one-off), or a number of days or weeks before each due date. */
   leadMode: "today" | "days" | "weeks";
   leadCount: number;
   endDate: string;
@@ -625,7 +625,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
   }, [editing]); // eslint-disable-line
 
   const v = watch();
-  // Repeat options show except for a deadline task open "from today", which is one-off.
+  // Repeat options show except for a deadline task available "anytime", which is one-off.
   const repeats = v.timeMode !== "deadline" || v.leadMode !== "today";
   const rec = recOf((existing as any) || { recurrence: '{"freq":"none"}' });
   const isRecurring = existing && rec.freq !== "none";
@@ -651,7 +651,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       toast({ title: "Check the dates", description: "Available from must be on or before the due date.", variant: "destructive" });
       return;
     }
-    // A task open "from today" is one-off; one open some days before each due date can repeat.
+    // A task available "anytime" is one-off; one open some days before each due date can repeat.
     const r: Recurrence = { freq: f.timeMode === "deadline" && !lead ? "none" : f.freq };
     if (r.freq !== "none") {
       if (f.interval > 1) r.interval = Number(f.interval);
@@ -786,7 +786,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   <SelectItem value="timed">At a set time</SelectItem>
                   <SelectItem value="anytime">Anytime that day</SelectItem>
                   <SelectItem value="allday">All day</SelectItem>
-                  {v.kind === "task" && <SelectItem value="deadline">Anytime before due date</SelectItem>}
+                  {v.kind === "task" && <SelectItem value="deadline">A time before due date</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -796,36 +796,31 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
           {v.kind === "habit" || v.kind === "meeting" ? null : v.kind === "task" ? (
             v.timeMode === "deadline" && (
               <div className="grid gap-1.5">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <Label>Available</Label>
-                    <Select value={v.leadMode} onValueChange={(x) => {
-                      if (!x) return;
-                      setValue("leadMode", x as FormVals["leadMode"]);
-                      // "From today" is for one-off tasks.
-                      if (x === "today") setValue("freq", "none");
-                    }}>
-                      <SelectTrigger data-testid="select-lead-mode">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="today">From today</SelectItem>
-                        <SelectItem value="days">Days before</SelectItem>
-                        <SelectItem value="weeks">Weeks before</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <Label htmlFor="f-lead">Available</Label>
+                <div className="flex gap-2">
                   {v.leadMode !== "today" && (
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="f-lead">{v.leadMode === "weeks" ? "Weeks" : "Days"}</Label>
-                      <Input id="f-lead" type="number" min={1} max={v.leadMode === "weeks" ? 52 : 365} {...register("leadCount", { valueAsNumber: true })} data-testid="input-lead-count" />
-                    </div>
+                    <Input id="f-lead" type="number" className="w-20 shrink-0" min={1} max={v.leadMode === "weeks" ? 52 : 365} {...register("leadCount", { valueAsNumber: true })} data-testid="input-lead-count" />
                   )}
+                  <Select value={v.leadMode} onValueChange={(x) => {
+                    if (!x) return;
+                    setValue("leadMode", x as FormVals["leadMode"]);
+                    // "Anytime" (up to the due date) is for one-off tasks.
+                    if (x === "today") setValue("freq", "none");
+                  }}>
+                    <SelectTrigger className="flex-1" data-testid="select-lead-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="today">Anytime</SelectItem>
+                      <SelectItem value="days">Days before</SelectItem>
+                      <SelectItem value="weeks">Weeks before</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {v.leadMode === "today"
-                    ? "You can check it off any day up to its due date. It shows on the calendar on the due date."
-                    : `You can check it off in the ${v.leadCount || 1} ${v.leadMode === "weeks" ? (v.leadCount === 1 ? "week" : "weeks") : (v.leadCount === 1 ? "day" : "days")} before each due date. It can repeat.`}
+                    ? "Can be checked off any day up to the due date."
+                    : "Can be checked off within that window before each due date."}
                 </span>
               </div>
             )
