@@ -1186,7 +1186,7 @@ export function SettingsPage() {
           </Section>
           <Section title="Let Cadence outside" hint="Hide the cat stuff">
             <p className="text-sm text-muted-foreground">
-              Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to.
+              Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to. (The app will restart)
             </p>
             <Row label="Let Cadence outside" hint={draft.plain ? "Cadence is outside. Turn this off to let her back in." : undefined}>
               <Switch checked={!!draft.plain} onCheckedChange={(v) => setDraft({ ...draft, plain: v })} aria-label="Let Cadence outside" data-testid="switch-plain" />
