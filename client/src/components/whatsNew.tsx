@@ -21,8 +21,8 @@ export function WhatsNew() {
     <Dialog open={open} onOpenChange={(o) => !o && dismiss()}>
       <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-whats-new">
         <DialogHeader className="pr-8 text-left">
-          <DialogTitle>Cadence v{APP_VERSION}</DialogTitle>
-          <DialogDescription>What's new in this update</DialogDescription>
+          <DialogTitle className="text-base leading-snug">v{APP_VERSION} — What's new</DialogTitle>
+          <DialogDescription className="sr-only">What changed in this update</DialogDescription>
         </DialogHeader>
         <ul className="grid gap-2 pl-5 text-sm list-disc marker:text-primary" data-testid="list-whats-new">
           {notes.map((note) => <li key={note}>{note}</li>)}
