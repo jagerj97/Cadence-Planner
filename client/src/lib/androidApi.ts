@@ -3,6 +3,7 @@ import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, ty
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
+import { APP_VERSION } from "./changelog";
 import { addDays, blocksForDay, fmtDur, listOf, parseYmd, remindersOf, todayStr } from "./cal";
 
 export interface AndroidBridge {
@@ -86,7 +87,8 @@ const exclusive = <T>(work: () => Promise<T>): Promise<T> => {
 const KNOWN_THEMES = new Set<string>([...COLOR_THEMES, ...Object.keys(RENAMED_THEMES)]);
 const pref = async (): Promise<Settings> => {
   const saved = (await read<{ key: string; value: Settings }>("settings", "prefs"))?.value;
-  const merged = { ...DEFAULT_SETTINGS, ...saved };
+  // A new install has nothing new to show, so it starts as having seen this version.
+  const merged = { ...DEFAULT_SETTINGS, ...(saved ? {} : { seenVersion: APP_VERSION }), ...saved };
   // Themes that were renamed carry over to their new names, and routines on the old default blue
   // move to the blue swatch so it shows as picked.
   return {

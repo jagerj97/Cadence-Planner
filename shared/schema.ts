@@ -126,6 +126,8 @@ export type Settings = {
   showSun: boolean;
   /** "Let Cadence outside": no cat picture, cat-themed hints or theme names, and a plain app icon. */
   plain: boolean;
+  /** The version whose "What's new" window was last dismissed. */
+  seenVersion?: string;
 };
 
 export const DEFAULT_SETTINGS: Settings = {

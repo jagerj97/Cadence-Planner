@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/shell";
 import { usePlanner, Ring, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
+import { APP_VERSION } from "@/lib/changelog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   DAY_SHORT,
@@ -899,7 +900,6 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
 }
 
 // Injected at build time by vite.android.config.ts.
-const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
 export function SettingsPage() {
   const { settings, isLoading } = useSettings();
@@ -930,7 +930,9 @@ export function SettingsPage() {
   const saveVersion = useRef(0);
   const normalized = (value: Settings): Settings => {
     const sleep = value.routines.find((r) => r.id === "sleep");
-    return { ...value, ...(sleep ? { bedTime: sleep.startTime, wakeTime: sleep.endTime } : {}) };
+    // The What's new window keeps seenVersion itself; a draft opened before it was dismissed mustn't undo that.
+    const { seenVersion: _, ...rest } = value;
+    return { ...rest, ...(sleep ? { bedTime: sleep.startTime, wakeTime: sleep.endTime } : {}) };
   };
   const flushAndroidSettings = (): Promise<void> => {
     if (saveTimer.current) clearTimeout(saveTimer.current);

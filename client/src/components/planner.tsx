@@ -43,6 +43,7 @@ import {
   ymd,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
+import { WhatsNew } from "@/components/whatsNew";
 import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
 import { Check, Plus, Trash2, Timer, X, Link2 } from "lucide-react";
 
@@ -407,6 +408,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         }}
       />
       <ItemEditor editing={editing} onClose={() => setEditing(null)} />
+      <WhatsNew />
       <Dialog open={!!scopeAsk} onOpenChange={(o) => !o && answerScope(null)}>
         <DialogContent hideClose className="max-w-sm" data-testid="dialog-repeat-scope">
           <DialogHeader className="text-left">
