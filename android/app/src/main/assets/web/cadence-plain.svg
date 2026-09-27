@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
+  <!-- The plain logo for "Let Cadence outside", and the source of the plain app icon (run android/tools/make_icon.py after changing it). -->
+  <defs>
+    <linearGradient id="swirl" gradientUnits="userSpaceOnUse" x1="785.0205" y1="762.2656" x2="282.5652" y2="259.8103">
+      <stop offset="0.0039" stop-color="#58595B"/><stop offset="0.2029" stop-color="#757779"/><stop offset="0.4062" stop-color="#8A8C8F"/>
+      <stop offset="0.6086" stop-color="#9A9C9F"/><stop offset="0.8078" stop-color="#A4A6A8"/><stop offset="1" stop-color="#A7A9AC"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#swirl)" d="M693.689,825.787H519.975c-91.254,0-175.75-36.465-237.923-102.678c-57.663-61.406-90.733-143.77-90.733-225.975c0-132.567,57.925-209.841,106.514-251.321c58.42-49.872,137.31-77.335,222.143-77.335c91.246,0,165.289,28.53,220.066,84.795c28.028,28.785,42.846,65.607,42.846,106.484c0,68.75-52.92,124.684-117.971,124.684c-37.079,0-75.305-29.363-67.107-65.525c12.757-56.282,63.912-41.896,39.293-76.423c-10.801-15.151-44.669-39.739-117.127-39.739c-32.46,0-194.381,9.372-194.381,194.381c0,93.48,74.316,194.377,194.381,194.377h173.715c37.079,0,67.138,30.059,67.138,67.137C760.827,795.729,730.769,825.787,693.689,825.787z"/>
+</svg>

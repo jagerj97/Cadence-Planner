@@ -1,4 +1,5 @@
-"""Regenerates the app icon vectors in android/app/src/main/res/drawable from client/public/favicon.svg.
+"""Regenerates the app icon vectors in android/app/src/main/res/drawable from client/public/favicon.svg
+(the cat) and client/public/cadence-plain.svg (the plain icon for "Let Cadence outside").
 
 Run from anywhere: python3 android/tools/make_icon.py. The launcher background color is
 ic_launcher_background in res/values/colors.xml."""
@@ -33,7 +34,7 @@ def vd_fill(fill):
                 <gradient android:type="linear" android:startX="500" android:startY="{y1}" android:endX="500" android:endY="{y2}">{items}
                 </gradient>
             </aapt:attr>'''
-def vector(size, viewport, scale, center, paths, extra_ns=True):
+def vector(size, viewport, scale, center, paths, extra_ns=True, source='favicon.svg'):
     tx, ty = viewport / 2 - center[0] * scale, viewport / 2 - center[1] * scale
     body = ''
     for d, fill, *rest in paths:
@@ -42,7 +43,7 @@ def vector(size, viewport, scale, center, paths, extra_ns=True):
         body += f'\n        <path{attr}{ft} android:pathData="{d}"' + (f'>{child}\n        </path>' if child else '/>')
     return f'''<vector xmlns:android="http://schemas.android.com/apk/res/android"{' xmlns:aapt="http://schemas.android.com/aapt"' if extra_ns else ''}
     android:width="{size}dp" android:height="{size}dp" android:viewportWidth="{viewport}" android:viewportHeight="{viewport}">
-    <!-- Generated from client/public/favicon.svg -->
+    <!-- Generated from client/public/{source} -->
     <group android:scaleX="{scale}" android:scaleY="{scale}" android:translateX="{tx:.3f}" android:translateY="{ty:.3f}">{body}
     </group>
 </vector>
@@ -55,3 +56,32 @@ res = f'{ROOT}/android/app/src/main/res'
 open(f'{res}/drawable/ic_launcher_foreground.xml', 'w').write(vector(108, 108, 0.078, CENTER, color_paths))
 open(f'{res}/drawable/ic_launcher_monochrome.xml', 'w').write(vector(108, 108, 0.078, CENTER, silhouette, False))
 open(f'{res}/drawable/ic_notification.xml', 'w').write(vector(24, 24, 0.0285, CENTER, silhouette, False))
+
+# The plain icon: one swirl with a diagonal gradient.
+plain = ET.parse(f'{ROOT}/client/public/cadence-plain.svg').getroot()
+swirl = next(plain.iter('{http://www.w3.org/2000/svg}path')).get('d')
+g = next(plain.iter('{http://www.w3.org/2000/svg}linearGradient'))
+stops = ''.join(f'\n                    <item android:offset="{s.get("offset")}" android:color="{hexa(s.get("stop-color"))}"/>' for s in g)
+def plain_vector(size, scale, center, fill):
+    tx, ty = size / 2 - center[0] * scale, size / 2 - center[1] * scale
+    child = f'''>
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="{g.get('x1')}" android:startY="{g.get('y1')}" android:endX="{g.get('x2')}" android:endY="{g.get('y2')}">{stops}
+                </gradient>
+            </aapt:attr>
+        </path>''' if fill is None else f' android:fillColor="{fill}"/>'
+    return f'''<vector xmlns:android="http://schemas.android.com/apk/res/android"{' xmlns:aapt="http://schemas.android.com/aapt"' if fill is None else ''}
+    android:width="{size}dp" android:height="{size}dp" android:viewportWidth="{size}" android:viewportHeight="{size}">
+    <!-- Generated from client/public/cadence-plain.svg -->
+    <group android:scaleX="{scale:.5f}" android:scaleY="{scale:.5f}" android:translateX="{tx:.3f}" android:translateY="{ty:.3f}">
+        <path android:pathData="{swirl}"{child}
+    </group>
+</vector>
+'''
+# The icon fills the launcher's round mask (72dp across, of the 108dp layer): the swirl's smallest
+# enclosing circle (radius 358 around 522,524) is drawn 35dp across from the middle.
+PLAIN_CENTER, PLAIN_SCALE = (522, 524), 35 / 358
+open(f'{res}/drawable/ic_launcher_plain_foreground.xml', 'w').write(plain_vector(108, PLAIN_SCALE, PLAIN_CENTER, None))
+open(f'{res}/drawable/ic_launcher_plain_monochrome.xml', 'w').write(plain_vector(108, PLAIN_SCALE, PLAIN_CENTER, '#FFFFFFFF'))
+# Notifications aren't masked, so the swirl's box fills 22 of the 24dp.
+open(f'{res}/drawable/ic_notification_plain.xml', 'w').write(plain_vector(24, 22 / 657.309, (487.104, 497.133), '#FFFFFFFF'))
