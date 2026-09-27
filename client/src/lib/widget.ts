@@ -3,7 +3,7 @@ import {
   KIND_META, addDays, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, layoutBlocks, recLabel, recOf,
   routineSchedules, sunTimes, todayStr,
 } from "./cal";
-import { allDayDone, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
+import { allDayFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
 import { firstTagColor } from "@/components/taskTags";
 
 /**
@@ -92,7 +92,7 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       routines: blocksForDay(routineSchedules(settings), day).map((b) => ({
         title: b.item.title, start: b.start, end: b.end, color: hexOf(b.item),
       })),
-      allDay: allDayFor(items, day).map((i) => ({ title: i.title, color: hexOf(i), done: allDayDone(i, day) })),
+      allDay: allDayFor(items, day).map((i) => ({ title: i.title, color: hexOf(i) })),
       tasks: taskRowsFor(items, day, true).map(({ i, occ, overdue, done }) => ({
         id: i.id, occ, title: i.title, done, overdue,
         due: isDeadlineTask(i) ? `Due ${fmtDate(occ, { month: "short", day: "numeric" })}` : "",
