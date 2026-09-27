@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/shell";
 import { usePlanner, Ring, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
+import { APP_VERSION } from "@/lib/changelog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   DAY_SHORT,
@@ -899,7 +900,6 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
 }
 
 // Injected at build time by vite.android.config.ts.
-const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
 export function SettingsPage() {
   const { settings, isLoading } = useSettings();
@@ -930,7 +930,9 @@ export function SettingsPage() {
   const saveVersion = useRef(0);
   const normalized = (value: Settings): Settings => {
     const sleep = value.routines.find((r) => r.id === "sleep");
-    return { ...value, ...(sleep ? { bedTime: sleep.startTime, wakeTime: sleep.endTime } : {}) };
+    // The What's new window keeps seenVersion itself; a draft opened before it was dismissed mustn't undo that.
+    const { seenVersion: _, ...rest } = value;
+    return { ...rest, ...(sleep ? { bedTime: sleep.startTime, wakeTime: sleep.endTime } : {}) };
   };
   const flushAndroidSettings = (): Promise<void> => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -1187,16 +1189,20 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground">
                 Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to. (The app will close)
               </p>
-              <Row label="Let Cadence outside" hint={draft.plain ? "Cadence is outside. Turn this off to let her back in." : undefined}>
-                <Switch checked={!!draft.plain} onCheckedChange={async (v) => {
+              {/* On while Cadence is inside (the default); turning it off lets her out. */}
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm text-muted-foreground" data-testid="text-plain-state">
+                  {draft.plain ? "Cadence is outside. Let her back in?" : "Cadence is inside. Let her out?"}
+                </span>
+                <Switch checked={!draft.plain} onCheckedChange={async (inside) => {
                   // Saved first, then the icons switch and the app closes (the same on every phone).
-                  const next = { ...latestDraft.current, plain: v };
+                  const next = { ...latestDraft.current, plain: !inside };
                   latestDraft.current = next;
                   setDraft(next);
                   try { await flushAndroidSettings(); } catch { return; }
-                  window.CadenceAndroid?.letOutside?.(v);
-                }} aria-label="Let Cadence outside" data-testid="switch-plain" />
-              </Row>
+                  window.CadenceAndroid?.letOutside?.(!inside);
+                }} aria-label="Cadence is inside" data-testid="switch-plain" />
+              </div>
             </SubSection>
           </Section>
           <p className="pt-2 text-center text-xs text-muted-foreground tnum" data-testid="text-app-version">

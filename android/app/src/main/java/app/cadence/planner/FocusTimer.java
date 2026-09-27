@@ -139,7 +139,11 @@ final class FocusTimer {
                 .setShowWhen(false)
                 .addAction(action(context, "Resume", ACTION_RESUME, 2));
         }
-        notification.addAction(action(context, "Finish", ACTION_STOP, 3));
+        // Finish opens the app, which finishes the session and asks about putting it on the calendar.
+        Intent finish = new Intent(context, AppActivity.class).setAction(ACTION_STOP)
+            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent finishing = PendingIntent.getActivity(context, 3, finish, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        notification.addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_timer), "Finish", finishing).build());
         manager.notify(NOTIFICATION_ID, notification.build());
     }
 
@@ -164,20 +168,36 @@ final class FocusTimer {
                     long endAt = now + Math.round((state.optDouble("plannedSec", 0) - state.optDouble("accSec", 0)) * 1000);
                     Notifications.scheduleFocus(context, endAt, "Focus session complete", state.optString("title", ""));
                 } else if (ACTION_STOP.equals(action)) {
-                    // Finish: leave the session for the web app to log the next time it runs.
-                    JSONObject stopped = new JSONObject(state.toString());
-                    stopped.put("accSec", elapsedSec(state, now));
-                    stopped.put("runStart", JSONObject.NULL);
-                    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                        .putString("stopped", stopped.toString()).apply();
-                    save(context, null);
-                    Notifications.cancelFocus(context);
+                    // From a notification posted by an older version, whose Finish didn't open the app.
+                    finish(context);
+                    return;
                 }
             } catch (Exception ignored) {}
             update(context);
             AppActivity open = activity.get();
             if (open != null) open.focusChanged();
         }
+    }
+
+    /** Finish: leaves the session (with when it stopped) for the web app to log, and clears the timer. */
+    static void finish(Context context) {
+        JSONObject state = state(context);
+        if (state != null) {
+            try {
+                long now = System.currentTimeMillis();
+                JSONObject stopped = new JSONObject(state.toString());
+                stopped.put("accSec", elapsedSec(state, now));
+                stopped.put("runStart", JSONObject.NULL);
+                stopped.put("stoppedAt", now);
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString("stopped", stopped.toString()).apply();
+                save(context, null);
+                Notifications.cancelFocus(context);
+            } catch (Exception ignored) {}
+        }
+        update(context);
+        AppActivity open = activity.get();
+        if (open != null) open.focusChanged();
     }
 
     /** Returns the session stopped from the notification (if any) and clears it. */

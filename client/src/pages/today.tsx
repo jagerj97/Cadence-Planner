@@ -34,7 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
-import { TODAY_PANELS, allDayDone, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
+import { TODAY_PANELS, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
 import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
@@ -101,20 +101,17 @@ export default function Today() {
               {/* All-day items and ones for anytime that day, inside the card above the timeline. */}
               {allDay.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 border-b p-2" aria-label="All-day">
-                  {allDay.map((i) => {
-                    const done = allDayDone(i, day);
-                    return (
-                      <button
-                        key={i.id}
-                        onClick={() => openDetails(i, day)}
-                        className={cn("min-w-0 max-w-full truncate rounded-md px-2 py-1 text-xs font-medium hover-elevate", done && "line-through text-muted-foreground")}
-                        style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${accentOf(i, settings)}` }}
-                        data-testid={`chip-allday-${i.id}`}
-                      >
-                        {i.title}
-                      </button>
-                    );
-                  })}
+                  {allDay.map((i) => (
+                    <button
+                      key={i.id}
+                      onClick={() => openDetails(i, day)}
+                      className="min-w-0 max-w-full truncate rounded-md px-2 py-1 text-xs font-medium hover-elevate"
+                      style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${accentOf(i, settings)}` }}
+                      data-testid={`chip-allday-${i.id}`}
+                    >
+                      {i.title}
+                    </button>
+                  ))}
                 </div>
               )}
               <div className="relative flex-1">

@@ -343,7 +343,7 @@ function Composer({
       </div>
       <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(null)}>
         <DialogContent hideClose className="max-w-sm" data-testid="dialog-journal-convert">
-          <DialogTitle className="text-base leading-snug">
+          <DialogTitle className="text-[15px] font-normal leading-relaxed tracking-normal">
             Would you like to make this entry into {ask ? KIND_NOUN[ask.kind] : ""}? This cannot be undone!
           </DialogTitle>
           <DialogDescription className="sr-only">Opens a new item with this entry's title and text as its notes</DialogDescription>

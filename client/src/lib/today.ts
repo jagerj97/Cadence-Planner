@@ -1,6 +1,6 @@
 import type { Item, Settings } from "@shared/schema";
 import {
-  appearsOn, blocksForDay, canDoTaskOn, dueDateFor, completionsOf, isDeadlineTask, kindOf, markOf, occursOn, orderHabits, recOf, routineSchedules,
+  appearsOn, blocksForDay, canDoTaskOn, dueDateFor, completionsOf, kindOf, markOf, occursOn, orderHabits, recOf, routineSchedules,
   streakOf, untimedForDay,
 } from "./cal";
 
@@ -42,16 +42,14 @@ export function taskRowsFor(items: Item[], day: string, isToday: boolean): TaskR
 }
 
 /**
- * The row at the top of the day's schedule: all-day items, and ones set for anytime that day (tasks
- * included). Habits have their own card, and tasks open before a due date aren't tied to one day.
+ * The row at the top of the day's schedule: all-day items, and ones set for anytime that day. Tasks
+ * join it on the day they're done or due (a task open before its due date shows on the due date),
+ * and leave it once they're checked off. Habits have their own card.
  */
 export function allDayFor(items: Item[], day: string): Item[] {
-  return untimedForDay(items, day).filter((i) => kindOf(i) !== "habit" && !isDeadlineTask(i));
+  return untimedForDay(items, day).filter((i) => kindOf(i) !== "habit" &&
+    !(kindOf(i) === "task" && completionsOf(i).has(recOf(i).freq === "none" ? i.date : day)));
 }
-
-/** Whether an item in that row is checked off for the day (only tasks get checked off). */
-export const allDayDone = (i: Item, day: string) =>
-  kindOf(i) === "task" && completionsOf(i).has(recOf(i).freq === "none" ? i.date : day);
 
 export type HabitRow = { h: Item; mark: 0 | 1 | 2; streak: number };
 
