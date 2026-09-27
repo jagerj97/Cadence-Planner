@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shell";
 import { DayColumn, HourLabels } from "@/components/timeline";
 import { usePlanner } from "@/components/planner";
 import { useItems, useSettings } from "@/lib/data";
-import type { Item } from "@shared/schema";
+import type { Item, WeekDay } from "@shared/schema";
 import {
   DAY_SHORT,
   addDays,
@@ -400,7 +400,7 @@ function MonthPicker({ month, onPick }: { month: string; onPick: (firstOfMonth: 
 }
 
 function WeekPicker({ title, start, weekStartsOn, onPick }: {
-  title: string; start: string; weekStartsOn: 0 | 1; onPick: (day: string) => void;
+  title: string; start: string; weekStartsOn: WeekDay; onPick: (day: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const firstOf = (d: string) => { const x = parseYmd(d); return new Date(x.getFullYear(), x.getMonth(), 1); };

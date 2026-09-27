@@ -85,6 +85,8 @@ export type JournalEntry = {
 };
 
 /** A task tag and the color it gives a task's checkbox. */
+/** 0 = Sunday … 6 = Saturday. */
+export type WeekDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskTag = { name: string; color: string };
 export type Routine = { id: string; name: string; startTime: string; endTime: string; color: string };
 // Red, orange, yellow, green, blue, violet and grey.
@@ -105,7 +107,7 @@ export type Settings = {
   sound: boolean;
   inAppPopups: boolean; // false = alerts only as system notifications (errors still show)
   haptics: boolean;
-  weekStartsOn: 0 | 1;
+  weekStartsOn: WeekDay;
   lat: number;
   lng: number;
   routines: Routine[];

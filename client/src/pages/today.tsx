@@ -379,7 +379,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
         <div className="flex items-center gap-2 border-t border-orange-200/70 dark:border-white/10 pt-3 text-sm">
           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: colorOf(next.item) }} />
           <span className="text-muted-foreground">Next</span>
-          <span className="font-medium fade-truncate flex-1">{next.item.title}</span>
+          <span className="min-w-0 flex-1 font-medium fade-truncate">{next.item.title}</span>
           <span className="text-xs text-muted-foreground tnum shrink-0">
             {fmtTime(next.start, true)} · in {fmtDur(next.start - nm)}
           </span>

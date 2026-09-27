@@ -37,7 +37,7 @@ import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS } from "@shared/schema";
-import type { ColorTheme, Feed, ImportKind, Routine, Session, Settings } from "@shared/schema";
+import type { ColorTheme, Feed, ImportKind, Routine, Session, Settings, WeekDay } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -388,7 +388,7 @@ export function FocusPage() {
                     <li key={b.key} className="flex items-center gap-2.5 px-4 py-1.5">
                       <span className="h-2 w-2 rounded-full shrink-0" style={{ background: colorOf(b.item) }} />
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm truncate">{b.item.title}</div>
+                        <div className="text-sm fade-truncate">{b.item.title}</div>
                         <div className="text-xs text-muted-foreground tnum">
                           {fmtTime(b.start, true)} · {fmtDur(b.end - b.start)}
                         </div>
@@ -975,7 +975,7 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routine settings" hint="Background things for every day. Sleeping, eating, grooming...">
+          <Section title="Routines" hint="Background things for every day. Sleeping, eating, grooming...">
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
@@ -1109,7 +1109,7 @@ export function SettingsPage() {
             </div>
           </Section>
 
-          <Section title="Calendar links" hint="Subscribe, connect, import and export calendars">
+          <Section title="Calendar links" hint="Connect, import and export calendars">
             <CalendarLinks />
           </Section>
 
@@ -1120,13 +1120,14 @@ export function SettingsPage() {
           <Section title="Calendar view">
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Week starts on">
-                <Select value={String(draft.weekStartsOn)} onValueChange={(v) => setDraft({ ...draft, weekStartsOn: Number(v) as 0 | 1 })}>
+                <Select value={String(draft.weekStartsOn)} onValueChange={(v) => setDraft({ ...draft, weekStartsOn: Number(v) as WeekDay })}>
                   <SelectTrigger data-testid="select-week-start">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">Sunday</SelectItem>
-                    <SelectItem value="1">Monday</SelectItem>
+                    {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, n) => (
+                      <SelectItem key={d} value={String(n)}>{d}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>
