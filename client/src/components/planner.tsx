@@ -87,7 +87,8 @@ export type FocusState = {
 type Ctx = {
   theme: Theme;
   setTheme: (t: Theme) => void;
-  openEditor: (target: Item | Partial<InsertItem>, occDate?: string) => void;
+  /** onCreated runs after a new item is saved (not when the window is closed without saving). */
+  openEditor: (target: Item | Partial<InsertItem>, occDate?: string, onCreated?: (item: Item) => void) => void;
   openDetails: (target: Item, occDate?: string) => void;
   focus: FocusState | null;
   elapsed: number;
@@ -163,11 +164,16 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.colorTheme = settings.colorTheme || DEFAULT_SETTINGS.colorTheme;
   }, [settings.colorTheme]);
+  // "Let Cadence outside" also swaps the app and notification icons.
+  useEffect(() => {
+    if (savedSettings) window.CadenceAndroid?.setPlain?.(!!savedSettings.plain);
+  }, [savedSettings?.plain]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* editor */
-  const [editing, setEditing] = useState<{ target: Item | Partial<InsertItem>; occDate?: string } | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [details, setDetails] = useState<{ target: Item; occDate?: string } | null>(null);
-  const openEditor = useCallback((target: Item | Partial<InsertItem>, occDate?: string) => setEditing({ target, occDate }), []);
+  const openEditor = useCallback((target: Item | Partial<InsertItem>, occDate?: string, onCreated?: (item: Item) => void) =>
+    setEditing({ target, occDate, onCreated }), []);
   const openDetails = useCallback((target: Item, occDate?: string) => setDetails({ target, occDate }), []);
   const [scopeAsk, setScopeAsk] = useState<{ resolve: (scope: RepeatScope | null) => void } | null>(null);
   const askRepeatScope = useCallback(() => new Promise<RepeatScope | null>((resolve) => setScopeAsk({ resolve })), []);
@@ -606,7 +612,8 @@ const REMINDERS = [
   { v: "1440", l: "1 day before" },
 ];
 
-function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<InsertItem>; occDate?: string } | null; onClose: () => void }) {
+type Editing = { target: Item | Partial<InsertItem>; occDate?: string; onCreated?: (item: Item) => void };
+function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: () => void }) {
   const open = !!editing;
   const existing = editing && "id" in editing.target && typeof (editing.target as Item).id === "number" ? (editing.target as Item) : null;
   const { settings } = useSettings();
@@ -668,7 +675,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       endDate: f.timeMode === "deadline" ? null : f.timeMode === "timed" && f.endDate === f.date && toMin(f.endTime) <= toMin(f.startTime)
         ? addDays(f.date, 1)
         : f.endDate,
-      allDay: f.timeMode === "allday",
+      allDay: f.timeMode === "allday" && f.kind !== "task",
       startTime: f.timeMode === "timed" ? f.startTime || "09:00" : null,
       endTime: f.timeMode === "timed" ? f.endTime || fromMin(toMin(f.startTime) + 30) : null,
       recurrence: JSON.stringify(r),
@@ -686,8 +693,9 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       if (!scope) return;
       toast({ title: scope === "one" ? "Saved this one" : "Saved", description: payload.title });
     } else {
-      await create.mutateAsync(blankItem(payload));
+      const created = await create.mutateAsync(blankItem(payload));
       toast({ title: "Added to your plan", description: payload.title });
+      await editing?.onCreated?.(created);
     }
     onClose();
   });
@@ -730,6 +738,8 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   onClick={() => {
                     setValue("kind", k);
                     if (k !== "task" && v.timeMode === "deadline") setValue("timeMode", "anytime");
+                    // Tasks aren't all-day; they can be done anytime that day.
+                    if (k === "task" && v.timeMode === "allday") setValue("timeMode", "anytime");
                     if (k === "task" && v.timeMode === "anytime" && v.freq === "none") {
                       setValue("timeMode", "deadline");
                       setValue("availableFrom", availableFromFor(v.date));
@@ -785,7 +795,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                 <SelectContent>
                   <SelectItem value="timed">At a set time</SelectItem>
                   <SelectItem value="anytime">Anytime that day</SelectItem>
-                  <SelectItem value="allday">All day</SelectItem>
+                  {v.kind !== "task" && <SelectItem value="allday">All day</SelectItem>}
                   {v.kind === "task" && <SelectItem value="deadline">A time before due date</SelectItem>}
                 </SelectContent>
               </Select>
@@ -1085,7 +1095,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const isNew = !("id" in i && typeof (i as Item).id === "number");
   const lead = i.kind === "task" ? i.leadDays ?? 0 : 0;
   const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || lead > 0 || (isNew && !i.startTime && !i.allDay && r.freq === "none"))
-    ? "deadline" : i.allDay ? "allday" : i.startTime ? "timed" : "anytime";
+    ? "deadline" : i.allDay && i.kind !== "task" ? "allday" : i.startTime ? "timed" : "anytime";
   return {
     title: i.title || "",
     kind: ((KINDS as readonly string[]).includes(i.kind as string) ? i.kind : "event") as Kind,

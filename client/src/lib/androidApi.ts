@@ -7,6 +7,8 @@ import { addDays, blocksForDay, fmtDur, listOf, parseYmd, remindersOf, todayStr 
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
+  /** Switches to the plain app and notification icons ("Let Cadence outside"), or back. Older builds lack it. */
+  setPlain?(plain: boolean): void;
   requestLocation?(): void;
   haptic?(kind: string): void;
   fetchCalendar(url: string): string;
@@ -63,6 +65,8 @@ async function put<T extends object>(store: StoreName, entry: T): Promise<T & { 
   const db = await dbReady;
   const copy: Record<string, any> = { ...entry };
   if (copy.id == null) delete copy.id;
+  // Tasks aren't all-day; one saved that way (an import, a kind change) is done anytime that day.
+  if (store === "items" && copy.kind === "task" && copy.allDay) copy.allDay = false;
   const id = await result(db.transaction(store, "readwrite").objectStore(store).put(copy));
   return { ...copy, ...(store === "settings" ? {} : { id: Number(id) }) } as T & { id: number };
 }
@@ -109,6 +113,7 @@ function validItem(it: Item | InsertItem): boolean {
       it.startTime || it.availableFrom)) return false;
   return true;
 }
+const entryTitle = (title: unknown) => (typeof title === "string" && title.trim() ? title.trim().slice(0, 200) : null);
 const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => m[2].toLowerCase());
 const normTags = (body: string, tags: unknown) => {
   const found = new Set<string>();
@@ -146,9 +151,10 @@ async function syncNotes(item: Item, notesChanged: boolean): Promise<Item> {
   const entry = await put("journal", { date: item.date, body: notes, tags: normTags(notes, [tag]), itemId: item.id, createdAt: now, updatedAt: now });
   return put("items", { ...item, journalId: entry.id });
 }
-/** Items saved before notes became journal entries get theirs once. */
+/** Items saved before notes became journal entries get theirs once, and all-day tasks become anytime that day. */
 const backfillNotes = () => exclusive(async () => {
   for (const item of await list<Item>("items")) {
+    if (item.kind === "task" && item.allDay) await put("items", item);
     if (item.journalId === undefined && !item.journalOff && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
   }
 });
@@ -178,7 +184,8 @@ async function refreshNotifications() {
   try {
     bridge.updateWidget?.(JSON.stringify(widgetSnapshot(items, await pref())));
   } catch { /* the widget is optional */ }
-  const reminders: { at: number; title: string; body: string }[] = [];
+  // `start` lets the notification count down to it (older builds show `body` as it is).
+  const reminders: { at: number; start: number; title: string; body: string }[] = [];
   const now = Date.now();
   for (let offset = -1; offset < 32; offset++) {
     const date = addDays(todayStr(), offset);
@@ -190,6 +197,7 @@ async function refreshNotifications() {
         if (at <= now || at > now + 31 * 86400000) continue;
         reminders.push({
           at,
+          start: parseYmd(date).getTime() + block.start * 60000,
           title: `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ${item.title}`,
           body: minutes === 0 ? "Starting now" : `Starts in ${fmtDur(minutes)}`,
         });
@@ -320,7 +328,10 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       return fail("Could not restore this backup. Your existing data was not changed.", 500);
     }
   }
-  if (path === "/api/items" && method === "GET") return ok(await list<Item>("items"));
+  if (path === "/api/items" && method === "GET") {
+    await (notesBackfilled ??= backfillNotes().catch(() => {}));
+    return ok(await list<Item>("items"));
+  }
   if (path === "/api/items" && method === "POST") {
     if (!validItem(data)) return fail("Enter a valid title, date and time");
     const { journalId: _, ...fresh } = data;
@@ -511,7 +522,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     if (!validDate(data.date) || !data.body?.trim()) return fail("Date and body required");
     const now = new Date().toISOString();
     return ok(await put("journal", {
-      date: data.date, body: data.body.trim(), tags: normTags(data.body, data.tags),
+      date: data.date, title: entryTitle(data.title), body: data.body.trim(), tags: normTags(data.body, data.tags),
       createdAt: now, updatedAt: now,
     }));
   }
@@ -528,6 +539,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     if (method === "PATCH") {
       const saved = await put("journal", {
         ...entry, ...data, itemId: entry.itemId,
+        title: data.title !== undefined ? entryTitle(data.title) : entry.title ?? null,
         body: typeof data.body === "string" ? data.body.trim() : entry.body,
         tags: data.body !== undefined || data.tags ? normTags(data.body ?? "", data.tags ?? JSON.parse(entry.tags)) : entry.tags,
         updatedAt: new Date().toISOString(),

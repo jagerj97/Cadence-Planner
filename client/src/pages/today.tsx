@@ -22,7 +22,6 @@ import {
   recOf,
   toMin,
   todayStr,
-  untimedForDay,
   taskAvailableFrom,
   fillOf,
 } from "@/lib/cal";
@@ -35,7 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
-import { TODAY_PANELS, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
+import { TODAY_PANELS, allDayDone, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
 import { ChevronLeft, ChevronRight, Plus, Check, Flame, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
@@ -71,7 +70,7 @@ export default function Today() {
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
 
-  const allDay = untimedForDay(list, day).filter((i) => i.allDay || (kindOf(i) !== "task" && kindOf(i) !== "habit"));
+  const allDay = allDayFor(list, day);
 
 
   return (
@@ -98,22 +97,27 @@ export default function Today() {
           <section className="contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3" aria-label="Day timeline">
             {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
             {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
-            {shows("schedule") && allDay.length > 0 && (
-              <div className="flex flex-wrap gap-1.5" style={at("schedule")} aria-label="All-day">
-                {allDay.map((i) => (
-                  <button
-                    key={i.id}
-                    onClick={() => openDetails(i, day)}
-                    className="rounded-md px-2 py-1 text-xs font-medium hover-elevate"
-                    style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${accentOf(i, settings)}` }}
-                    data-testid={`chip-allday-${i.id}`}
-                  >
-                    {i.title}
-                  </button>
-                ))}
-              </div>
-            )}
-            {shows("schedule") && <div className="relative flex-1 min-h-[420px] card-md overflow-hidden" style={at("schedule")}>
+            {shows("schedule") && <div className="flex flex-1 min-h-[420px] flex-col card-md overflow-hidden" style={at("schedule")}>
+              {/* All-day items and ones for anytime that day, inside the card above the timeline. */}
+              {allDay.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 border-b p-2" aria-label="All-day">
+                  {allDay.map((i) => {
+                    const done = allDayDone(i, day);
+                    return (
+                      <button
+                        key={i.id}
+                        onClick={() => openDetails(i, day)}
+                        className={cn("min-w-0 max-w-full truncate rounded-md px-2 py-1 text-xs font-medium hover-elevate", done && "line-through text-muted-foreground")}
+                        style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${accentOf(i, settings)}` }}
+                        data-testid={`chip-allday-${i.id}`}
+                      >
+                        {i.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="relative flex-1">
               {isLoading ? (
                 <div className="p-4 grid gap-3">
                   {[0, 1, 2, 3].map((k) => (
@@ -133,6 +137,7 @@ export default function Today() {
                   </div>
                 </div>
               )}
+              </div>
             </div>}
             {shows("schedule") && <p className="text-xs text-muted-foreground hidden md:block" style={at("schedule")}>
               Click an empty slot to add · hold a block briefly, then drag to move or resize
@@ -264,7 +269,7 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="#event Catnap every sat 1pm"
+          placeholder={settings.plain ? "#event Lunch with Sam every sat 1pm" : "#event Catnap every sat 1pm"}
           className={cn("border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
           aria-label="Quick add"
           data-testid="input-quick-add"
@@ -331,7 +336,8 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
   const { focus, openDetails } = usePlanner();
   const nm = now.getHours() * 60 + now.getMinutes();
   const today = todayStr();
-  const blocks = blocksForDay(items, today);
+  // Tasks that are already checked off don't need doing now.
+  const blocks = blocksForDay(items, today).filter((b) => !(b.done && kindOf(b.item) === "task"));
   const current = blocks.find((b) => nm >= b.start && nm < b.end);
   const next = blocks.find((b) => b.start > nm && b.continues !== "before");
   return (

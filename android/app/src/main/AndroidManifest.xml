@@ -19,14 +19,32 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/CadenceTheme">
         <activity
+            android:name=".AppActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- The home screen icon: the cat, or a plain one with "Let Cadence outside" on (AppActivity.setPlain).
+             The cat's keeps the old MainActivity name so icons already on home screens keep working. -->
+        <activity-alias
             android:name=".MainActivity"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:targetActivity=".AppActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".PlainLauncher"
+            android:targetActivity=".AppActivity"
+            android:icon="@mipmap/ic_launcher_plain"
+            android:roundIcon="@mipmap/ic_launcher_plain"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
         <receiver android:name=".Notifications$AlarmReceiver" android:exported="false" />
         <receiver android:name=".FocusTimer$ActionReceiver" android:exported="false" />
         <!-- Home screen widgets, one per Today card (PanelWidgets.java) -->

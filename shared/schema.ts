@@ -78,6 +78,7 @@ export type Session = {
 export type JournalEntry = {
   id: number;
   date: string;
+  title?: string | null; // entries holding an item's notes show the item's title instead
   body: string;
   tags: string; // JSON string[] (lowercase, no #)
   itemId?: number | null; // the planner item whose notes this entry mirrors
@@ -92,6 +93,10 @@ export type TaskTag = { name: string; color: string };
 export type Routine = { id: string; name: string; startTime: string; endTime: string; color: string };
 // Red, orange, yellow, green, blue, violet and grey.
 export const COLOR_THEMES = ["ribbon", "carrot", "butter", "grass", "denim", "plum", "mouse"] as const;
+/** What the color themes are called with the cat stuff hidden (Settings.plain). */
+export const PLAIN_THEME_NAMES: Record<(typeof COLOR_THEMES)[number], string> = {
+  ribbon: "Red", carrot: "Orange", butter: "Yellow", grass: "Green", denim: "Blue", plum: "Purple", mouse: "Gray",
+};
 /** Earlier theme names, and what they became. */
 export const RENAMED_THEMES: Record<string, ColorTheme> = {
   tomato: "ribbon", orange: "carrot", lemon: "butter", avocado: "grass", blueberry: "denim", blackberry: "denim", monochrome: "mouse", mushroom: "mouse",
@@ -119,6 +124,8 @@ export type Settings = {
   taskTags: TaskTag[];
   /** Tint timelines with the sky and mark sunrise and sunset. */
   showSun: boolean;
+  /** "Let Cadence outside": no cat picture, cat-themed hints or theme names, and a plain app icon. */
+  plain: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -135,6 +142,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lat: 39.7029,
   lng: -75.1118,
   routines: [{ id: "sleep", name: "Sleep", startTime: "23:00", endTime: "07:00", color: "#3f51b5" }],
+  plain: false,
   colorTheme: "carrot",
   appearanceTheme: "dark",
   habitOrder: [],

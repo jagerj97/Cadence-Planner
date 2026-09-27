@@ -1,0 +1,6 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The plain icon for "Let Cadence outside", on the same background as the cat -->
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_plain_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_plain_monochrome" />
+</adaptive-icon>

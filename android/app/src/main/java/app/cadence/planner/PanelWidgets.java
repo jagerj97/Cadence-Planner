@@ -121,7 +121,7 @@ final class PanelWidgets {
     }
 
     private static PendingIntent openApp(Context context, int code, String add) {
-        Intent launch = new Intent(context, MainActivity.class)
+        Intent launch = new Intent(context, AppActivity.class)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (add != null) launch.putExtra(EXTRA_ADD, add).setData(Uri.parse("cadence-widget://add/" + add));
         return PendingIntent.getActivity(context, code, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -164,7 +164,8 @@ final class PanelWidgets {
         JSONArray blocks = day == null ? null : day.optJSONArray("blocks");
         for (int i = 0; blocks != null && i < blocks.length(); i++) {
             JSONObject b = blocks.optJSONObject(i);
-            if (b == null) continue;
+            // Tasks that are already checked off don't need doing now.
+            if (b == null || b.optBoolean("done") && "task".equals(b.optString("kind"))) continue;
             if (current == null && now >= b.optInt("start") && now < b.optInt("end")) current = b;
             String continues = b.optString("continues");
             if (next == null && b.optInt("start") > now && !"before".equals(continues)) next = b;
@@ -240,7 +241,7 @@ final class PanelWidgets {
         v.setEmptyView(R.id.schedule_list, R.id.schedule_empty);
         v.setTextColor(R.id.schedule_empty, theme.mutedForeground);
         // Taps on the timeline open the app (a list needs a template; the rows fill in nothing).
-        Intent launch = new Intent(context, MainActivity.class)
+        Intent launch = new Intent(context, AppActivity.class)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         v.setPendingIntentTemplate(R.id.schedule_list, PendingIntent.getActivity(context, 800003 + id, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
@@ -349,7 +350,7 @@ final class PanelWidgets {
                 prefs.edit().putString("actions", queue.toString()).putString("snapshot", snapshot.toString()).apply();
             } catch (Exception ignored) {}
             refreshAll(context, false);
-            MainActivity open = MainActivity.current();
+            AppActivity open = AppActivity.current();
             if (open != null) open.dispatchToPage("cadence-widget-actions");
         }
     }

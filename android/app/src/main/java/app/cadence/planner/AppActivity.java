@@ -2,6 +2,8 @@ package app.cadence.planner;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -49,7 +51,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class MainActivity extends Activity {
+public class AppActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final int PICK_FILE = 20, SAVE_ICS = 21, PERMISSION_LOCATION = 22, PERMISSION_NOTIFY = 23, SAVE_BACKUP = 24;
     // On-demand notifications get their own ids so they never replace a scheduled reminder (1..128).
@@ -64,6 +66,25 @@ public class MainActivity extends Activity {
     private String pendingLocationOrigin;
     private boolean pendingBridgeLocation;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private static final String PLAIN = "plain";
+
+    /** Whether "Let Cadence outside" is on: plain app and notification icons instead of the cat. */
+    static boolean plain(Context context) {
+        return context.getSharedPreferences("cadence_appearance", MODE_PRIVATE).getBoolean(PLAIN, false);
+    }
+
+    /** Shows the plain or the cat home screen icon; the new one is turned on before the old one is turned off. */
+    static void setPlain(Context context, boolean plain) {
+        if (plain(context) == plain) return;
+        context.getSharedPreferences("cadence_appearance", MODE_PRIVATE).edit().putBoolean(PLAIN, plain).apply();
+        PackageManager packages = context.getPackageManager();
+        String base = AppActivity.class.getPackage().getName();
+        ComponentName cat = new ComponentName(context, base + ".MainActivity");
+        ComponentName plainIcon = new ComponentName(context, base + ".PlainLauncher");
+        packages.setComponentEnabledSetting(plain ? plainIcon : cat, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+        packages.setComponentEnabledSetting(plain ? cat : plainIcon, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -217,7 +238,7 @@ public class MainActivity extends Activity {
     }
 
     /** The open activity, if any (for notification and widget buttons that need to tell the page). */
-    static MainActivity current() {
+    static AppActivity current() {
         return FocusTimer.activity.get();
     }
 
@@ -438,6 +459,10 @@ public class MainActivity extends Activity {
             });
         }
 
+        @JavascriptInterface public void setPlain(boolean plain) {
+            AppActivity.setPlain(AppActivity.this, plain);
+        }
+
         @JavascriptInterface public void setAppearance(String mode) {
             if (!"light".equals(mode) && !"dark".equals(mode)) return;
             boolean dark = "dark".equals(mode);
@@ -490,26 +515,26 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public void notify(String title, String body) {
-            Notifications.show(MainActivity.this,
+            Notifications.show(AppActivity.this,
                 title == null ? "Cadence" : title.substring(0, Math.min(100, title.length())),
                 body == null ? "" : body.substring(0, Math.min(200, body.length())),
                 notificationIds.getAndIncrement());
         }
 
         @JavascriptInterface public void scheduleReminders(String json) {
-            if (json != null && json.length() < 100000) Notifications.scheduleItems(MainActivity.this, json);
+            if (json != null && json.length() < 100000) Notifications.scheduleItems(AppActivity.this, json);
         }
 
         @JavascriptInterface public void scheduleFocus(long at, String title, String body) {
-            Notifications.scheduleFocus(MainActivity.this, at, title, body);
+            Notifications.scheduleFocus(AppActivity.this, at, title, body);
         }
 
         @JavascriptInterface public void cancelFocus() {
-            Notifications.cancelFocus(MainActivity.this);
+            Notifications.cancelFocus(AppActivity.this);
         }
 
         @JavascriptInterface public void finishFocus(String title, String body) {
-            Notifications.finishFocus(MainActivity.this, title, body);
+            Notifications.finishFocus(AppActivity.this, title, body);
         }
 
         @JavascriptInterface public String getFocus() {
@@ -519,15 +544,15 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void saveFocus(String json) {
             if (json == null || json.length() >= 10000) return;
             getSharedPreferences("cadence_focus", MODE_PRIVATE).edit().putString("state", json).apply();
-            FocusTimer.update(MainActivity.this);
+            FocusTimer.update(AppActivity.this);
         }
 
         @JavascriptInterface public void updateWidget(String json) {
-            if (json != null && json.length() < 1000000) PanelWidgets.saveSnapshot(MainActivity.this, json);
+            if (json != null && json.length() < 1000000) PanelWidgets.saveSnapshot(AppActivity.this, json);
         }
 
         @JavascriptInterface public String takeWidgetActions() {
-            return PanelWidgets.takeActions(MainActivity.this);
+            return PanelWidgets.takeActions(AppActivity.this);
         }
 
         @JavascriptInterface public String takeLaunchAction() {
@@ -537,7 +562,7 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public String takeFocusStop() {
-            return FocusTimer.takeStopped(MainActivity.this);
+            return FocusTimer.takeStopped(AppActivity.this);
         }
     }
 }
