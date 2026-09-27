@@ -1189,16 +1189,20 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground">
                 Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to. (The app will close)
               </p>
-              <Row label="Let Cadence outside" hint={draft.plain ? "Cadence is outside. Turn this off to let her back in." : undefined}>
-                <Switch checked={!!draft.plain} onCheckedChange={async (v) => {
+              {/* On while Cadence is inside (the default); turning it off lets her out. */}
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm text-muted-foreground" data-testid="text-plain-state">
+                  {draft.plain ? "Cadence is outside. Let her back in?" : "Cadence is inside. Let her out?"}
+                </span>
+                <Switch checked={!draft.plain} onCheckedChange={async (inside) => {
                   // Saved first, then the icons switch and the app closes (the same on every phone).
-                  const next = { ...latestDraft.current, plain: v };
+                  const next = { ...latestDraft.current, plain: !inside };
                   latestDraft.current = next;
                   setDraft(next);
                   try { await flushAndroidSettings(); } catch { return; }
-                  window.CadenceAndroid?.letOutside?.(v);
-                }} aria-label="Let Cadence outside" data-testid="switch-plain" />
-              </Row>
+                  window.CadenceAndroid?.letOutside?.(!inside);
+                }} aria-label="Cadence is inside" data-testid="switch-plain" />
+              </div>
             </SubSection>
           </Section>
           <p className="pt-2 text-center text-xs text-muted-foreground tnum" data-testid="text-app-version">
