@@ -9,6 +9,8 @@ export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
   /** Switches to the plain app and notification icons ("Let Cadence outside"), or back. Older builds lack it. */
   setPlain?(plain: boolean): void;
+  /** The same from the Settings switch, then closes the app. Older builds lack it. */
+  letOutside?(plain: boolean): void;
   requestLocation?(): void;
   haptic?(kind: string): void;
   fetchCalendar(url: string): string;

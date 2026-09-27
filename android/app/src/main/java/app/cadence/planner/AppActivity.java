@@ -479,6 +479,16 @@ public class AppActivity extends Activity {
             AppActivity.setPlain(AppActivity.this, plain);
         }
 
+        /** The Settings switch: swaps the icons, then closes the app so every phone behaves the same. */
+        @JavascriptInterface public void letOutside(boolean plain) {
+            AppActivity.setPlain(AppActivity.this, plain);
+            runOnUiThread(() -> {
+                finishAndRemoveTask();
+                // Ending the process too lets the launcher pick up the new icon on its next start.
+                mainHandler.postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 400);
+            });
+        }
+
         @JavascriptInterface public void setAppearance(String mode) {
             if (!"light".equals(mode) && !"dark".equals(mode)) return;
             boolean dark = "dark".equals(mode);
