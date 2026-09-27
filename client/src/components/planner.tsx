@@ -461,7 +461,7 @@ function ItemDetails({ details, onClose, onEdit }: {
   // Tasks and habits can be checked off from here, for the day they were opened from.
   const checkDay = i ? (i.kind === "task" && i.availableFrom ? i.date : details?.occDate || (i.kind === "habit" ? todayStr() : i.date)) : "";
   const checkable = !!i && !routine && i.id > 0 && (i.kind === "task" || i.kind === "habit") && occursOn(i, checkDay);
-  const tags = i?.kind === "task" ? itemTags(i, settings) : [];
+  const tags = i?.kind === "task" ? itemTags(i, settings).slice(0, 1) : [];
   // A deadline task shows its due date, whichever day it was opened from.
   const d = i?.kind === "task" && i.availableFrom ? i.date : details?.occDate || i?.date || "";
   return (
@@ -1063,7 +1063,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     reminder: i.reminder == null ? (i.title ? "none" : defReminder == null ? "none" : String(defReminder)) : String(i.reminder),
     extraReminders: i.reminder == null ? [] : remindersOf(i as Item).filter((n) => n !== i.reminder).map(String),
     priority: i.priority || "normal",
-    tags: taskTagsOf(i),
+    tags: taskTagsOf(i).slice(0, 1), // a task has one tag
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
     notes: i.notes || "",

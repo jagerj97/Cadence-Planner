@@ -83,12 +83,15 @@ export function ColorSwatches({ value, onChange }: { value: string; onChange: (c
   );
 }
 
-/** Chips for a task's tags plus the "add tag" button: pick a tag, or name a new one and choose its color. */
+/**
+ * A task's tag and the "add tag" button: pick a tag, or name a new one and choose its color. A task
+ * has one tag (it gives the task its one color), so picking another replaces it.
+ */
 export function TaskTagField({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
   const { settings } = useSettings();
   const save = useSaveSettings();
   const all = settings.taskTags ?? [];
-  const chosen = value.map((n) => all.find((t) => t.name === n)).filter((t): t is TaskTag => !!t);
+  const chosen = value.slice(0, 1).map((n) => all.find((t) => t.name === n)).filter((t): t is TaskTag => !!t);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [color, setColor] = useState(TAG_COLORS[0]);
@@ -96,7 +99,7 @@ export function TaskTagField({ value, onChange }: { value: string[]; onChange: (
   const options = all.filter((t) => !value.includes(t.name) && (!typed || t.name.includes(typed)));
   const exists = all.some((t) => t.name === typed);
   const pick = (name: string) => {
-    onChange([...value, name]);
+    onChange([name]);
     setQ("");
     setOpen(false);
   };
@@ -114,7 +117,7 @@ export function TaskTagField({ value, onChange }: { value: string[]; onChange: (
         <PopoverTrigger asChild>
           <button type="button" className="inline-flex h-7 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary" data-testid="button-add-task-tag">
             <Plus className="h-3.5 w-3.5" />
-            add tag
+            {chosen.length ? "change tag" : "add tag"}
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-64 rounded p-0 shadow-lg">
