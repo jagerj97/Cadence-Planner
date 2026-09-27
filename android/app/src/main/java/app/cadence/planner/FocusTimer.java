@@ -22,7 +22,7 @@ import java.util.Locale;
 
 /**
  * The ongoing "timer running" notification, like the Clock app's: a live countdown with
- * Pause/Resume and Stop. The timer's state is the JSON the web app saves in "cadence_focus"
+ * Pause/Resume and Finish. The timer's state is the JSON the web app saves in "cadence_focus"
  * (plannedSec, accSec, runStart, ...), so the buttons work even when the app is closed.
  */
 final class FocusTimer {
@@ -78,7 +78,7 @@ final class FocusTimer {
     private static void createChannel(NotificationManager manager) {
         if (manager.getNotificationChannel(OLD_CHANNEL) != null) manager.deleteNotificationChannel(OLD_CHANNEL);
         NotificationChannel channel = new NotificationChannel(CHANNEL, "Running timer", NotificationManager.IMPORTANCE_DEFAULT);
-        channel.setDescription("The countdown for a running focus or break timer");
+        channel.setDescription("The countdown for a running focus timer");
         channel.setSound(null, null);
         channel.enableVibration(false);
         channel.setShowBadge(false);
@@ -103,9 +103,8 @@ final class FocusTimer {
         }
         createChannel(manager);
 
-        boolean isBreak = "break".equals(state.optString("mode"));
-        String kind = isBreak ? "Break" : "Focus";
-        String task = isBreak ? "" : state.optString("title", "");
+        String kind = "Focus";
+        String task = state.optString("title", "");
         String left = clock(Math.round(remaining));
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         if (launch != null) launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
@@ -140,7 +139,7 @@ final class FocusTimer {
                 .setShowWhen(false)
                 .addAction(action(context, "Resume", ACTION_RESUME, 2));
         }
-        notification.addAction(action(context, "Stop", ACTION_STOP, 3));
+        notification.addAction(action(context, "Finish", ACTION_STOP, 3));
         manager.notify(NOTIFICATION_ID, notification.build());
     }
 
@@ -163,12 +162,9 @@ final class FocusTimer {
                     state.put("runStart", now);
                     save(context, state);
                     long endAt = now + Math.round((state.optDouble("plannedSec", 0) - state.optDouble("accSec", 0)) * 1000);
-                    boolean isBreak = "break".equals(state.optString("mode"));
-                    Notifications.scheduleFocus(context, endAt,
-                        isBreak ? "Break's over" : "Focus session complete",
-                        isBreak ? "Ready for the next block?" : state.optString("title", ""));
+                    Notifications.scheduleFocus(context, endAt, "Focus session complete", state.optString("title", ""));
                 } else if (ACTION_STOP.equals(action)) {
-                    // Leave the stopped session for the web app to log the next time it runs.
+                    // Finish: leave the session for the web app to log the next time it runs.
                     JSONObject stopped = new JSONObject(state.toString());
                     stopped.put("accSec", elapsedSec(state, now));
                     stopped.put("runStart", JSONObject.NULL);

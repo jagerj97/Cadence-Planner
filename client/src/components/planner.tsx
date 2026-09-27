@@ -75,7 +75,7 @@ type Theme = "light" | "dark";
 export type FocusState = {
   itemId: number | null;
   title: string;
-  mode: "focus" | "break";
+  mode: "focus"; // older saves may say "break", from before breaks were removed
   plannedSec: number;
   accSec: number; // accumulated before current run
   runStart: number | null; // ms timestamp when running
@@ -89,7 +89,7 @@ type Ctx = {
   openDetails: (target: Item, occDate?: string) => void;
   focus: FocusState | null;
   elapsed: number;
-  startFocus: (opts: { title: string; itemId?: number | null; minutes: number; mode?: "focus" | "break" }) => void;
+  startFocus: (opts: { title: string; itemId?: number | null; minutes: number }) => void;
   pauseFocus: () => void;
   resumeFocus: () => void;
   stopFocus: (completed?: boolean) => void;
@@ -185,9 +185,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     window.CadenceAndroid.saveFocus(JSON.stringify(focus));
     if (focus?.runStart) {
       const remaining = Math.max(0, focus.plannedSec - focus.accSec) * 1000;
-      window.CadenceAndroid.scheduleFocus(focus.runStart + remaining,
-        focus.mode === "focus" ? "Focus session complete" : "Break's over",
-        focus.mode === "focus" ? focus.title : "Ready for the next block?");
+      window.CadenceAndroid.scheduleFocus(focus.runStart + remaining, "Focus session complete", focus.title);
     } else window.CadenceAndroid.cancelFocus();
   }, [focus]);
   const [tick, setTick] = useState(0);
@@ -200,7 +198,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   void tick;
 
   const logSession = useCallback(async (f: FocusState, sec: number, completed: boolean) => {
-    if (f.mode !== "focus" || sec < 30) return;
+    if (sec < 30) return;
     try {
       await apiRequest("POST", "/api/sessions", {
         itemId: f.itemId,
@@ -218,7 +216,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startFocus: Ctx["startFocus"] = useCallback(
-    ({ title, itemId = null, minutes, mode = "focus" }) => {
+    ({ title, itemId = null, minutes }) => {
       setFocus((prev) => {
         if (prev) {
           const sec = prev.accSec + (prev.runStart ? (Date.now() - prev.runStart) / 1000 : 0);
@@ -227,7 +225,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         return {
           itemId,
           title,
-          mode,
+          mode: "focus",
           plannedSec: Math.max(1, minutes) * 60,
           accSec: 0,
           runStart: Date.now(),
@@ -266,7 +264,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     const sync = () => {
       try {
         const stopped: FocusState | null = JSON.parse(bridge.takeFocusStop?.() || "null");
-        if (stopped) logSession(stopped, stopped.accSec, false);
+        // The notification's Finish logs the session like the app's Finish button.
+        if (stopped) logSession(stopped, stopped.accSec, true);
       } catch { /* ignore */ }
       try {
         const saved: FocusState | null = JSON.parse(bridge.getFocus() || "null");
@@ -293,24 +292,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       logSession(f, f.plannedSec, true);
       setFocus(null);
       if (settings.sound) chime("done");
-      if (f.mode === "focus") {
-        window.CadenceAndroid?.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
-        toast({
-          title: "Nice work — session complete",
-          description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused`,
-          action: (
-            <ToastAction
-              altText="Take a break"
-              onClick={() => startFocus({ title: "Break", minutes: settings.breakMinutes, mode: "break" })}
-            >
-              {settings.breakMinutes}m break
-            </ToastAction>
-          ),
-        });
-      } else {
-        window.CadenceAndroid?.finishFocus("Break's over", "Ready for the next block?");
-        toast({ title: "Break's over", description: "Ready for the next block?" });
-      }
+      window.CadenceAndroid?.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
+      toast({ title: "Nice work — session complete", description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused` });
     }
   }, [elapsed, focus, logSession, settings, startFocus, toast]);
 

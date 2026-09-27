@@ -328,7 +328,7 @@ function CardHeaderLink({ to, title, testId, children }: { to: string; title: st
 }
 
 function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: ReturnType<typeof usePlanner>["startFocus"] }) {
-  const { focus } = usePlanner();
+  const { focus, openDetails } = usePlanner();
   const nm = now.getHours() * 60 + now.getMinutes();
   const today = todayStr();
   const blocks = blocksForDay(items, today);
@@ -342,6 +342,8 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
       </div>
       {current ? (
         <div className="flex items-center gap-3">
+          {/* Tapping the item opens its details. */}
+          <button type="button" onClick={() => openDetails(current.item, current.occDate)} className="flex min-w-0 flex-1 items-center gap-3 text-left" data-testid="button-now-current">
           <div className="relative shrink-0">
             <Ring pct={(nm - current.fullStart) / (current.fullEnd - current.fullStart)} color={colorOf(current.item)} size={48} />
             <span className="absolute inset-0 grid place-items-center">
@@ -360,6 +362,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
               {current.fullEnd > 1440 ? ` ${fmtDate(addDays(today, Math.floor(current.fullEnd / 1440)), { month: "short", day: "numeric" })}` : ""}
             </div>
           </div>
+          </button>
           {kindOf(current.item) !== "sleep" && !focus && (
             <Button
               size="sm"
@@ -376,14 +379,15 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
         <div className="text-sm text-muted-foreground">Nothing scheduled right now — a good moment for a task below.</div>
       )}
       {next && (
-        <div className="flex items-center gap-2 border-t border-orange-200/70 dark:border-white/10 pt-3 text-sm">
+        <button type="button" onClick={() => openDetails(next.item, next.occDate)}
+          className="flex w-full items-center gap-2 border-t border-orange-200/70 dark:border-white/10 pt-3 text-left text-sm" data-testid="button-now-next">
           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: colorOf(next.item) }} />
           <span className="text-muted-foreground">Next</span>
-          <span className="font-medium fade-truncate flex-1">{next.item.title}</span>
+          <span className="min-w-0 flex-1 font-medium fade-truncate">{next.item.title}</span>
           <span className="text-xs text-muted-foreground tnum shrink-0">
             {fmtTime(next.start, true)} · in {fmtDur(next.start - nm)}
           </span>
-        </div>
+        </button>
       )}
     </div>
   );

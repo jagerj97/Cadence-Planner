@@ -81,8 +81,13 @@ const KNOWN_THEMES = new Set<string>([...COLOR_THEMES, ...Object.keys(RENAMED_TH
 const pref = async (): Promise<Settings> => {
   const saved = (await read<{ key: string; value: Settings }>("settings", "prefs"))?.value;
   const merged = { ...DEFAULT_SETTINGS, ...saved };
-  // Themes that were renamed carry over to their new names.
-  return { ...merged, colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme };
+  // Themes that were renamed carry over to their new names, and routines on the old default blue
+  // move to the blue swatch so it shows as picked.
+  return {
+    ...merged,
+    colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme,
+    routines: merged.routines.map((r) => (r.color?.toLowerCase() === "#5966ad" ? { ...r, color: "#3f51b5" } : r)),
+  };
 };
 const bodyJSON = async (input?: BodyInit | null) => input ? JSON.parse(String(input)) : {};
 const ok = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -99,6 +104,7 @@ function validItem(it: Item | InsertItem): boolean {
       it.startTime || it.endTime || it.allDay || JSON.parse(it.recurrence || '{"freq":"none"}').freq !== "none")) return false;
   return true;
 }
+const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => m[2].toLowerCase());
 const normTags = (body: string, tags: unknown) => {
   const found = new Set<string>();
   for (const match of body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)) found.add(match[2].toLowerCase());
@@ -379,12 +385,38 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       return ok(await put("feeds", {
         name: data.name.trim(), url: normalizedUrl(data.url), color: data.color || "#4f6bd8",
         importKind: data.importKind || null, lastSynced: null, eventCount: 0, lastError: null, journalNotes: !!data.journalNotes,
+        useColor: !!data.useColor,
       }));
     } catch { return fail("Enter a valid calendar URL"); }
   }
   const feedRoute = /^\/api\/feeds\/(\d+)(?:\/sync)?$/.exec(path);
   if (feedRoute) {
     const id = Number(feedRoute[1]);
+    // Editing a connected calendar. A changed notes choice applies to its items now; a changed
+    // "Import items as" applies on the next sync.
+    if (method === "PATCH") return exclusive(async () => {
+      const feed = await read<Feed>("feeds", id);
+      if (!feed) return fail("Calendar not found", 404);
+      if (data.importKind && !IMPORT_KINDS.includes(data.importKind)) return fail("Choose a valid import type");
+      let url = feed.url;
+      try { if (typeof data.url === "string" && data.url.trim()) url = normalizedUrl(data.url); } catch { return fail("Enter a valid calendar URL"); }
+      const importKind = data.importKind === undefined ? feed.importKind : data.importKind || null;
+      const next: Feed = {
+        ...feed, url,
+        name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : feed.name,
+        importKind, useColor: data.useColor === undefined ? feed.useColor : !!data.useColor,
+        color: typeof data.color === "string" && /^#[0-9a-f]{6}$/i.test(data.color) ? data.color : feed.color,
+        journalNotes: data.journalNotes === undefined ? feed.journalNotes : !!data.journalNotes,
+        resetKinds: feed.resetKinds || importKind !== feed.importKind,
+      };
+      if (!!next.journalNotes !== !!feed.journalNotes) {
+        for (const item of await list<Item>("items")) {
+          if (item.source !== `feed:${id}`) continue;
+          await syncNotes(await put("items", { ...item, journalOff: !next.journalNotes }), !!next.journalNotes);
+        }
+      }
+      return ok(await put("feeds", next));
+    });
     if (method === "DELETE") return exclusive(async () => {
       await remove("feeds", id);
       for (const item of await list<Item>("items")) if (item.source === `feed:${id}`) await removeItem(item);
@@ -397,7 +429,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         const fetched = JSON.parse(window.CadenceAndroid!.fetchCalendar(feed.url));
         if (fetched.error) throw new Error(fetched.error);
         const imported = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`, "expand")
-          .map((item) => ({ ...item, kind: feed.importKind ?? item.kind, color: feed.importKind ? null : feed.color }));
+          .map((item) => ({ ...item, kind: feed.importKind ?? item.kind, color: feed.useColor ? feed.color : null }));
         return exclusive(async () => {
           const prior = (await list<Item>("items")).filter((item) => item.source === `feed:${id}`);
           const byUid = new Map(prior.map((item) => [`${item.uid || item.title}\0${item.date}`, item]));
@@ -406,7 +438,8 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             const old = byUid.get(`${fresh.uid || fresh.title}\0${fresh.date}`);
             if (old) {
               seen.add(old.id);
-              const saved = await put("items", { ...old, ...fresh, id: old.id, kind: old.kind, color: old.color, journalOff: old.journalOff,
+              // Kinds changed on the item stay unless "Import items as" was changed since.
+              const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
                 completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && old.availableFrom ? {
                   availableFrom: old.availableFrom, startTime: null, endTime: null, endDate: null, allDay: false,
@@ -415,7 +448,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);
           }
           for (const old of prior) if (!seen.has(old.id)) await removeItem(old);
-          return ok(await put("feeds", { ...feed, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
+          return ok(await put("feeds", { ...feed, resetKinds: false, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
         });
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Unable to read calendar";
@@ -452,6 +485,23 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     await (notesBackfilled ??= backfillNotes().catch(() => {}));
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   }
+  // Renames a journal tag (to) or removes it (to: null) on every entry, in its tags and its #hashtags.
+  // A removed hashtag keeps its word. Entries holding an item's notes pass the new text to the item.
+  if (path === "/api/journal/retag" && method === "POST") return exclusive(async () => {
+    const from = String(data.from || "").toLowerCase(), to = data.to ? String(data.to).toLowerCase() : null;
+    if (!from) return fail("Choose a tag");
+    const hashtag = new RegExp(`(^|\\s)#${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_-])`, "giu");
+    for (const entry of await list<JournalEntry>("journal")) {
+      const tags = listOf(entry.tags);
+      if (!tags.includes(from)) continue;
+      const body = entry.body.replace(hashtag, to ? `$1#${to}` : `$1${from}`);
+      const kept = tags.filter((t) => t !== from && !hashtagsIn(entry.body).includes(t));
+      await put("journal", { ...entry, body, tags: normTags(body, to ? [...kept, to] : kept), updatedAt: new Date().toISOString() });
+      const item = entry.itemId ? await read<Item>("items", entry.itemId) : undefined;
+      if (item && body !== entry.body) await put("items", { ...item, notes: body });
+    }
+    return ok({ ok: true });
+  });
   if (path === "/api/journal" && method === "POST") {
     if (!validDate(data.date) || !data.body?.trim()) return fail("Date and body required");
     const now = new Date().toISOString();

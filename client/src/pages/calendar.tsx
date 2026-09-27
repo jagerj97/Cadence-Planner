@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shell";
 import { DayColumn, HourLabels } from "@/components/timeline";
 import { usePlanner } from "@/components/planner";
 import { useItems, useSettings } from "@/lib/data";
-import type { Item } from "@shared/schema";
+import type { Item, WeekDay } from "@shared/schema";
 import {
   DAY_SHORT,
   addDays,
@@ -340,7 +340,7 @@ export function CalendarPage() {
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Page title that opens a jump-to picker. */
-function PickerTitle({ label, open, onOpenChange, children, testId }: {
+export function PickerTitle({ label, open, onOpenChange, children, testId }: {
   label: string; open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode; testId: string;
 }) {
   return (
@@ -357,7 +357,7 @@ function PickerTitle({ label, open, onOpenChange, children, testId }: {
   );
 }
 
-function StepHeader({ label, onPrev, onNext, unit }: { label: string; onPrev: () => void; onNext: () => void; unit: string }) {
+export function StepHeader({ label, onPrev, onNext, unit }: { label: string; onPrev: () => void; onNext: () => void; unit: string }) {
   return (
     <div className="mb-2 flex items-center justify-between">
       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onPrev} aria-label={`Previous ${unit}`} data-testid={`button-picker-prev-${unit}`}>
@@ -400,7 +400,7 @@ function MonthPicker({ month, onPick }: { month: string; onPick: (firstOfMonth: 
 }
 
 function WeekPicker({ title, start, weekStartsOn, onPick }: {
-  title: string; start: string; weekStartsOn: 0 | 1; onPick: (day: string) => void;
+  title: string; start: string; weekStartsOn: WeekDay; onPick: (day: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const firstOf = (d: string) => { const x = parseYmd(d); return new Date(x.getFullYear(), x.getMonth(), 1); };

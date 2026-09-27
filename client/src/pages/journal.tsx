@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { KIND_TAGS, type Item, type JournalEntry, type Kind } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
-import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations } from "@/lib/data";
-import { KIND_META, addDays, colorOf, fmtDate, kindOf, todayStr } from "@/lib/cal";
+import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations, useSettings } from "@/lib/data";
+import { DAY_SHORT, KIND_META, addDays, colorOf, fmtDate, kindOf, parseYmd, startOfWeek, todayStr, ymd } from "@/lib/cal";
+import { PickerTitle, StepHeader } from "@/pages/calendar";
 import { usePlanner } from "@/components/planner";
 import { cleanTag, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronLeft, ChevronRight, Hash, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Hash, Settings2, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -315,7 +316,8 @@ function EntryCard({ e, onTag, showDate, item, openDetails }: {
           </button>
         ) : <span className="tnum">{timeOf(e.createdAt)}</span>}
         {e.updatedAt !== e.createdAt && <span>· edited</span>}
-        {!editing && (
+        {/* An entry holding an item's notes is changed from that item, so it has no edit or delete. */}
+        {!editing && !e.itemId && (
           <div className="ml-auto flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
             <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing(true)} aria-label="Edit entry" data-testid={`button-edit-entry-${e.id}`}>
               <Pencil className="h-3.5 w-3.5" />
@@ -393,6 +395,112 @@ function Clamp({ children, footer }: { children: React.ReactNode; footer?: React
   );
 }
 
+/** The journal's date title opens a month calendar; days with entries have a small dot. */
+function DayPicker({ day, label, marked, onPick }: { day: string; label: string; marked: Set<string>; onPick: (d: string) => void }) {
+  const { settings } = useSettings();
+  const [open, setOpen] = useState(false);
+  const firstOf = (d: string) => { const x = parseYmd(d); return new Date(x.getFullYear(), x.getMonth(), 1); };
+  const [view, setView] = useState(() => firstOf(day));
+  useEffect(() => { if (open) setView(firstOf(day)); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthStart = ymd(view);
+  const monthEnd = ymd(new Date(view.getFullYear(), view.getMonth() + 1, 0));
+  const gridStart = startOfWeek(monthStart, settings.weekStartsOn);
+  const cells: string[] = [];
+  for (let d = gridStart; d <= monthEnd || cells.length % 7; d = addDays(d, 1)) cells.push(d);
+  const today = todayStr();
+  return (
+    <PickerTitle label={label} open={open} onOpenChange={setOpen} testId="button-pick-journal-day">
+      <StepHeader label={fmtDate(monthStart, { month: "long", year: "numeric" })} unit="month"
+        onPrev={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
+        onNext={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} />
+      <div className="grid grid-cols-7 gap-0.5 text-center">
+        {Array.from({ length: 7 }, (_, n) => (
+          <div key={n} className="pb-1 text-xs text-muted-foreground">{DAY_SHORT[(n + settings.weekStartsOn) % 7].slice(0, 2)}</div>
+        ))}
+        {cells.map((d) => {
+          const inMonth = d >= monthStart && d <= monthEnd;
+          const selected = d === day;
+          return (
+            <button key={d} type="button" onClick={() => { onPick(d); setOpen(false); }}
+              className={cn("relative grid h-9 place-items-center rounded-md text-sm tnum transition-colors",
+                selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted",
+                !inMonth && !selected && "text-muted-foreground/50", d === today && !selected && "text-primary font-semibold")}
+              aria-pressed={selected} aria-label={`${fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}${marked.has(d) ? ", has entries" : ""}`}
+              data-testid={`button-pick-day-${d}`}>
+              {parseYmd(d).getDate()}
+              {marked.has(d) && (
+                <span className={cn("absolute bottom-1 h-1 w-1 rounded-full", selected ? "bg-primary-foreground" : "bg-primary")} aria-hidden />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </PickerTitle>
+  );
+}
+
+/**
+ * Rename or delete journal tags across every entry. The kind tags (#events, #tasks...) come from
+ * items' notes and are added back automatically, so they aren't listed.
+ */
+function JournalTagManager({ open, onOpenChange, tags, onRenamed }: {
+  open: boolean; onOpenChange: (o: boolean) => void; tags: [string, number][]; onRenamed: (from: string, to: string | null) => void;
+}) {
+  const { retag } = useJournalMutations();
+  const own = tags.filter(([t]) => !KIND_OF_TAG.has(t));
+  const [editing, setEditing] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const rename = async (from: string) => {
+    const to = cleanTag(name);
+    setEditing(null);
+    if (!to || to === from) return;
+    onRenamed(from, to);
+    await retag.mutateAsync({ from, to });
+  };
+  const remove = async (t: string) => {
+    onRenamed(t, null);
+    await retag.mutateAsync({ from: t, to: null });
+  };
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setEditing(null); }}>
+      <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-manage-journal-tags">
+        <DialogTitle>Journal tags</DialogTitle>
+        <DialogDescription className="sr-only">Rename or delete journal tags</DialogDescription>
+        {own.length === 0 && <p className="text-sm text-muted-foreground">No tags yet. Add #hashtags or tags to your entries.</p>}
+        <ul className="grid grid-cols-1 gap-1">
+          {own.map(([t, n]) => {
+            return (
+              <li key={t} className="grid gap-2 py-1.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <button type="button" onClick={() => { setEditing(editing === t ? null : t); setName(t); }}
+                    aria-expanded={editing === t} className="flex min-w-0 flex-1 items-center text-left" data-testid={`button-edit-journal-tag-${t}`}>
+                    <span className="inline-flex h-6 items-center gap-0.5 rounded-full bg-accent px-2 text-xs font-medium text-accent-foreground">
+                      <Hash className="h-3 w-3" />
+                      {t}
+                    </span>
+                  </button>
+                  <span className="text-xs text-muted-foreground tnum">{n} {n === 1 ? "entry" : "entries"}</span>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Delete tag ${t}`} onClick={() => remove(t)} data-testid={`button-delete-journal-tag-${t}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                {editing === t && (
+                  <div className="flex items-center gap-2 pl-1">
+                    <Input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && rename(t)}
+                      className="h-9" aria-label="Tag name" data-testid="input-rename-journal-tag" />
+                    <Button size="sm" variant="outline" onClick={() => rename(t)} data-testid="button-rename-journal-tag">Save</Button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        <p className="text-xs text-muted-foreground">Deleting a tag keeps its word in your entries, without the #.</p>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function JournalPage() {
   const [, params] = useRoute("/journal/:date");
   const [, nav] = useLocation();
@@ -402,6 +510,7 @@ export default function JournalPage() {
   const { create } = useJournalMutations();
   const [q, setQ] = useState("");
   const [composing, setComposing] = useState(false);
+  const [managing, setManaging] = useState(false);
   // Entries holding an item's notes link to it.
   const { data: items } = useItems();
   const { openDetails } = usePlanner();
@@ -414,6 +523,7 @@ export default function JournalPage() {
     return () => window.removeEventListener("cadence:journal-compose", f);
   }, []);
   const all = entries ?? [];
+  const entryDays = useMemo(() => new Set(all.map((e) => e.date)), [all]);
 
   const dayEntries = all.filter((e) => e.date === day).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const tagCounts = useMemo(() => {
@@ -440,11 +550,13 @@ export default function JournalPage() {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [all, query]);
 
-  const searchTag = (t: string) => setQ(`#${t}`);
+  // Tapping the tag being searched clears the search.
+  const searchTag = (t: string) => setQ((q) => (q.trim().toLowerCase() === `#${t}` ? "" : `#${t}`));
 
   return (
     <>
-      <PageHeader title={`${isToday ? "Today · " : ""}${fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}`}>
+      <PageHeader title={<DayPicker day={day} label={`${isToday ? "Today · " : ""}${fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}`}
+        marked={entryDays} onPick={(d) => nav(d === todayStr() ? "/journal" : `/journal/${d}`)} />}>
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => nav(`/journal/${addDays(day, -1)}`)} aria-label="Previous day" data-testid="button-journal-prev">
             <ChevronLeft className="h-4 w-4" />
@@ -482,6 +594,12 @@ export default function JournalPage() {
                 <div className="mt-3">
                   <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Tags</div>
                   <div className="flex flex-wrap gap-1.5">
+                    <button type="button" onClick={() => setManaging(true)}
+                      className="inline-flex h-7 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                      data-testid="button-manage-journal-tags">
+                      <Settings2 className="h-3.5 w-3.5" />
+                      Manage
+                    </button>
                     {tagCounts.map(([t, n]) => (
                       <button
                         key={t}
@@ -525,6 +643,8 @@ export default function JournalPage() {
               </div>
             )}
           </aside>
+          <JournalTagManager open={managing} onOpenChange={setManaging} tags={tagCounts}
+            onRenamed={(from, to) => query === `#${from}` && setQ(to ? `#${to}` : "")} />
 
           <section className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">
             {query ? (

@@ -57,6 +57,10 @@ export type Feed = {
   lastError: string | null;
   /** Whether this calendar's event notes become journal entries. */
   journalNotes?: boolean;
+  /** Color its items with the calendar's color instead of by their kind (off by default). */
+  useColor?: boolean;
+  /** Set when "Import items as" changed, so the next sync re-applies it to existing items. */
+  resetKinds?: boolean;
 };
 
 export type Session = {
@@ -81,6 +85,8 @@ export type JournalEntry = {
 };
 
 /** A task tag and the color it gives a task's checkbox. */
+/** 0 = Sunday … 6 = Saturday. */
+export type WeekDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskTag = { name: string; color: string };
 export type Routine = { id: string; name: string; startTime: string; endTime: string; color: string };
 // Red, orange, yellow, green, blue, violet and grey.
@@ -97,11 +103,10 @@ export type Settings = {
   dayStartHour: number;
   defaultReminder: number | null;
   focusMinutes: number;
-  breakMinutes: number;
   sound: boolean;
   inAppPopups: boolean; // false = alerts only as system notifications (errors still show)
   haptics: boolean;
-  weekStartsOn: 0 | 1;
+  weekStartsOn: WeekDay;
   lat: number;
   lng: number;
   routines: Routine[];
@@ -111,6 +116,8 @@ export type Settings = {
   hiddenTodayPanels: string[]; // Today page panels the user turned off (see TODAY_PANELS)
   todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
   taskTags: TaskTag[];
+  /** Tint timelines with the sky and mark sunrise and sunset. */
+  showSun: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -120,7 +127,6 @@ export const DEFAULT_SETTINGS: Settings = {
   dayStartHour: 6,
   defaultReminder: 10,
   focusMinutes: 30,
-  breakMinutes: 5,
   sound: true,
   inAppPopups: true,
   haptics: true,
@@ -134,4 +140,5 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenTodayPanels: [],
   todayPanelOrder: [],
   taskTags: [],
+  showSun: true,
 };

@@ -337,16 +337,32 @@ public class MainActivity extends Activity {
     private boolean publicHost(String host) throws Exception {
         if (host == null || !host.contains(".") || host.length() > 253 || host.endsWith(".local") ||
             host.endsWith(".internal") || host.equals("localhost") || host.matches("[0-9.]+") || host.contains(":")) return false;
-        for (InetAddress ip : InetAddress.getAllByName(host)) {
-            byte[] bytes = ip.getAddress();
-            int first = bytes[0] & 255, second = bytes.length > 1 ? bytes[1] & 255 : 0;
-            if (ip.isAnyLocalAddress() || ip.isLoopbackAddress() || ip.isLinkLocalAddress() ||
-                ip.isSiteLocalAddress() || ip.isMulticastAddress() ||
-                bytes.length != 4 || first == 0 || first == 10 || first == 127 ||
-                first == 169 && second == 254 || first == 172 && second >= 16 && second <= 31 ||
-                first == 192 && second == 168 || first >= 224 || first == 100 && second >= 64 && second <= 127) return false;
-        }
+        for (InetAddress ip : InetAddress.getAllByName(host)) if (!publicAddress(ip)) return false;
         return true;
+    }
+
+    /**
+     * Whether an address is on the public internet. IPv6 addresses count too: calendar hosts like
+     * Google's have them, and phones on IPv6 networks get them first.
+     */
+    private static boolean publicAddress(InetAddress ip) {
+        if (ip.isAnyLocalAddress() || ip.isLoopbackAddress() || ip.isLinkLocalAddress() ||
+            ip.isSiteLocalAddress() || ip.isMulticastAddress()) return false;
+        byte[] b = ip.getAddress();
+        if (b.length == 16) {
+            int first = b[0] & 255;
+            if ((first & 0xfe) == 0xfc) return false; // unique local, fc00::/7
+            // NAT64 (64:ff9b::/96), used by IPv6-only mobile networks, carries an IPv4 address in its last 4 bytes.
+            boolean nat64 = first == 0x00 && (b[1] & 255) == 0x64 && (b[2] & 255) == 0xff && (b[3] & 255) == 0x9b;
+            for (int i = 4; nat64 && i < 12; i++) nat64 = b[i] == 0;
+            if (!nat64) return true;
+            b = new byte[] { b[12], b[13], b[14], b[15] };
+        }
+        if (b.length != 4) return false;
+        int first = b[0] & 255, second = b[1] & 255;
+        return !(first == 0 || first == 10 || first == 127 || first == 169 && second == 254 ||
+            first == 172 && second >= 16 && second <= 31 || first == 192 && second == 168 ||
+            first >= 224 || first == 100 && second >= 64 && second <= 127);
     }
 
     private String calendarText(String raw) throws Exception {

@@ -50,10 +50,25 @@ final class Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
+    /**
+     * Reminders use exact alarms so they arrive on time; inexact ones are batched by Android and can
+     * come several minutes late. Exact alarms need USE_EXACT_ALARM (Android 13+) or
+     * SCHEDULE_EXACT_ALARM (Android 12); if the system still refuses, fall back to an inexact one.
+     */
     private static void set(Context context, int code, long at, String title, String body) {
         if (at <= System.currentTimeMillis()) return;
         AlarmManager manager = context.getSystemService(AlarmManager.class);
-        manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, intent(context, code, title, body));
+        PendingIntent pending = intent(context, code, title, body);
+        boolean exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms();
+        try {
+            if (exact) {
+                manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending);
+                return;
+            }
+        } catch (SecurityException ignored) {
+            // The exact alarm permission was taken away; use an inexact alarm below.
+        }
+        manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending);
     }
 
     static void scheduleItems(Context context, String json) {
