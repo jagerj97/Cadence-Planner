@@ -817,11 +817,6 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                     </SelectContent>
                   </Select>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {v.leadMode === "today"
-                    ? "Can be checked off any day up to the due date."
-                    : "Can be checked off within that window before each due date."}
-                </span>
               </div>
             )
           ) : (
