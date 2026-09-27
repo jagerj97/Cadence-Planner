@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
 import { usePlanner, Ring, clock, chime, JournalNotesCheckbox } from "@/components/planner";
-import { ColorSwatches } from "@/components/taskTags";
+import { ColorSwatches, TAG_COLORS } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -38,10 +38,9 @@ import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS } from "@shared/schema";
-import type { ColorTheme, ImportKind, Routine, Session, Settings } from "@shared/schema";
+import type { ColorTheme, Feed, ImportKind, Routine, Session, Settings } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { SiGooglecalendar, SiApple } from "react-icons/si";
 import {
   Plus,
   Flame,
@@ -474,7 +473,6 @@ export function FocusPage() {
 }
 
 /* ====================== SYNC ====================== */
-const FEED_COLORS = ["#4f6bd8", "#0b8a6a", "#c2562b", "#8a4fd8", "#b8860b", "#d8457a"];
 
 const IMPORT_LABELS: Record<ImportKind, string> = {
   event: "Events",
@@ -505,18 +503,106 @@ function ImportTypePicker({ id, value, onChange }: {
   );
 }
 
+/** Connect a calendar, or change a connected one's settings. */
+function FeedDialog({ feed, onClose, onSaved, colorFor }: {
+  feed: Feed | "new" | null; onClose: () => void; onSaved: (id: number) => Promise<void>; colorFor: () => string;
+}) {
+  const { toast } = useToast();
+  const existing = feed && feed !== "new" ? feed : null;
+  const [name, setName] = useState("Calendar");
+  const [url, setUrl] = useState("");
+  const [kind, setKind] = useState<"auto" | ImportKind>("auto");
+  const [journal, setJournal] = useState(false);
+  const [useColor, setUseColor] = useState(false);
+  const [color, setColor] = useState(TAG_COLORS[4]);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!feed) return;
+    setName(existing?.name ?? "Calendar");
+    setUrl(existing?.url ?? "");
+    setKind(existing?.importKind ?? "auto");
+    setJournal(!!existing?.journalNotes);
+    setUseColor(!!existing?.useColor);
+    setColor(existing?.color ?? colorFor());
+  }, [feed]); // eslint-disable-line react-hooks/exhaustive-deps
+  const save = async () => {
+    if (!url.trim()) return;
+    setSaving(true);
+    try {
+      const body = { name: name.trim() || "Calendar", url: url.trim(), importKind: kind === "auto" ? null : kind, journalNotes: journal, useColor, color };
+      const f = existing
+        ? await (await apiRequest("PATCH", `/api/feeds/${existing.id}`, body)).json()
+        : await (await apiRequest("POST", "/api/feeds", body)).json();
+      queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
+      onClose();
+      await onSaved(f.id);
+    } catch (e: any) {
+      const message = String(e.message).replace(/^\d+: /, "");
+      let description = message;
+      try { description = JSON.parse(message).message || message; } catch { /* network error */ }
+      toast({ title: existing ? "Couldn't save calendar" : "Couldn't connect calendar", description, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const removeFeed = async () => {
+    if (!existing) return;
+    await apiRequest("DELETE", `/api/feeds/${existing.id}`);
+    queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+    toast({ title: "Calendar removed", description: existing.name });
+    onClose();
+  };
+  return (
+    <Dialog open={!!feed} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md max-h-[85vh] grid-cols-1 overflow-y-auto" data-testid="dialog-feed">
+        <DialogHeader className="pr-8 text-left">
+          <DialogTitle>{existing ? existing.name : "Connect a calendar"}</DialogTitle>
+          <DialogDescription>
+            Paste a calendar's iCal link. For Google Calendar, copy the “Secret address in iCal format” from{" "}
+            <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">your calendar's settings</a>.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid min-w-0 grid-cols-1 gap-3">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" aria-label="Calendar name" data-testid="input-feed-name" />
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()}
+            placeholder="https://… or webcal://…" aria-label="Calendar iCal URL" data-testid="input-feed-url" />
+          <ImportTypePicker id="select-feed-import-kind" value={kind} onChange={setKind} />
+          {/* Imported events' notes go to the journal only when asked; each item's details can change it later. */}
+          <JournalNotesCheckbox id="checkbox-feed-journal" checked={journal} onChange={setJournal} />
+          {/* Off: items take their kind's color, like everything else in Cadence. */}
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+            <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={useColor} onChange={(e) => setUseColor(e.target.checked)} data-testid="checkbox-feed-color" />
+            Choose a color for this calendar
+          </label>
+          {useColor && <ColorSwatches value={color} onChange={setColor} />}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {existing && (
+              <Button variant="ghost" size="sm" className="-ml-2 px-2 text-destructive" onClick={removeFeed} data-testid="button-remove-feed">
+                <Trash2 className="h-4 w-4 mr-1.5" /> Remove
+              </Button>
+            )}
+            <div className="flex-1" />
+            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+            <Button size="sm" onClick={save} disabled={!url.trim() || saving} data-testid="button-save-feed">
+              {existing ? "Save" : saving ? "Connecting…" : "Connect"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function CalendarLinks() {
   const { data: feeds } = useFeeds();
   const { data: items } = useItems();
   const { toast } = useToast();
-  const [name, setName] = useState("Calendar");
-  const [url, setUrl] = useState("");
-  const [feedKind, setFeedKind] = useState<"auto" | ImportKind>("auto");
   const [fileKind, setFileKind] = useState<"auto" | ImportKind>("auto");
-  const [feedJournal, setFeedJournal] = useState(false);
   const [fileJournal, setFileJournal] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
-  const [adding, setAdding] = useState(false);
+  // The calendar whose settings window is open, or "new" to connect one.
+  const [editing, setEditing] = useState<Feed | "new" | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
 
@@ -536,26 +622,9 @@ export function CalendarLinks() {
     }
   };
 
-  const addFeed = async () => {
-    if (!url.trim()) return;
-    setAdding(true);
-    try {
-      const color = FEED_COLORS[(feeds?.length ?? 0) % FEED_COLORS.length];
-      const f = await (await apiRequest("POST", "/api/feeds", {
-        name: name.trim() || "Calendar", url: url.trim(), color,
-        importKind: feedKind === "auto" ? null : feedKind, journalNotes: feedJournal,
-      })).json();
-      queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
-      setUrl("");
-      await syncFeed(f.id);
-    } catch (e: any) {
-      const message = String(e.message).replace(/^\d+: /, "");
-      let description = message;
-      try { description = JSON.parse(message).message || message; } catch { /* network error */ }
-      toast({ title: "Couldn't connect calendar", description, variant: "destructive" });
-    } finally {
-      setAdding(false);
-    }
+  const syncAll = async () => {
+    for (const f of feeds ?? []) await syncFeed(f.id, true);
+    toast({ title: "Calendars synced", description: `${feeds?.length ?? 0} calendar${feeds?.length === 1 ? "" : "s"}` });
   };
 
   const onFile = async (file: File) => {
@@ -587,103 +656,58 @@ export function CalendarLinks() {
   };
   return (
     <>
-          <section className="grid gap-1">
-            <h2 className="text-sm font-semibold">Your calendar stays on this phone</h2>
-            <p className="text-sm text-muted-foreground">You can import subscribed calendars and save an iCal file below. A phone-only calendar cannot provide a public subscription URL that Google Calendar can reach.</p>
-          </section>
           {/* subscribe */}
-          <section id="calendars" className="grid min-w-0 grid-cols-1 gap-3 border-t pt-4">
-            <div>
-              <h2 className="text-sm font-semibold">Connected calendars</h2>
-              <p className="text-xs text-muted-foreground">Auto-syncs every 15 min while open</p>
-            </div>
-
-            <div className="rounded-md bg-muted/60 p-4 text-sm grid gap-2">
-              <div className="flex items-center gap-2 font-medium">
-                <SiGooglecalendar className="h-4 w-4 text-[#4285F4]" />
-                Connect Google Calendar
+          <section id="calendars" className="grid min-w-0 grid-cols-1 gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold">Connected calendars</h2>
+                <p className="text-xs text-muted-foreground">Auto-syncs every 15 min while open</p>
               </div>
-              <ol className="list-decimal pl-5 grid gap-1 text-muted-foreground">
-                <li>
-                  Open{" "}
-                  <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
-                    Google Calendar settings
-                  </a>
-                  .
-                </li>
-                <li>Under “Settings for my calendars”, pick your calendar → “Integrate calendar”.</li>
-                <li>Copy the <span className="text-foreground font-medium">Secret address in iCal format</span> and paste it below.</li>
-              </ol>
-              <div className="flex items-start gap-2 text-xs text-muted-foreground pt-1">
-              <SiApple className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Add an internet-accessible iCal subscription URL, including webcal links. The phone app requires HTTPS. One-time .ics files can be uploaded below.
-              </div>
-            </div>
-
-            <div className="grid sm:grid-cols-[160px_1fr] gap-2">
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" aria-label="Calendar name" data-testid="input-feed-name" />
-              <Input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addFeed()}
-                placeholder="https://example.com/calendar.ics or webcal://…"
-                aria-label="Calendar iCal URL"
-                data-testid="input-feed-url"
-              />
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-end gap-2">
-              <ImportTypePicker id="select-feed-import-kind" value={feedKind} onChange={setFeedKind} />
-              {/* Imported events' notes go to the journal only when asked; each item's details can change it later. */}
-              <JournalNotesCheckbox id="checkbox-feed-journal" className="sm:pb-2.5" checked={feedJournal} onChange={setFeedJournal} />
-              <Button onClick={addFeed} disabled={!url.trim() || adding} data-testid="button-add-feed">
-                <Link2 className="h-4 w-4 mr-1.5" />
-                {adding ? "Connecting…" : "Connect"}
-              </Button>
+              {feeds && feeds.length > 0 && (
+                <Button size="sm" variant="outline" className="shrink-0" onClick={syncAll} disabled={busy !== null} data-testid="button-sync-all">
+                  <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", busy !== null && "animate-spin")} /> Sync all
+                </Button>
+              )}
             </div>
 
             {feeds && feeds.length > 0 ? (
               <ul className="grid grid-cols-1 gap-2">
                 {feeds.map((f) => (
-                  <li key={f.id} className="flex items-center gap-3 rounded-md border px-3 py-2.5" data-testid={`row-feed-${f.id}`}>
-                    <span className="h-3 w-3 rounded-full shrink-0" style={{
-                      background: f.importKind ? `hsl(var(${KIND_META[f.importKind].cssVar}))` : f.color,
-                    }} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{f.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {f.lastError ? (
-                          <span className="text-destructive inline-flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3" /> {f.lastError}
-                          </span>
-                        ) : f.lastSynced ? (
-                          `${f.eventCount} items · ${f.importKind ? `as ${IMPORT_LABELS[f.importKind].toLowerCase()}` : "auto-detected"} · synced ${new Date(f.lastSynced).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
-                        ) : (
-                          "Not synced yet"
-                        )}
+                  <li key={f.id} className="flex items-center gap-1 rounded-md border pl-3 pr-1 py-1.5" data-testid={`row-feed-${f.id}`}>
+                    {/* Tapping a calendar opens its settings. */}
+                    <button type="button" onClick={() => setEditing(f)} className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left" data-testid={`button-edit-feed-${f.id}`}>
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{
+                        background: f.useColor ? f.color : f.importKind ? `hsl(var(${KIND_META[f.importKind].cssVar}))` : "hsl(var(--muted-foreground))",
+                      }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">{f.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {f.lastError ? (
+                            <span className="text-destructive inline-flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3" /> {f.lastError}
+                            </span>
+                          ) : f.lastSynced ? (
+                            `${f.eventCount} items · ${f.importKind ? `as ${IMPORT_LABELS[f.importKind].toLowerCase()}` : "auto-detected"} · synced ${new Date(f.lastSynced).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
+                          ) : (
+                            "Not synced yet"
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <Button size="icon" variant="ghost" onClick={() => syncFeed(f.id)} disabled={busy === f.id} aria-label="Sync now" data-testid={`button-sync-${f.id}`}>
+                    </button>
+                    <Button size="icon" variant="ghost" className="shrink-0" onClick={() => syncFeed(f.id)} disabled={busy === f.id} aria-label="Sync now" data-testid={`button-sync-${f.id}`}>
                       <RefreshCw className={cn("h-4 w-4", busy === f.id && "animate-spin")} />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={async () => {
-                        await apiRequest("DELETE", `/api/feeds/${f.id}`);
-                        queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/items"] });
-                        toast({ title: "Calendar removed", description: f.name });
-                      }}
-                      aria-label="Remove calendar"
-                      data-testid={`button-remove-feed-${f.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">No calendars connected yet. Synced events appear in your day with their calendar's color.</p>
+              <p className="text-sm text-muted-foreground">No calendars connected yet.</p>
             )}
+            <Button variant="outline" className="justify-self-start" onClick={() => setEditing("new")} data-testid="button-connect-calendar">
+              <Link2 className="h-4 w-4 mr-1.5" /> Connect a calendar
+            </Button>
+            <FeedDialog feed={editing} onClose={() => setEditing(null)} onSaved={syncFeed}
+              colorFor={() => TAG_COLORS[(4 + (feeds?.length ?? 0)) % TAG_COLORS.length]} />
           </section>
 
           {/* import */}

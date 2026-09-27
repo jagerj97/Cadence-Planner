@@ -57,6 +57,10 @@ export type Feed = {
   lastError: string | null;
   /** Whether this calendar's event notes become journal entries. */
   journalNotes?: boolean;
+  /** Color its items with the calendar's color instead of by their kind (off by default). */
+  useColor?: boolean;
+  /** Set when "Import items as" changed, so the next sync re-applies it to existing items. */
+  resetKinds?: boolean;
 };
 
 export type Session = {

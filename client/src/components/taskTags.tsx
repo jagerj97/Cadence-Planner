@@ -15,7 +15,7 @@ import { Check, Hash, Plus, Trash2, X } from "lucide-react";
  */
 // Task yellow first (the default), then colors kept clear of the event blue, meeting purple, habit
 // green and focus pink. The sleep indigo is fine to reuse: routine colors can be changed.
-const TAG_COLORS = ["#c9910d", "#e0701f", "#d93b3b", "#7a9a1f", "#11998e", "#3f51b5", "#b83fb8", "#8a6d3b", "#6b7280"];
+export const TAG_COLORS = ["#c9910d", "#e0701f", "#d93b3b", "#7a9a1f", "#11998e", "#3f51b5", "#b83fb8", "#8a6d3b", "#6b7280"];
 
 export const taskTagsOf = (i: Pick<Item, "tags">): string[] => listOf(i.tags).filter((x) => typeof x === "string");
 
