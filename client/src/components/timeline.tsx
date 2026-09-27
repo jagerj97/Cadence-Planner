@@ -188,7 +188,7 @@ export function DayColumn({
       data-testid={`column-day-${day}`}
     >
       {/* sky: sunrise / sunset gradient */}
-      <div className="pointer-events-none absolute inset-0" style={{ background: skyGradient(sun.sunrise, sun.sunset) }} aria-hidden />
+      {settings.showSun && <div className="pointer-events-none absolute inset-0" style={{ background: skyGradient(sun.sunrise, sun.sunset) }} aria-hidden />}
       {routineBlocks.map((b) => (
         <div
           key={b.key}
@@ -209,7 +209,7 @@ export function DayColumn({
           </span>
         </div>
       ))}
-      {!compact && !sun.polar && (
+      {!compact && !sun.polar && settings.showSun && (
         <>
           {[
             { m: sun.sunrise, I: Sunrise, label: "Sunrise" },

@@ -75,8 +75,9 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       label: fmtDate(day, { weekday: "short", month: "short", day: "numeric" }),
       totals, // minutes free, routine, planned
       spans: spans.map((s) => [s.category, s.length]),
-      sunrise: sun.polar ? null : Math.round(sun.sunrise),
-      sunset: sun.polar ? null : Math.round(sun.sunset),
+      // No sky or sunrise and sunset marks when they're turned off in Settings.
+      sunrise: sun.polar || !settings.showSun ? null : Math.round(sun.sunrise),
+      sunset: sun.polar || !settings.showSun ? null : Math.round(sun.sunset),
       blocks: layoutBlocks(blocksForDay(items, day)).map(({ b, col, cols }) => ({
         title: b.item.title, start: b.start, end: b.end, fullStart: b.fullStart, fullEnd: b.fullEnd,
         continues: b.continues ?? "", col, cols, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),

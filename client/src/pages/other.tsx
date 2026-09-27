@@ -1010,7 +1010,11 @@ export function SettingsPage() {
             </div>
           </Section>
 
-          <Section title="Sunrise & sunset" hint={`Colors your timeline with the sky. Using ${draft.lat.toFixed(2)}, ${draft.lng.toFixed(2)}.`}>
+          <Section title="Sunrise & sunset" hint={draft.showSun ? `Colors your timeline with the sky. Using ${draft.lat.toFixed(2)}, ${draft.lng.toFixed(2)}.` : "Off"}>
+            <Row label="Show sunrise & sunset" hint="Tint your timeline with the sky and mark when the sun rises and sets">
+              <Switch checked={draft.showSun} onCheckedChange={(v) => setDraft({ ...draft, showSun: v })} data-testid="switch-show-sun" />
+            </Row>
+            {draft.showSun && <>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Latitude">
                 <CoordInput value={draft.lat} limit={90} label="Latitude" onChange={(lat) => setDraft((d) => ({ ...d, lat }))} testId="input-lat" />
@@ -1043,6 +1047,7 @@ export function SettingsPage() {
               </Button>
               <SunPreview lat={draft.lat} lng={draft.lng} />
             </div>
+            </>}
           </Section>
 
           <Section title="Reminders & notifications">

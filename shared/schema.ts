@@ -117,6 +117,8 @@ export type Settings = {
   hiddenTodayPanels: string[]; // Today page panels the user turned off (see TODAY_PANELS)
   todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
   taskTags: TaskTag[];
+  /** Tint timelines with the sky and mark sunrise and sunset. */
+  showSun: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -140,4 +142,5 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenTodayPanels: [],
   todayPanelOrder: [],
   taskTags: [],
+  showSun: true,
 };
