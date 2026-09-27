@@ -125,8 +125,6 @@ final class FocusTimer {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(open)
             .addExtras(live);
-        android.graphics.Bitmap logotype = AppActivity.notificationIcon(context);
-        if (logotype != null) notification.setLargeIcon(logotype);
         if (running) {
             long endAt = now + Math.round(remaining * 1000);
             String ends = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(endAt));

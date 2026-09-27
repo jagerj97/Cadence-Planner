@@ -74,22 +74,6 @@ public class AppActivity extends Activity {
         return context.getSharedPreferences("cadence_appearance", MODE_PRIVATE).getBoolean(PLAIN, false);
     }
 
-    /**
-     * With Cadence outside, the logotype app icon as a picture for notifications; null with her in.
-     * A notification's expanded view shows the app's own icon (the cat), which can't be swapped like the
-     * home screen one, so plain notifications carry the logotype as their large icon instead.
-     */
-    static android.graphics.Bitmap notificationIcon(Context context) {
-        if (!plain(context)) return null;
-        android.graphics.drawable.Drawable icon = context.getDrawable(R.mipmap.ic_launcher_plain);
-        if (icon == null) return null;
-        int size = Math.round(64 * context.getResources().getDisplayMetrics().density);
-        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
-        icon.setBounds(0, 0, size, size);
-        icon.draw(new android.graphics.Canvas(bitmap));
-        return bitmap;
-    }
-
     /** Shows the plain or the cat home screen icon; the new one is turned on before the old one is turned off. */
     static void setPlain(Context context, boolean plain) {
         if (plain(context) == plain) return;

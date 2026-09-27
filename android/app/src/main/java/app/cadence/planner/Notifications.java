@@ -46,8 +46,6 @@ final class Notifications {
             .setContentTitle(title).setContentText(body).setOnlyAlertOnce(true)
             .setAutoCancel(true).setContentIntent(pending);
         if (when > 0) builder.setWhen(when);
-        android.graphics.Bitmap logotype = AppActivity.notificationIcon(context);
-        if (logotype != null) builder.setLargeIcon(logotype);
         manager.notify(id, builder.build());
     }
 
