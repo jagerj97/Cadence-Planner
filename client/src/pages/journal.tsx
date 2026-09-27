@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
-import { KIND_TAGS, type Item, type JournalEntry, type Kind } from "@shared/schema";
+import { KIND_TAGS, type Item, type JournalEntry, type Kind, type Settings } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations, useSettings } from "@/lib/data";
 import { DAY_SHORT, KIND_META, addDays, colorOf, fmtDate, kindOf, parseYmd, startOfWeek, todayStr, ymd } from "@/lib/cal";
 import { PickerTitle, StepHeader } from "@/pages/calendar";
 import { usePlanner } from "@/components/planner";
-import { cleanTag, tagTint } from "@/components/taskTags";
+import { TaskTagList, accentOf, cleanTag, itemTags, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,12 +19,25 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-/** A kind tag (#events, #tasks...) takes its item's color, or its kind's; other tags keep the accent. */
+/**
+ * A kind tag (#events, #tasks...) takes its item's color, or its kind's; a task tag takes its own
+ * color; other tags keep the accent.
+ */
 const KIND_OF_TAG = new Map(Object.entries(KIND_TAGS).map(([k, t]) => [t, k as Kind]));
-function tagColor(t: string, item?: Item): string | undefined {
+function tagColor(t: string, settings: Settings, item?: Item): string | undefined {
   const kind = KIND_OF_TAG.get(t);
-  if (!kind) return undefined;
+  if (!kind) return settings.taskTags?.find((x) => x.name === t)?.color;
   return item && kindOf(item) === kind ? colorOf(item) : `hsl(var(${KIND_META[kind].cssVar}))`;
+}
+
+/**
+ * An entry's tags, with its task's tag when it holds a tagged task's notes. The task tag is read from
+ * the task, so changing, renaming or deleting it there shows here too.
+ */
+function entryTags(e: JournalEntry, item: Item | undefined, settings: Settings): string[] {
+  const own = tagsOf(e);
+  if (!item || kindOf(item) !== "task") return own;
+  return [...new Set([...own, ...itemTags(item, settings).map((t) => t.name)])];
 }
 const tagStyle = (color?: string) => (color ? tagTint(color) : undefined);
 
@@ -73,11 +86,12 @@ function Tagged({ text, onTag }: { text: string; onTag: (t: string) => void }) {
 }
 
 function TagChips({ tags, onRemove, onClick, item }: { tags: string[]; onRemove?: (t: string) => void; onClick?: (t: string) => void; item?: Item }) {
+  const { settings } = useSettings();
   if (!tags.length) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((t) => (
-        <span key={t} className="inline-flex items-center gap-0.5 rounded-full bg-accent text-accent-foreground pl-2 pr-2 h-6 text-xs font-medium" style={tagStyle(tagColor(t, item))}>
+        <span key={t} className="inline-flex items-center gap-0.5 rounded-full bg-accent text-accent-foreground pl-2 pr-2 h-6 text-xs font-medium" style={tagStyle(tagColor(t, settings, item))}>
           <button onClick={() => onClick?.(t)} className={cn("inline-flex items-center", !onClick && "cursor-default")} data-testid={`chip-tag-${t}`}>
             <Hash className="h-3 w-3" />
             {t}
@@ -357,8 +371,9 @@ function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
 }) {
   const { remove } = useJournalMutations();
   const { toast } = useToast();
+  const { settings } = useSettings();
   const [, nav] = useLocation();
-  const tags = tagsOf(e);
+  const tags = entryTags(e, item, settings);
   const extraTags = tags.filter((t) => !hashtagsIn(e.body).includes(t));
   return (
     <article
@@ -374,7 +389,7 @@ function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
           </button>
         ) : null}
         {item ? (
-          <button onClick={() => openDetails(item)} className="min-w-0 truncate font-medium hover:underline" style={{ color: colorOf(item) }} data-testid={`button-entry-item-${e.id}`}>
+          <button onClick={() => openDetails(item)} className="min-w-0 truncate font-medium hover:underline" style={{ color: accentOf(item, settings) }} data-testid={`button-entry-item-${e.id}`}>
             {item.title}
           </button>
         ) : e.title ? (
@@ -495,11 +510,15 @@ function DayPicker({ day, label, marked, onPick }: { day: string; label: string;
  * Rename or delete journal tags across every entry. The kind tags (#events, #tasks...) come from
  * items' notes and are added back automatically, so they aren't listed.
  */
-function JournalTagManager({ open, onOpenChange, tags, onRenamed }: {
-  open: boolean; onOpenChange: (o: boolean) => void; tags: [string, number][]; onRenamed: (from: string, to: string | null) => void;
+function JournalTagManager({ open, onOpenChange, tags, counts, onRenamed }: {
+  open: boolean; onOpenChange: (o: boolean) => void;
+  /** Tags saved on entries, and how many entries have each tag (task tags included). */
+  tags: [string, number][]; counts: Map<string, number>;
+  onRenamed: (from: string, to: string | null) => void;
 }) {
   const { retag } = useJournalMutations();
   const own = tags.filter(([t]) => !KIND_OF_TAG.has(t));
+  const entries = (t: string) => { const n = counts.get(t) ?? 0; return `${n} ${n === 1 ? "entry" : "entries"}`; };
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState("");
   const rename = async (from: string) => {
@@ -548,6 +567,14 @@ function JournalTagManager({ open, onOpenChange, tags, onRenamed }: {
           })}
         </ul>
         <p className="text-xs text-muted-foreground">Deleting a tag keeps its word in your entries, without the #.</p>
+        {/* Tasks' tags show on their notes' entries; they're changed here or from the Tasks page. */}
+        <div className="grid gap-3 border-t pt-4" data-testid="section-journal-task-tags">
+          <div>
+            <h3 className="text-base font-semibold">Task tags</h3>
+            <p className="text-xs text-muted-foreground">Tagged tasks' notes show their tag here in the journal.</p>
+          </div>
+          {open && <TaskTagList countOf={entries} onRenamed={(from, to) => onRenamed(from, to)} />}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -580,11 +607,15 @@ export default function JournalPage() {
   const entryDays = useMemo(() => new Set(all.map((e) => e.date)), [all]);
 
   const dayEntries = all.filter((e) => e.date === day).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const tagCounts = useMemo(() => {
+  const tagsOfEntry = (e: JournalEntry) => entryTags(e, itemOf(e), settings);
+  const count = (tags: (e: JournalEntry) => string[]) => {
     const m = new Map<string, number>();
-    for (const e of all) for (const t of tagsOf(e)) m.set(t, (m.get(t) ?? 0) + 1);
+    for (const e of all) for (const t of tags(e)) m.set(t, (m.get(t) ?? 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [all]);
+  };
+  // Every tag to find entries by (task tags included), and the ones saved on entries themselves.
+  const tagCounts = useMemo(() => count(tagsOfEntry), [all, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
+  const savedTagCounts = useMemo(() => count(tagsOf), [all]); // eslint-disable-line react-hooks/exhaustive-deps
   const recentDays = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of all) m.set(e.date, (m.get(e.date) ?? 0) + 1);
@@ -598,12 +629,12 @@ export default function JournalPage() {
     return all
       .filter((e) =>
         terms.every((t) =>
-          t.startsWith("#") ? tagsOf(e).includes(t.slice(1))
-            : e.body.toLowerCase().includes(t) || !!e.title?.toLowerCase().includes(t) || tagsOf(e).some((x) => x.includes(t)),
+          t.startsWith("#") ? tagsOfEntry(e).includes(t.slice(1))
+            : e.body.toLowerCase().includes(t) || !!e.title?.toLowerCase().includes(t) || tagsOfEntry(e).some((x) => x.includes(t)),
         ),
       )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [all, query]);
+  }, [all, query, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tapping the tag being searched clears the search.
   // Tags are toggled in the search, so several can be picked at once (entries need all of them).
@@ -671,7 +702,7 @@ export default function JournalPage() {
                           "inline-flex items-center gap-1 rounded-full h-7 px-2.5 text-xs font-medium transition-colors",
                           picked.has(`#${t}`) ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-accent hover:text-accent-foreground",
                         )}
-                        style={picked.has(`#${t}`) ? undefined : tagStyle(tagColor(t))}
+                        style={picked.has(`#${t}`) ? undefined : tagStyle(tagColor(t, settings))}
                         aria-pressed={picked.has(`#${t}`)}
                         data-testid={`button-tag-${t}`}
                       >
@@ -745,7 +776,7 @@ export default function JournalPage() {
               )}
             </DialogContent>
           </Dialog>
-          <JournalTagManager open={managing} onOpenChange={setManaging} tags={tagCounts}
+          <JournalTagManager open={managing} onOpenChange={setManaging} tags={savedTagCounts} counts={new Map(tagCounts)}
             onRenamed={(from, to) => setQ((q) => toggleTerm(q, `#${from}`, to ? `#${to}` : null))} />
 
           <section className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">

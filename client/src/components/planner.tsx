@@ -1003,7 +1003,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
 
           {v.kind === "task" && (
             <div className="grid gap-1.5">
-              <Label>Tags</Label>
+              <Label>Task Tags</Label>
               <TaskTagField value={v.tags} onChange={(t) => setValue("tags", t)} />
             </div>
           )}
