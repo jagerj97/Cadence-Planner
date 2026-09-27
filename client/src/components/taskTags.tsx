@@ -156,6 +156,41 @@ export function TaskTagField({ value, onChange }: { value: string[]; onChange: (
   );
 }
 
+/** "add tag" in the tag manager: name a tag and pick its color. */
+function NewTagForm({ taken, onCreate }: { taken: TaskTag[]; onCreate: (t: TaskTag) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(TAG_COLORS[0]);
+  const typed = cleanTag(name);
+  const exists = taken.some((t) => t.name === typed);
+  const create = () => {
+    if (!typed || exists) return;
+    onCreate({ name: typed, color });
+    setName("");
+    setColor(TAG_COLORS[0]);
+    setAdding(false);
+  };
+  if (!adding) {
+    return (
+      <button type="button" onClick={() => setAdding(true)} className="inline-flex h-7 w-fit items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary" data-testid="button-new-task-tag">
+        <Plus className="h-3.5 w-3.5" />
+        add tag
+      </button>
+    );
+  }
+  return (
+    <div className="grid gap-2 rounded-md border p-3">
+      <div className="flex items-center gap-2">
+        <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()}
+          placeholder="Tag name" className="h-9" aria-label="New tag name" data-testid="input-new-task-tag" />
+        <Button size="sm" onClick={create} disabled={!typed || exists} data-testid="button-save-new-task-tag">Add</Button>
+      </div>
+      {exists && <p className="text-xs text-muted-foreground">#{typed} already exists.</p>}
+      <ColorSwatches value={color} onChange={setColor} />
+    </div>
+  );
+}
+
 /** Rename, recolor or delete task tags. Renaming or deleting also updates the tasks that carry the tag. */
 export function TagManager({ open, onOpenChange, onRenamed }: { open: boolean; onOpenChange: (o: boolean) => void; onRenamed?: (from: string, to: string) => void }) {
   const { settings } = useSettings();
@@ -186,10 +221,11 @@ export function TagManager({ open, onOpenChange, onRenamed }: { open: boolean; o
       <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-manage-tags">
         <DialogHeader className="pr-8 text-left">
           <DialogTitle>Task tags</DialogTitle>
-          <DialogDescription>Tap a tag to rename it or change its color.</DialogDescription>
+          <DialogDescription className="sr-only">Add, rename, recolor or delete task tags</DialogDescription>
         </DialogHeader>
+        <NewTagForm taken={tags} onCreate={(t) => save.mutate({ taskTags: [...tags, t] })} />
         {tags.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tags yet. Use “add tag” in a task's window.</p>
+          <p className="text-sm text-muted-foreground">No tags yet.</p>
         ) : (
           <ul className="grid grid-cols-1 gap-1">
             {tags.map((t) => (

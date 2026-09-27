@@ -146,31 +146,29 @@ export default function TasksPage() {
             ))}
           </div>
 
-          {/* Tag filter: tap a tag to show only its tasks, again to show all. */}
-          {allTags.length > 0 && (
-            <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 scroll-thin md:mx-0 md:flex-wrap md:px-0" role="group" aria-label="Filter by tag">
-              {allTags.map((t) => {
-                const on = activeTag === t.name;
-                return (
-                  <button key={t.name} type="button" onClick={() => setTagFilter(on ? null : t.name)} aria-pressed={on}
-                    className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
-                    style={on
-                      ? { background: t.color, borderColor: t.color, color: "white" }
-                      : { ...tagTint(t.color), borderColor: "transparent" }}
-                    data-testid={`filter-task-tag-${t.name}`}>
-                    <Hash className="h-3 w-3" />
-                    {t.name}
-                  </button>
-                );
-              })}
-              <button type="button" onClick={() => setManaging(true)}
-                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
-                data-testid="button-manage-task-tags">
-                <Settings2 className="h-3.5 w-3.5" />
-                Manage
-              </button>
-            </div>
-          )}
+          {/* Tag filter: tap a tag to show only its tasks, again to show all. Manage tags comes first and is always there. */}
+          <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 scroll-thin md:mx-0 md:flex-wrap md:px-0" role="group" aria-label="Filter by tag">
+            <button type="button" onClick={() => setManaging(true)}
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+              data-testid="button-manage-task-tags">
+              <Settings2 className="h-3.5 w-3.5" />
+              Manage tags
+            </button>
+            {allTags.map((t) => {
+              const on = activeTag === t.name;
+              return (
+                <button key={t.name} type="button" onClick={() => setTagFilter(on ? null : t.name)} aria-pressed={on}
+                  className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
+                  style={on
+                    ? { background: t.color, borderColor: t.color, color: "white" }
+                    : { ...tagTint(t.color), borderColor: "transparent" }}
+                  data-testid={`filter-task-tag-${t.name}`}>
+                  <Hash className="h-3 w-3" />
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
           <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => tagFilter === from && setTagFilter(to)} />
 
           {isLoading ? (

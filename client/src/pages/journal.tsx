@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { KIND_TAGS, type Item, type JournalEntry, type Kind } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
-import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations } from "@/lib/data";
-import { KIND_META, addDays, colorOf, fmtDate, kindOf, todayStr } from "@/lib/cal";
+import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations, useSettings } from "@/lib/data";
+import { DAY_SHORT, KIND_META, addDays, colorOf, fmtDate, kindOf, parseYmd, startOfWeek, todayStr, ymd } from "@/lib/cal";
+import { PickerTitle, StepHeader } from "@/pages/calendar";
 import { usePlanner } from "@/components/planner";
 import { cleanTag, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
@@ -315,7 +316,8 @@ function EntryCard({ e, onTag, showDate, item, openDetails }: {
           </button>
         ) : <span className="tnum">{timeOf(e.createdAt)}</span>}
         {e.updatedAt !== e.createdAt && <span>· edited</span>}
-        {!editing && (
+        {/* An entry holding an item's notes is changed from that item, so it has no edit or delete. */}
+        {!editing && !e.itemId && (
           <div className="ml-auto flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
             <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing(true)} aria-label="Edit entry" data-testid={`button-edit-entry-${e.id}`}>
               <Pencil className="h-3.5 w-3.5" />
@@ -393,6 +395,50 @@ function Clamp({ children, footer }: { children: React.ReactNode; footer?: React
   );
 }
 
+/** The journal's date title opens a month calendar; days with entries have a small dot. */
+function DayPicker({ day, label, marked, onPick }: { day: string; label: string; marked: Set<string>; onPick: (d: string) => void }) {
+  const { settings } = useSettings();
+  const [open, setOpen] = useState(false);
+  const firstOf = (d: string) => { const x = parseYmd(d); return new Date(x.getFullYear(), x.getMonth(), 1); };
+  const [view, setView] = useState(() => firstOf(day));
+  useEffect(() => { if (open) setView(firstOf(day)); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthStart = ymd(view);
+  const monthEnd = ymd(new Date(view.getFullYear(), view.getMonth() + 1, 0));
+  const gridStart = startOfWeek(monthStart, settings.weekStartsOn);
+  const cells: string[] = [];
+  for (let d = gridStart; d <= monthEnd || cells.length % 7; d = addDays(d, 1)) cells.push(d);
+  const today = todayStr();
+  return (
+    <PickerTitle label={label} open={open} onOpenChange={setOpen} testId="button-pick-journal-day">
+      <StepHeader label={fmtDate(monthStart, { month: "long", year: "numeric" })} unit="month"
+        onPrev={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
+        onNext={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} />
+      <div className="grid grid-cols-7 gap-0.5 text-center">
+        {Array.from({ length: 7 }, (_, n) => (
+          <div key={n} className="pb-1 text-xs text-muted-foreground">{DAY_SHORT[(n + settings.weekStartsOn) % 7].slice(0, 2)}</div>
+        ))}
+        {cells.map((d) => {
+          const inMonth = d >= monthStart && d <= monthEnd;
+          const selected = d === day;
+          return (
+            <button key={d} type="button" onClick={() => { onPick(d); setOpen(false); }}
+              className={cn("relative grid h-9 place-items-center rounded-md text-sm tnum transition-colors",
+                selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted",
+                !inMonth && !selected && "text-muted-foreground/50", d === today && !selected && "text-primary font-semibold")}
+              aria-pressed={selected} aria-label={`${fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}${marked.has(d) ? ", has entries" : ""}`}
+              data-testid={`button-pick-day-${d}`}>
+              {parseYmd(d).getDate()}
+              {marked.has(d) && (
+                <span className={cn("absolute bottom-1 h-1 w-1 rounded-full", selected ? "bg-primary-foreground" : "bg-primary")} aria-hidden />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </PickerTitle>
+  );
+}
+
 export default function JournalPage() {
   const [, params] = useRoute("/journal/:date");
   const [, nav] = useLocation();
@@ -414,6 +460,7 @@ export default function JournalPage() {
     return () => window.removeEventListener("cadence:journal-compose", f);
   }, []);
   const all = entries ?? [];
+  const entryDays = useMemo(() => new Set(all.map((e) => e.date)), [all]);
 
   const dayEntries = all.filter((e) => e.date === day).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const tagCounts = useMemo(() => {
@@ -440,11 +487,13 @@ export default function JournalPage() {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [all, query]);
 
-  const searchTag = (t: string) => setQ(`#${t}`);
+  // Tapping the tag being searched clears the search.
+  const searchTag = (t: string) => setQ((q) => (q.trim().toLowerCase() === `#${t}` ? "" : `#${t}`));
 
   return (
     <>
-      <PageHeader title={`${isToday ? "Today · " : ""}${fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}`}>
+      <PageHeader title={<DayPicker day={day} label={`${isToday ? "Today · " : ""}${fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}`}
+        marked={entryDays} onPick={(d) => nav(d === todayStr() ? "/journal" : `/journal/${d}`)} />}>
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => nav(`/journal/${addDays(day, -1)}`)} aria-label="Previous day" data-testid="button-journal-prev">
             <ChevronLeft className="h-4 w-4" />

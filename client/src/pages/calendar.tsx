@@ -340,7 +340,7 @@ export function CalendarPage() {
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Page title that opens a jump-to picker. */
-function PickerTitle({ label, open, onOpenChange, children, testId }: {
+export function PickerTitle({ label, open, onOpenChange, children, testId }: {
   label: string; open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode; testId: string;
 }) {
   return (
@@ -357,7 +357,7 @@ function PickerTitle({ label, open, onOpenChange, children, testId }: {
   );
 }
 
-function StepHeader({ label, onPrev, onNext, unit }: { label: string; onPrev: () => void; onNext: () => void; unit: string }) {
+export function StepHeader({ label, onPrev, onNext, unit }: { label: string; onPrev: () => void; onNext: () => void; unit: string }) {
   return (
     <div className="mb-2 flex items-center justify-between">
       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onPrev} aria-label={`Previous ${unit}`} data-testid={`button-picker-prev-${unit}`}>
