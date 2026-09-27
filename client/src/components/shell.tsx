@@ -19,6 +19,7 @@ import { usePlanner, clock } from "./planner";
 import { fromMin, todayStr } from "@/lib/cal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Kind } from "@shared/schema";
+import { useSettings } from "@/lib/data";
 import { QuickAdd } from "@/pages/today";
 import { cn } from "@/lib/utils";
 
@@ -165,6 +166,7 @@ let lastPage = "/"; // where the gear returns to when leaving Settings
 export function Shell({ children }: { children: ReactNode }) {
   const [loc, nav] = useLocation();
   const { focus, elapsed } = usePlanner();
+  const { settings } = useSettings();
   const inSettings = SETTINGS_NAV.match(loc);
   if (!inSettings) lastPage = loc;
 
@@ -181,15 +183,15 @@ export function Shell({ children }: { children: ReactNode }) {
         >
           {inSettings ? <X className="h-6 w-6 -rotate-90" /> : <SettingsIcon className="h-6 w-6" />}
         </button>
-        {/* Cadence, sitting on the bar's bottom edge */}
-        <img
+        {/* Cadence, sitting on the bar's bottom edge (unless she's been let outside) */}
+        {!settings.plain && <img
           src="./cadence-sitting.svg"
           alt=""
           aria-hidden
           draggable={false}
           className="pointer-events-none absolute bottom-0 left-1/2 h-10 md:h-12 w-auto -translate-x-1/2 select-none"
           data-testid="img-cadence-appbar"
-        />
+        />}
         <AddMenu />
       </header>
 

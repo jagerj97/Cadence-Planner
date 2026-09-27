@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
-  <!-- Cadence's cat: the favicon, and the source of the app icon (run android/tools/make_icon.py after changing it). -->
+  <!-- The logomark, Cadence's cat: the favicon, and the source of the app icon (run android/tools/make_icon.py after changing it). -->
   <defs>
     <linearGradient id="eye" gradientUnits="userSpaceOnUse" x1="0" y1="626.68" x2="0" y2="504.68">
       <stop offset="0.0039" stop-color="#453201"/><stop offset="0.4183" stop-color="#211800"/>

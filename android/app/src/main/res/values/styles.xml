@@ -1,5 +1,5 @@
 <resources>
-    <!-- Dark is the default look; MainActivity switches the bars to light when the app is set to light. -->
+    <!-- Dark is the default look; AppActivity switches the bars to light when the app is set to light. -->
     <style name="CadenceTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:windowLightStatusBar">false</item>

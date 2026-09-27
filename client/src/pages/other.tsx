@@ -36,7 +36,7 @@ import { Switch } from "@/components/ui/switch";
 import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { COLOR_THEMES, IMPORT_KINDS } from "@shared/schema";
+import { COLOR_THEMES, IMPORT_KINDS, PLAIN_THEME_NAMES } from "@shared/schema";
 import type { ColorTheme, Feed, ImportKind, Routine, Session, Settings, WeekDay } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -535,7 +535,7 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
 }) {
   const { toast } = useToast();
   const existing = feed && feed !== "new" ? feed : null;
-  const [name, setName] = useState("Calendar");
+  const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [kind, setKind] = useState<"auto" | ImportKind>("auto");
   const [journal, setJournal] = useState(false);
@@ -544,7 +544,7 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (!feed) return;
-    setName(existing?.name ?? "Calendar");
+    setName(existing?.name ?? "");
     setUrl(existing?.url ?? "");
     setKind(existing?.importKind ?? "auto");
     setJournal(!!existing?.journalNotes);
@@ -998,11 +998,11 @@ export function SettingsPage() {
         <div className="grid grid-cols-1 gap-4 max-w-3xl">
           <Section title="You">
             <Field label="Your name">
-              <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} data-testid="input-name" />
+              <Input value={draft.name} placeholder="Your name" onChange={(e) => setDraft({ ...draft, name: e.target.value })} data-testid="input-name" />
             </Field>
           </Section>
 
-          <Section title="Routines" hint="Background things for every day. Sleeping, eating, grooming...">
+          <Section title="Routines" hint={`Background things for every day. Sleeping, eating, ${draft.plain ? "etc" : "grooming"}...`}>
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
@@ -1172,7 +1172,7 @@ export function SettingsPage() {
                     ribbon: "#cf493e", carrot: "#e66b0a", butter: "#e0a80b", grass: "#6a8229",
                     denim: "#4d60ab", plum: "#95549d", mouse: "#62676b",
                   }[name] }} />
-                  {name}
+                  {draft.plain ? PLAIN_THEME_NAMES[name] : name}
                 </button>
               ))}
             </div>
@@ -1182,6 +1182,14 @@ export function SettingsPage() {
                 setTheme(next);
                 setDraft((current) => ({ ...current, appearanceTheme: next }));
               }} data-testid="switch-dark" />
+            </Row>
+          </Section>
+          <Section title="Let Cadence outside" hint="Hide the cat stuff">
+            <p className="text-sm text-muted-foreground">
+              Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to.
+            </p>
+            <Row label="Let Cadence outside" hint={draft.plain ? "Cadence is outside. Turn this off to let her back in." : undefined}>
+              <Switch checked={!!draft.plain} onCheckedChange={(v) => setDraft({ ...draft, plain: v })} aria-label="Let Cadence outside" data-testid="switch-plain" />
             </Row>
           </Section>
           <p className="pt-2 text-center text-xs text-muted-foreground tnum" data-testid="text-app-version">

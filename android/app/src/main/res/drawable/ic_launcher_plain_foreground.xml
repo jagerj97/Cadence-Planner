@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Generated from client/public/cadence-logotype.svg -->
+    <group android:scaleX="0.07973" android:scaleY="0.07973" android:translateX="12.857" android:translateY="13.654">
+        <path android:pathData="M693.689,825.787H519.975c-91.254,0-175.75-36.465-237.923-102.678c-57.663-61.406-90.733-143.77-90.733-225.975c0-132.567,57.925-209.841,106.514-251.321c58.42-49.872,137.31-77.335,222.143-77.335c91.246,0,165.289,28.53,220.066,84.795c28.028,28.785,42.846,65.607,42.846,106.484c0,68.75-52.92,124.684-117.971,124.684c-37.079,0-75.305-29.363-67.107-65.525c12.757-56.282,63.912-41.896,39.293-76.423c-10.801-15.151-44.669-39.739-117.127-39.739c-32.46,0-194.381,9.372-194.381,194.381c0,93.48,74.316,194.377,194.381,194.377h173.715c37.079,0,67.138,30.059,67.138,67.137C760.827,795.729,730.769,825.787,693.689,825.787z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="785.0205" android:startY="762.2656" android:endX="282.5652" android:endY="259.8103">
+                    <item android:offset="0.0039" android:color="#FF58595B"/>
+                    <item android:offset="0.2029" android:color="#FF757779"/>
+                    <item android:offset="0.4062" android:color="#FF8A8C8F"/>
+                    <item android:offset="0.6086" android:color="#FF9A9C9F"/>
+                    <item android:offset="0.8078" android:color="#FFA4A6A8"/>
+                    <item android:offset="1" android:color="#FFA7A9AC"/>
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

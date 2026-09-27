@@ -19,6 +19,8 @@ import {
   DAY_SHORT,
   addDays,
   availableFromFor,
+  dueDateFor,
+  isDeadlineTask,
   blocksForDay,
   dayDiff,
   dow,
@@ -85,7 +87,8 @@ export type FocusState = {
 type Ctx = {
   theme: Theme;
   setTheme: (t: Theme) => void;
-  openEditor: (target: Item | Partial<InsertItem>, occDate?: string) => void;
+  /** onCreated runs after a new item is saved (not when the window is closed without saving). */
+  openEditor: (target: Item | Partial<InsertItem>, occDate?: string, onCreated?: (item: Item) => void) => void;
   openDetails: (target: Item, occDate?: string) => void;
   focus: FocusState | null;
   elapsed: number;
@@ -161,11 +164,16 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.colorTheme = settings.colorTheme || DEFAULT_SETTINGS.colorTheme;
   }, [settings.colorTheme]);
+  // "Let Cadence outside" also swaps the app and notification icons.
+  useEffect(() => {
+    if (savedSettings) window.CadenceAndroid?.setPlain?.(!!savedSettings.plain);
+  }, [savedSettings?.plain]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* editor */
-  const [editing, setEditing] = useState<{ target: Item | Partial<InsertItem>; occDate?: string } | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [details, setDetails] = useState<{ target: Item; occDate?: string } | null>(null);
-  const openEditor = useCallback((target: Item | Partial<InsertItem>, occDate?: string) => setEditing({ target, occDate }), []);
+  const openEditor = useCallback((target: Item | Partial<InsertItem>, occDate?: string, onCreated?: (item: Item) => void) =>
+    setEditing({ target, occDate, onCreated }), []);
   const openDetails = useCallback((target: Item, occDate?: string) => setDetails({ target, occDate }), []);
   const [scopeAsk, setScopeAsk] = useState<{ resolve: (scope: RepeatScope | null) => void } | null>(null);
   const askRepeatScope = useCallback(() => new Promise<RepeatScope | null>((resolve) => setScopeAsk({ resolve })), []);
@@ -459,11 +467,14 @@ function ItemDetails({ details, onClose, onEdit }: {
   const i = details && (items?.find((x) => x.id === details.target.id) ?? details.target);
   const routine = i?.source === "routine";
   // Tasks and habits can be checked off from here, for the day they were opened from.
-  const checkDay = i ? (i.kind === "task" && i.availableFrom ? i.date : details?.occDate || (i.kind === "habit" ? todayStr() : i.date)) : "";
+  // A deadline task is checked off (and shown) for the due date it's open for.
+  const deadline = !!i && isDeadlineTask(i);
+  const dueDay = i && deadline ? dueDateFor(i, details?.occDate || todayStr()) ?? details?.occDate ?? i.date : null;
+  const checkDay = i ? (dueDay ?? (details?.occDate || (i.kind === "habit" ? todayStr() : i.date))) : "";
   const checkable = !!i && !routine && i.id > 0 && (i.kind === "task" || i.kind === "habit") && occursOn(i, checkDay);
-  const tags = i?.kind === "task" ? itemTags(i, settings) : [];
+  const tags = i?.kind === "task" ? itemTags(i, settings).slice(0, 1) : [];
   // A deadline task shows its due date, whichever day it was opened from.
-  const d = i?.kind === "task" && i.availableFrom ? i.date : details?.occDate || i?.date || "";
+  const d = dueDay ?? (details?.occDate || i?.date || "");
   return (
     <Dialog open={!!details} onOpenChange={(open) => !open && onClose()}>
       {/* Long titles, links, and notes wrap anywhere, and the window scrolls rather than growing off screen. */}
@@ -485,7 +496,7 @@ function ItemDetails({ details, onClose, onEdit }: {
           <div className="grid grid-cols-1 gap-3 text-sm">
             {/* A habit has no start date to show, only the day it was opened from. */}
             {(i.kind !== "habit" || details?.occDate) && <div>
-              <div className="text-xs text-muted-foreground">{routine ? "Every day" : i.kind === "task" && i.availableFrom ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
+              <div className="text-xs text-muted-foreground">{routine ? "Every day" : deadline ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
               <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
             </div>}
             {i.startTime && <div>
@@ -571,6 +582,9 @@ type FormVals = {
   kind: Kind;
   date: string;
   availableFrom: string;
+  /** For "a time before due date": anytime up to it (one-off), or a number of days or weeks before each due date. */
+  leadMode: "today" | "days" | "weeks";
+  leadCount: number;
   endDate: string;
   timeMode: TimeMode;
   startTime: string;
@@ -598,7 +612,8 @@ const REMINDERS = [
   { v: "1440", l: "1 day before" },
 ];
 
-function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<InsertItem>; occDate?: string } | null; onClose: () => void }) {
+type Editing = { target: Item | Partial<InsertItem>; occDate?: string; onCreated?: (item: Item) => void };
+function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: () => void }) {
   const open = !!editing;
   const existing = editing && "id" in editing.target && typeof (editing.target as Item).id === "number" ? (editing.target as Item) : null;
   const { settings } = useSettings();
@@ -617,6 +632,8 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
   }, [editing]); // eslint-disable-line
 
   const v = watch();
+  // Repeat options show except for a deadline task available "anytime", which is one-off.
+  const repeats = v.timeMode !== "deadline" || v.leadMode !== "today";
   const rec = recOf((existing as any) || { recurrence: '{"freq":"none"}' });
   const isRecurring = existing && rec.freq !== "none";
   const isFeed = existing?.source.startsWith("feed:");
@@ -629,17 +646,20 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
     if (f.kind === "meeting") f = { ...f, endDate: f.date };
     if (f.kind === "task") {
       f = { ...f, endDate: f.date };
-      if (f.timeMode === "deadline") f.availableFrom = availableFromFor(f.date, f.availableFrom || todayStr());
+      if (f.timeMode === "deadline" && f.leadMode === "today") f.availableFrom = availableFromFor(f.date, f.availableFrom || todayStr());
     }
     if (!f.date || (f.timeMode !== "deadline" && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366))) {
       toast({ title: "Check the end date", description: "Choose an end date on or after the start, within one year.", variant: "destructive" });
       return;
     }
-    if (f.timeMode === "deadline" && (!f.availableFrom || f.availableFrom > f.date)) {
+    const lead = f.kind === "task" && f.timeMode === "deadline" && f.leadMode !== "today"
+      ? Math.max(1, Math.min(365, Math.round(Number(f.leadCount) || 1) * (f.leadMode === "weeks" ? 7 : 1))) : null;
+    if (f.timeMode === "deadline" && !lead && (!f.availableFrom || f.availableFrom > f.date)) {
       toast({ title: "Check the dates", description: "Available from must be on or before the due date.", variant: "destructive" });
       return;
     }
-    const r: Recurrence = { freq: f.timeMode === "deadline" ? "none" : f.freq };
+    // A task available "anytime" is one-off; one open some days before each due date can repeat.
+    const r: Recurrence = { freq: f.timeMode === "deadline" && !lead ? "none" : f.freq };
     if (r.freq !== "none") {
       if (f.interval > 1) r.interval = Number(f.interval);
       if (f.freq === "weekly") r.days = f.days.length ? [...f.days].sort() : [dow(f.date)];
@@ -649,12 +669,13 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       title: f.title.trim(),
       kind: f.kind,
       date: f.date,
-      availableFrom: f.kind === "task" && f.timeMode === "deadline" ? f.availableFrom : null,
+      availableFrom: f.kind === "task" && f.timeMode === "deadline" && !lead ? f.availableFrom : null,
+      leadDays: lead,
       color: existing?.source.startsWith("feed:") && f.kind !== existing.kind ? null : existing?.color ?? null,
       endDate: f.timeMode === "deadline" ? null : f.timeMode === "timed" && f.endDate === f.date && toMin(f.endTime) <= toMin(f.startTime)
         ? addDays(f.date, 1)
         : f.endDate,
-      allDay: f.timeMode === "allday",
+      allDay: f.timeMode === "allday" && f.kind !== "task",
       startTime: f.timeMode === "timed" ? f.startTime || "09:00" : null,
       endTime: f.timeMode === "timed" ? f.endTime || fromMin(toMin(f.startTime) + 30) : null,
       recurrence: JSON.stringify(r),
@@ -672,8 +693,9 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
       if (!scope) return;
       toast({ title: scope === "one" ? "Saved this one" : "Saved", description: payload.title });
     } else {
-      await create.mutateAsync(blankItem(payload));
+      const created = await create.mutateAsync(blankItem(payload));
       toast({ title: "Added to your plan", description: payload.title });
+      await editing?.onCreated?.(created);
     }
     onClose();
   });
@@ -716,6 +738,8 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                   onClick={() => {
                     setValue("kind", k);
                     if (k !== "task" && v.timeMode === "deadline") setValue("timeMode", "anytime");
+                    // Tasks aren't all-day; they can be done anytime that day.
+                    if (k === "task" && v.timeMode === "allday") setValue("timeMode", "anytime");
                     if (k === "task" && v.timeMode === "anytime" && v.freq === "none") {
                       setValue("timeMode", "deadline");
                       setValue("availableFrom", availableFromFor(v.date));
@@ -761,7 +785,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                 if (!x) return;
                 setValue("timeMode", x as TimeMode);
                 if (x === "deadline") {
-                  setValue("freq", "none");
+                  if (v.leadMode === "today") setValue("freq", "none");
                   setValue("availableFrom", v.availableFrom && v.availableFrom <= v.date ? v.availableFrom : availableFromFor(v.date));
                 }
               }}>
@@ -771,8 +795,8 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                 <SelectContent>
                   <SelectItem value="timed">At a set time</SelectItem>
                   <SelectItem value="anytime">Anytime that day</SelectItem>
-                  <SelectItem value="allday">All day</SelectItem>
-                  {v.kind === "task" && <SelectItem value="deadline">Anytime before due date</SelectItem>}
+                  {v.kind !== "task" && <SelectItem value="allday">All day</SelectItem>}
+                  {v.kind === "task" && <SelectItem value="deadline">A time before due date</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -781,7 +805,29 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
           {/* Tasks only have a due date, and habits and meetings have no end date; a deadline task's first day is set for you. */}
           {v.kind === "habit" || v.kind === "meeting" ? null : v.kind === "task" ? (
             v.timeMode === "deadline" && (
-              <span className="-mt-1 text-xs text-muted-foreground">You can check it off any day up to its due date. It shows on the calendar on the due date.</span>
+              <div className="grid gap-1.5">
+                <Label htmlFor="f-lead">Available</Label>
+                <div className="flex gap-2">
+                  {v.leadMode !== "today" && (
+                    <Input id="f-lead" type="number" className="w-20 shrink-0" min={1} max={v.leadMode === "weeks" ? 52 : 365} {...register("leadCount", { valueAsNumber: true })} data-testid="input-lead-count" />
+                  )}
+                  <Select value={v.leadMode} onValueChange={(x) => {
+                    if (!x) return;
+                    setValue("leadMode", x as FormVals["leadMode"]);
+                    // "Anytime" (up to the due date) is for one-off tasks.
+                    if (x === "today") setValue("freq", "none");
+                  }}>
+                    <SelectTrigger className="flex-1" data-testid="select-lead-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="today">Anytime</SelectItem>
+                      <SelectItem value="days">Days before</SelectItem>
+                      <SelectItem value="weeks">Weeks before</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             )
           ) : (
             <div className="grid gap-1.5">
@@ -826,7 +872,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             </div>
           )}
 
-          {v.timeMode !== "deadline" && <div className="grid grid-cols-2 gap-3">
+          {repeats && <div className={cn("grid gap-3", v.timeMode !== "deadline" && "grid-cols-2")}>
             <div className="grid gap-1.5">
               <Label>Repeat</Label>
               <Select value={v.freq} onValueChange={(x) => setValue("freq", x as Recurrence["freq"])}>
@@ -843,6 +889,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                 </SelectContent>
               </Select>
             </div>
+            {v.timeMode !== "deadline" && (
             <div className="grid gap-1.5">
               <Label>Reminder</Label>
               <Select value={v.reminder} onValueChange={(x) => {
@@ -861,6 +908,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
                 </SelectContent>
               </Select>
             </div>
+            )}
           </div>}
 
           {v.timeMode !== "deadline" && v.reminder !== "none" && (
@@ -899,7 +947,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             </div>
           )}
 
-          {v.timeMode !== "deadline" && v.freq === "weekly" && (
+          {repeats && v.freq === "weekly" && (
             <div className="flex gap-1.5" aria-label="Days of week">
               {DAY_SHORT.map((d, i) => {
                 const on = v.days.includes(i);
@@ -922,7 +970,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
             </div>
           )}
 
-          {v.timeMode !== "deadline" && v.freq !== "none" && (
+          {repeats && v.freq !== "none" && (
             <div className={cn("grid gap-3", v.kind !== "habit" && "grid-cols-2")}>
               <div className="grid gap-1.5">
                 <Label htmlFor="f-interval">Every</Label>
@@ -955,7 +1003,7 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 
           {v.kind === "task" && (
             <div className="grid gap-1.5">
-              <Label>Tags</Label>
+              <Label>Task Tags</Label>
               <TaskTagField value={v.tags} onChange={(t) => setValue("tags", t)} />
             </div>
           )}
@@ -1045,13 +1093,16 @@ function ItemEditor({ editing, onClose }: { editing: { target: Item | Partial<In
 function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const r = recOf(i as Item);
   const isNew = !("id" in i && typeof (i as Item).id === "number");
-  const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || (isNew && !i.startTime && !i.allDay && r.freq === "none"))
-    ? "deadline" : i.allDay ? "allday" : i.startTime ? "timed" : "anytime";
+  const lead = i.kind === "task" ? i.leadDays ?? 0 : 0;
+  const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || lead > 0 || (isNew && !i.startTime && !i.allDay && r.freq === "none"))
+    ? "deadline" : i.allDay && i.kind !== "task" ? "allday" : i.startTime ? "timed" : "anytime";
   return {
     title: i.title || "",
     kind: ((KINDS as readonly string[]).includes(i.kind as string) ? i.kind : "event") as Kind,
     date: i.date || todayStr(),
     availableFrom: i.availableFrom || availableFromFor(i.date),
+    leadMode: lead <= 0 ? "today" : lead % 7 === 0 ? "weeks" : "days",
+    leadCount: lead <= 0 ? 1 : lead % 7 === 0 ? lead / 7 : lead,
     endDate: i.endDate || (i.startTime && i.endTime && toMin(i.endTime) <= toMin(i.startTime) ? addDays(i.date, 1) : i.date),
     timeMode,
     startTime: i.startTime || "09:00",
@@ -1063,7 +1114,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     reminder: i.reminder == null ? (i.title ? "none" : defReminder == null ? "none" : String(defReminder)) : String(i.reminder),
     extraReminders: i.reminder == null ? [] : remindersOf(i as Item).filter((n) => n !== i.reminder).map(String),
     priority: i.priority || "normal",
-    tags: taskTagsOf(i),
+    tags: taskTagsOf(i).slice(0, 1), // a task has one tag
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
     notes: i.notes || "",

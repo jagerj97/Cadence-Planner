@@ -37,7 +37,7 @@ final class FocusTimer {
     static final String ACTION_STOP = "app.cadence.planner.TIMER_STOP";
 
     /** The open activity, so a button tap can tell the web app to reload the timer. */
-    static volatile WeakReference<MainActivity> activity = new WeakReference<>(null);
+    static volatile WeakReference<AppActivity> activity = new WeakReference<>(null);
 
     static JSONObject state(Context context) {
         try {
@@ -175,7 +175,7 @@ final class FocusTimer {
                 }
             } catch (Exception ignored) {}
             update(context);
-            MainActivity open = activity.get();
+            AppActivity open = activity.get();
             if (open != null) open.focusChanged();
         }
     }

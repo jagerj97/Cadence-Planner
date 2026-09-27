@@ -1,6 +1,7 @@
 import type { Item, Settings } from "@shared/schema";
 import {
-  appearsOn, blocksForDay, canDoTaskOn, completionsOf, kindOf, markOf, occursOn, orderHabits, recOf, routineSchedules, streakOf,
+  appearsOn, blocksForDay, canDoTaskOn, dueDateFor, completionsOf, isDeadlineTask, kindOf, markOf, occursOn, orderHabits, recOf, routineSchedules,
+  streakOf, untimedForDay,
 } from "./cal";
 
 /** What the Today page (and the home screen widget) show for a day. */
@@ -33,11 +34,24 @@ export function taskRowsFor(items: Item[], day: string, isToday: boolean): TaskR
   const pr = (x: Item) => (x.priority === "high" ? 0 : x.priority === "normal" ? 1 : 2);
   return [
     ...overdue.map((i) => ({ i, occ: i.date, overdue: true })),
-    ...tasks.map((i) => ({ i, occ: recOf(i).freq === "none" ? i.date : day, overdue: false })),
+    // A deadline task counts towards the due date it's being done for.
+    ...tasks.map((i) => ({ i, occ: dueDateFor(i, day) ?? (recOf(i).freq === "none" ? i.date : day), overdue: false })),
   ]
     .map((r) => ({ ...r, done: completionsOf(r.i).has(r.occ) }))
     .sort((a, b) => Number(a.done) - Number(b.done) || pr(a.i) - pr(b.i) || (a.i.startTime || "99").localeCompare(b.i.startTime || "99"));
 }
+
+/**
+ * The row at the top of the day's schedule: all-day items, and ones set for anytime that day (tasks
+ * included). Habits have their own card, and tasks open before a due date aren't tied to one day.
+ */
+export function allDayFor(items: Item[], day: string): Item[] {
+  return untimedForDay(items, day).filter((i) => kindOf(i) !== "habit" && !isDeadlineTask(i));
+}
+
+/** Whether an item in that row is checked off for the day (only tasks get checked off). */
+export const allDayDone = (i: Item, day: string) =>
+  kindOf(i) === "task" && completionsOf(i).has(recOf(i).freq === "none" ? i.date : day);
 
 export type HabitRow = { h: Item; mark: 0 | 1 | 2; streak: number };
 

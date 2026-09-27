@@ -147,11 +147,11 @@ export function useJournal() {
 }
 export function useJournalMutations() {
   const create = useMutation({
-    mutationFn: async (d: { date: string; body: string; tags: string[] }) => (await apiRequest("POST", "/api/journal", d)).json() as Promise<JournalEntry>,
+    mutationFn: async (d: { date: string; title?: string | null; body: string; tags: string[] }) => (await apiRequest("POST", "/api/journal", d)).json() as Promise<JournalEntry>,
     onSuccess: inv,
   });
   const update = useMutation({
-    mutationFn: async ({ id, ...d }: { id: number; body?: string; tags?: string[]; date?: string }) =>
+    mutationFn: async ({ id, ...d }: { id: number; title?: string | null; body?: string; tags?: string[]; date?: string }) =>
       (await apiRequest("PATCH", `/api/journal/${id}`, d)).json() as Promise<JournalEntry>,
     onSuccess: inv,
   });

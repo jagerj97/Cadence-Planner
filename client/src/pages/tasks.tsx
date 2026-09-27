@@ -11,6 +11,7 @@ import {
   fmtDur,
   fmtTime,
   isDeadlineTask,
+  dueDateFor,
   isTimed,
   kindOf,
   occursOn,
@@ -44,14 +45,14 @@ export default function TasksPage() {
   const { data: items, isLoading } = useItems();
   const [filter, setFilter] = useState<Filter>("today");
   const [showOlder, setShowOlder] = useState(false);
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [managing, setManaging] = useState(false);
   const { settings: tagSettings } = useSettings();
   const allTags = tagSettings.taskTags ?? [];
-  // A tag that was deleted stops filtering.
-  const activeTag = tagFilter && allTags.some((t) => t.name === tagFilter) ? tagFilter : null;
+  // Several tags can be picked; tasks with any of them show. A tag that was deleted stops filtering.
+  const activeTags = tagFilter.filter((n) => allTags.some((t) => t.name === n));
   const today = todayStr();
-  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && (!activeTag || taskTagsOf(i).includes(activeTag)));
+  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && (activeTags.length === 0 || activeTags.some((n) => taskTagsOf(i).includes(n))));
 
   const rows = useMemo(() => {
     const open: Row[] = [];
@@ -63,7 +64,9 @@ export default function TasksPage() {
         const active = i.date <= today && today <= (i.endDate || i.date);
         (isDone ? done : open).push({ i, occ: active ? today : i.date, done: isDone });
       } else {
-        if (occursOn(i, today) && completionsOf(i).has(today)) done.push({ i, occ: today, done: true });
+        // A repeating task done today (or, if it can be done early, done for the due date it's open for).
+        const current = dueDateFor(i, today) ?? today;
+        if (occursOn(i, current) && completionsOf(i).has(current)) done.push({ i, occ: current, done: true });
         const n = nextOcc(i, today);
         if (n) open.push({ i, occ: n, done: false });
       }
@@ -80,7 +83,7 @@ export default function TasksPage() {
     const o = rows.open;
     const overdue = o.filter((r) => r.occ < today);
     const tod = [...o.filter((r) => r.occ === today), ...rows.done.filter((r) => r.occ === today)];
-    const available = o.filter((r) => isDeadlineTask(r.i) && r.i.availableFrom! <= today && r.i.date > today);
+    const available = o.filter((r) => r.occ > today && dueDateFor(r.i, today) === r.occ);
     const tom = o.filter((r) => r.occ === addDays(today, 1));
     const week = o.filter((r) => r.occ > addDays(today, 1) && r.occ <= addDays(today, 7));
     const later = o.filter((r) => r.occ > addDays(today, 7));
@@ -108,7 +111,7 @@ export default function TasksPage() {
 
   const dueToday = rows.open.filter((r) => r.occ <= today).length;
   const counts: Record<Filter, number> = {
-    today: dueToday + rows.open.filter((r) => isDeadlineTask(r.i) && r.i.availableFrom! <= today && r.i.date > today).length,
+    today: dueToday + rows.open.filter((r) => r.occ > today && dueDateFor(r.i, today) === r.occ).length,
     upcoming: rows.open.filter((r) => r.occ > today).length,
     open: rows.open.length,
     done: rows.done.length,
@@ -146,7 +149,7 @@ export default function TasksPage() {
             ))}
           </div>
 
-          {/* Tag filter: tap a tag to show only its tasks, again to show all. Manage comes first and is always there. */}
+          {/* Tag filter: tap tags to show tasks with any of them; tap again to drop one. Manage comes first and is always there. */}
           <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 scroll-thin md:mx-0 md:flex-wrap md:px-0" role="group" aria-label="Filter by tag">
             <button type="button" onClick={() => setManaging(true)}
               className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
@@ -155,9 +158,9 @@ export default function TasksPage() {
               Manage
             </button>
             {allTags.map((t) => {
-              const on = activeTag === t.name;
+              const on = activeTags.includes(t.name);
               return (
-                <button key={t.name} type="button" onClick={() => setTagFilter(on ? null : t.name)} aria-pressed={on}
+                <button key={t.name} type="button" onClick={() => setTagFilter((f) => (on ? f.filter((n) => n !== t.name) : [...f, t.name]))} aria-pressed={on}
                   className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
                   style={on
                     ? { background: t.color, borderColor: t.color, color: "white" }
@@ -169,7 +172,7 @@ export default function TasksPage() {
               );
             })}
           </div>
-          <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => tagFilter === from && setTagFilter(to)} />
+          <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => setTagFilter((f) => f.map((n) => (n === from ? to : n)))} />
 
           {isLoading ? (
             <div className="grid gap-2">
@@ -322,7 +325,7 @@ function TaskQuickAdd() {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && submit()}
-        placeholder="Play with yarn tomorrow 2pm"
+        placeholder={settings.plain ? "Do laundry tomorrow 2pm" : "Play with yarn tomorrow 2pm"}
         className="border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-11"
         aria-label="Add a task"
         data-testid="input-task-quick-add"

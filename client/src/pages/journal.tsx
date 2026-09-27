@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
-import { KIND_TAGS, type Item, type JournalEntry, type Kind } from "@shared/schema";
+import { KIND_TAGS, type Item, type JournalEntry, type Kind, type Settings } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations, useSettings } from "@/lib/data";
 import { DAY_SHORT, KIND_META, addDays, colorOf, fmtDate, kindOf, parseYmd, startOfWeek, todayStr, ymd } from "@/lib/cal";
 import { PickerTitle, StepHeader } from "@/pages/calendar";
 import { usePlanner } from "@/components/planner";
-import { cleanTag, tagTint } from "@/components/taskTags";
+import { TaskTagList, accentOf, cleanTag, itemTags, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,12 +19,25 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-/** A kind tag (#events, #tasks...) takes its item's color, or its kind's; other tags keep the accent. */
+/**
+ * A kind tag (#events, #tasks...) takes its item's color, or its kind's; a task tag takes its own
+ * color; other tags keep the accent.
+ */
 const KIND_OF_TAG = new Map(Object.entries(KIND_TAGS).map(([k, t]) => [t, k as Kind]));
-function tagColor(t: string, item?: Item): string | undefined {
+function tagColor(t: string, settings: Settings, item?: Item): string | undefined {
   const kind = KIND_OF_TAG.get(t);
-  if (!kind) return undefined;
+  if (!kind) return settings.taskTags?.find((x) => x.name === t)?.color;
   return item && kindOf(item) === kind ? colorOf(item) : `hsl(var(${KIND_META[kind].cssVar}))`;
+}
+
+/**
+ * An entry's tags, with its task's tag when it holds a tagged task's notes. The task tag is read from
+ * the task, so changing, renaming or deleting it there shows here too.
+ */
+function entryTags(e: JournalEntry, item: Item | undefined, settings: Settings): string[] {
+  const own = tagsOf(e);
+  if (!item || kindOf(item) !== "task") return own;
+  return [...new Set([...own, ...itemTags(item, settings).map((t) => t.name)])];
 }
 const tagStyle = (color?: string) => (color ? tagTint(color) : undefined);
 
@@ -73,11 +86,12 @@ function Tagged({ text, onTag }: { text: string; onTag: (t: string) => void }) {
 }
 
 function TagChips({ tags, onRemove, onClick, item }: { tags: string[]; onRemove?: (t: string) => void; onClick?: (t: string) => void; item?: Item }) {
+  const { settings } = useSettings();
   if (!tags.length) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((t) => (
-        <span key={t} className="inline-flex items-center gap-0.5 rounded-full bg-accent text-accent-foreground pl-2 pr-2 h-6 text-xs font-medium" style={tagStyle(tagColor(t, item))}>
+        <span key={t} className="inline-flex items-center gap-0.5 rounded-full bg-accent text-accent-foreground pl-2 pr-2 h-6 text-xs font-medium" style={tagStyle(tagColor(t, settings, item))}>
           <button onClick={() => onClick?.(t)} className={cn("inline-flex items-center", !onClick && "cursor-default")} data-testid={`chip-tag-${t}`}>
             <Hash className="h-3 w-3" />
             {t}
@@ -96,7 +110,7 @@ function TagChips({ tags, onRemove, onClick, item }: { tags: string[]; onRemove?
 const SUGGESTED = ["idea", "gratitude", "health", "sleep", "work", "mood", "win", "todo", "family", "learning"];
 
 /** "add tag" button → type a new tag or pick from suggestions */
-function TagPicker({ taken, onAdd }: { taken: string[]; onAdd: (t: string) => void }) {
+function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string) => boolean; onAdd: (t: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const { data: entries } = useJournal();
@@ -107,11 +121,13 @@ function TagPicker({ taken, onAdd }: { taken: string[]; onAdd: (t: string) => vo
   }, [entries]);
   const typed = cleanTag(q);
   const pool = [...new Set([...[...counts.keys()].sort((a, b) => (counts.get(b)! - counts.get(a)!) || a.localeCompare(b)), ...SUGGESTED])];
-  const options = pool.filter((t) => !taken.includes(t) && (!typed || t.includes(typed))).slice(0, 12);
+  const options = pool.filter((t) => !taken.includes(t) && !hide?.(t) && (!typed || t.includes(typed))).slice(0, 12);
   const add = (t: string) => {
-    if (!t) return;
+    if (!t || hide?.(t)) return;
     onAdd(t);
     setQ("");
+    // A kind tag asks whether to turn the entry into an item, so get out of the way.
+    if (CONVERTIBLE.has(t)) setOpen(false);
   };
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
@@ -140,7 +156,7 @@ function TagPicker({ taken, onAdd }: { taken: string[]; onAdd: (t: string) => vo
           />
         </div>
         <div className="max-h-60 overflow-y-auto py-1" role="listbox" aria-label="Tag suggestions">
-          {typed && !pool.includes(typed) && !taken.includes(typed) && (
+          {typed && !pool.includes(typed) && !taken.includes(typed) && !hide?.(typed) && (
             <button onClick={() => add(typed)} className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left" data-testid="button-create-tag">
               <Plus className="h-3.5 w-3.5 text-primary" />
               Create <span className="font-medium text-primary">#{typed}</span>
@@ -179,30 +195,41 @@ function formatAt(f: Format, text: string, a: number, b: number) {
   return false;
 }
 
+/** Tags that turn an entry into a planner item of that kind, when picked (see Composer). */
+const CONVERTIBLE = new Map((["task", "event", "meeting", "focus"] as Kind[]).map((k) => [KIND_TAGS[k], k]));
+const KIND_NOUN: Partial<Record<Kind, string>> = { task: "a task", event: "an event", meeting: "a meeting", focus: "a focus session" };
+export type ConvertTo = { kind: Kind; title: string; body: string; tags: string[] };
+
 /**
- * Textarea, tags and format buttons, used for new and edited entries. The new entry window uses the
- * "keep" look: a borderless note with a toolbar along the bottom.
+ * The entry window's contents, for new and edited entries: a title, a note that grows with its text
+ * (then scrolls once it fills the screen above the keyboard), tags, and format buttons along the bottom.
+ * Picking a kind tag (#tasks, #events...) offers to turn the entry into that kind of item instead.
  */
 function Composer({
+  initialTitle = "",
   initial = "",
   initialTags = [],
   submitLabel,
   onSubmit,
   onCancel,
+  onConvert,
   busy,
-  keep,
 }: {
+  initialTitle?: string;
   initial?: string;
   initialTags?: string[];
   submitLabel: string;
-  onSubmit: (body: string, tags: string[]) => Promise<unknown> | void;
+  onSubmit: (title: string, body: string, tags: string[]) => Promise<unknown> | void;
   onCancel?: () => void;
+  onConvert: (to: ConvertTo) => void;
   busy?: boolean;
-  keep?: boolean;
 }) {
   const [sel, setSel] = useState<[number, number]>([initial.length, initial.length]);
+  const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState(initial);
   const [extra, setExtra] = useState<string[]>(initialTags.filter((t) => !hashtagsIn(initial).includes(t)));
+  // The kind the entry would become, while the prompt is open; `typed` when it came from a #hashtag in the text.
+  const [ask, setAsk] = useState<{ kind: Kind; typed: boolean } | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   // Follow the selection so B, I and U show the format under it.
   useEffect(() => {
@@ -213,8 +240,17 @@ function Composer({
     document.addEventListener("selectionchange", f);
     return () => document.removeEventListener("selectionchange", f);
   }, []);
+  // The note is as tall as its text; the window's height limit (flex) makes it scroll past that.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [body]);
   const inline = hashtagsIn(body);
   const all = [...new Set([...inline, ...extra])];
+  // Kind tags newly typed into the text (ones an entry already had stay as they are).
+  const typedKinds = inline.filter((t) => CONVERTIBLE.has(t) && !initialTags.includes(t));
   // Wraps the selection in a format's marks, or unwraps it if it already has them.
   const format = (mark: string) => {
     const el = ref.current;
@@ -230,16 +266,38 @@ function Composer({
     setBody(next);
     requestAnimationFrame(() => { el.focus(); el.setSelectionRange(s, e); setSel([s, e]); });
   };
-  const submit = async () => {
-    if (!body.trim()) return;
-    await onSubmit(body, all);
-    if (!onCancel) {
-      setBody("");
-      setExtra([]);
+  const withoutKindHashtags = (text: string) =>
+    typedKinds.reduce((t, k) => t.replace(new RegExp(`(^|\\s)#${k}(?![\\p{L}\\p{N}_-])`, "giu"), `$1${k}`), text);
+  const submit = async (text = body) => {
+    if (!text.trim()) return;
+    if (text === body && typedKinds.length) {
+      setAsk({ kind: CONVERTIBLE.get(typedKinds[0])!, typed: true });
+      return;
     }
+    await onSubmit(title, text, [...new Set([...hashtagsIn(text), ...extra])]);
   };
+  const addTag = (t: string) => {
+    if (all.includes(t)) return;
+    const kind = CONVERTIBLE.get(t);
+    if (kind) setAsk({ kind, typed: false });
+    else setExtra((x) => [...x, t]);
+  };
+  // Other tags and at most one kind tag, which an item's entry gets from its kind.
+  const hasKind = all.some((t) => KIND_OF_TAG.has(t));
   return (
-    <div className={cn("grid", keep ? "gap-2" : "gap-3")}>
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); ref.current?.focus(); }
+        }}
+        placeholder="Title"
+        maxLength={200}
+        className="shrink-0 bg-transparent px-4 pt-4 text-[17px] font-semibold outline-none placeholder:font-medium placeholder:text-muted-foreground"
+        aria-label="Title"
+        data-testid="input-journal-title"
+      />
       <Textarea
         ref={ref}
         value={body}
@@ -247,17 +305,16 @@ function Composer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         }}
-        placeholder={keep ? "Jot something down…" : "Jot something down. Use #hashtags to tag it."}
-        className={keep
-          ? "min-h-[128px] resize-none rounded-none border-0 bg-transparent px-4 pb-1 pt-4 text-[16px] leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-          : "min-h-[96px] resize-y text-[16px] leading-relaxed"}
+        placeholder="Jot something down…"
+        rows={4}
+        className="min-h-[112px] shrink resize-none overflow-y-auto rounded-none border-0 bg-transparent px-4 py-0 text-[16px] leading-relaxed shadow-none scroll-thin focus-visible:ring-0 focus-visible:ring-offset-0"
         data-testid="input-journal-body"
       />
-      <div className={cn("flex flex-wrap items-center gap-2", keep && "px-4")}>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-1">
         <TagChips tags={all} onRemove={(t) => (inline.includes(t) ? setBody(body.replace(new RegExp(`(^|\\s)#${t}\\b`, "i"), "$1")) : setExtra(extra.filter((x) => x !== t)))} />
-        <TagPicker taken={all} onAdd={(t) => !all.includes(t) && setExtra((x) => [...x, t])} />
+        <TagPicker taken={all} hide={(t) => KIND_OF_TAG.has(t) && (hasKind || !CONVERTIBLE.has(t))} onAdd={addTag} />
       </div>
-      <div className={cn("flex items-center gap-1.5", keep && "px-4 pb-4")}>
+      <div className="flex shrink-0 items-center gap-1.5 px-4 pb-4">
         {/* B, I and U buttons look like the add tag button, and take the tag color while the selection has that format. */}
         <div className="flex items-center gap-1.5" role="toolbar" aria-label="Text formatting">
           {FORMATS.map((f) => {
@@ -279,29 +336,50 @@ function Composer({
               Cancel
             </Button>
           )}
-          <Button size="sm" onClick={submit} disabled={!body.trim() || busy} data-testid="button-journal-save">
+          <Button size="sm" onClick={() => submit()} disabled={!body.trim() || busy} data-testid="button-journal-save">
             {submitLabel}
           </Button>
         </div>
       </div>
+      <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(null)}>
+        <DialogContent hideClose className="max-w-sm" data-testid="dialog-journal-convert">
+          <DialogTitle className="text-base leading-snug">
+            Would you like to make this entry into {ask ? KIND_NOUN[ask.kind] : ""}? This cannot be undone!
+          </DialogTitle>
+          <DialogDescription className="sr-only">Opens a new item with this entry's title and text as its notes</DialogDescription>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" data-testid="button-convert-no" onClick={() => {
+              const typed = ask?.typed;
+              setAsk(null);
+              // A kind typed as a #hashtag stays a plain word, and the entry saves as it is.
+              if (typed) { const text = withoutKindHashtags(body); setBody(text); submit(text); }
+            }}>No</Button>
+            <Button size="sm" data-testid="button-convert-yes" onClick={() => {
+              if (!ask) return;
+              setAsk(null);
+              onConvert({ kind: ask.kind, title: title.trim(), body: body.trim(), tags: all.filter((t) => !KIND_OF_TAG.has(t)) });
+            }}>Yes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function EntryCard({ e, onTag, showDate, item, openDetails }: {
-  e: JournalEntry; onTag: (t: string) => void; showDate?: boolean; item?: Item; openDetails: (i: Item) => void;
+function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
+  e: JournalEntry; onTag: (t: string) => void; showDate?: boolean; item?: Item; openDetails: (i: Item) => void; onEdit: (e: JournalEntry) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const { update, remove } = useJournalMutations();
+  const { remove } = useJournalMutations();
   const { toast } = useToast();
+  const { settings } = useSettings();
   const [, nav] = useLocation();
-  const tags = tagsOf(e);
+  const tags = entryTags(e, item, settings);
   const extraTags = tags.filter((t) => !hashtagsIn(e.body).includes(t));
   return (
     <article
-      className={cn("card-md p-4 group", item && !editing && "cursor-pointer")}
+      className={cn("card-md p-4 group", item && "cursor-pointer")}
       // An entry holding an item's notes opens that item; its buttons, tags and links keep their own taps.
-      onClick={(ev) => item && !editing && !(ev.target as HTMLElement).closest("button, a, input, textarea") && openDetails(item)}
+      onClick={(ev) => item && !(ev.target as HTMLElement).closest("button, a, input, textarea") && openDetails(item)}
       data-testid={`card-entry-${e.id}`}
     >
       <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
@@ -311,15 +389,18 @@ function EntryCard({ e, onTag, showDate, item, openDetails }: {
           </button>
         ) : null}
         {item ? (
-          <button onClick={() => openDetails(item)} className="min-w-0 truncate font-medium hover:underline" style={{ color: colorOf(item) }} data-testid={`button-entry-item-${e.id}`}>
+          <button onClick={() => openDetails(item)} className="min-w-0 truncate font-medium hover:underline" style={{ color: accentOf(item, settings) }} data-testid={`button-entry-item-${e.id}`}>
             {item.title}
           </button>
+        ) : e.title ? (
+          // A titled entry reads like one from an item: its title where the item's would be.
+          <span className="min-w-0 truncate font-medium text-foreground" data-testid={`text-entry-title-${e.id}`}>{e.title}</span>
         ) : <span className="tnum">{timeOf(e.createdAt)}</span>}
-        {e.updatedAt !== e.createdAt && <span>· edited</span>}
+        {e.updatedAt !== e.createdAt && <span className="shrink-0">· edited</span>}
         {/* An entry holding an item's notes is changed from that item, so it has no edit or delete. */}
-        {!editing && !e.itemId && (
+        {!e.itemId && (
           <div className="ml-auto flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
-            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing(true)} aria-label="Edit entry" data-testid={`button-edit-entry-${e.id}`}>
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit(e)} aria-label="Edit entry" data-testid={`button-edit-entry-${e.id}`}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>
             <Button
@@ -338,23 +419,9 @@ function EntryCard({ e, onTag, showDate, item, openDetails }: {
           </div>
         )}
       </div>
-      {editing ? (
-        <Composer
-          initial={e.body}
-          initialTags={tags}
-          submitLabel="Save"
-          busy={update.isPending}
-          onCancel={() => setEditing(false)}
-          onSubmit={async (body, t) => {
-            await update.mutateAsync({ id: e.id, body, tags: t });
-            setEditing(false);
-          }}
-        />
-      ) : (
-        <Clamp footer={<TagChips tags={extraTags} onClick={onTag} item={item} />}>
-          <Body text={e.body} onTag={onTag} />
-        </Clamp>
-      )}
+      <Clamp footer={<TagChips tags={extraTags} onClick={onTag} item={item} />}>
+        <Body text={e.body} onTag={onTag} />
+      </Clamp>
     </article>
   );
 }
@@ -443,11 +510,15 @@ function DayPicker({ day, label, marked, onPick }: { day: string; label: string;
  * Rename or delete journal tags across every entry. The kind tags (#events, #tasks...) come from
  * items' notes and are added back automatically, so they aren't listed.
  */
-function JournalTagManager({ open, onOpenChange, tags, onRenamed }: {
-  open: boolean; onOpenChange: (o: boolean) => void; tags: [string, number][]; onRenamed: (from: string, to: string | null) => void;
+function JournalTagManager({ open, onOpenChange, tags, counts, onRenamed }: {
+  open: boolean; onOpenChange: (o: boolean) => void;
+  /** Tags saved on entries, and how many entries have each tag (task tags included). */
+  tags: [string, number][]; counts: Map<string, number>;
+  onRenamed: (from: string, to: string | null) => void;
 }) {
   const { retag } = useJournalMutations();
   const own = tags.filter(([t]) => !KIND_OF_TAG.has(t));
+  const entries = (t: string) => { const n = counts.get(t) ?? 0; return `${n} ${n === 1 ? "entry" : "entries"}`; };
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState("");
   const rename = async (from: string) => {
@@ -496,6 +567,14 @@ function JournalTagManager({ open, onOpenChange, tags, onRenamed }: {
           })}
         </ul>
         <p className="text-xs text-muted-foreground">Deleting a tag keeps its word in your entries, without the #.</p>
+        {/* Tasks' tags show on their notes' entries; they're changed here or from the Tasks page. */}
+        <div className="grid gap-3 border-t pt-4" data-testid="section-journal-task-tags">
+          <div>
+            <h3 className="text-base font-semibold">Task tags</h3>
+            <p className="text-xs text-muted-foreground">Tagged tasks' notes show their tag here in the journal.</p>
+          </div>
+          {open && <TaskTagList countOf={entries} onRenamed={(from, to) => onRenamed(from, to)} />}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -507,18 +586,20 @@ export default function JournalPage() {
   const day = params?.date ?? todayStr();
   const isToday = day === todayStr();
   const { data: entries, isLoading } = useJournal();
-  const { create } = useJournalMutations();
+  const { create, update, remove } = useJournalMutations();
   const [q, setQ] = useState("");
-  const [composing, setComposing] = useState(false);
+  // The entry window: a new entry ({}), or the one being edited.
+  const [compose, setCompose] = useState<{ entry?: JournalEntry } | null>(null);
   const [managing, setManaging] = useState(false);
   // Entries holding an item's notes link to it.
   const { data: items } = useItems();
-  const { openDetails } = usePlanner();
+  const { openDetails, openEditor } = usePlanner();
+  const { settings } = useSettings();
   const itemsById = useMemo(() => new Map((items ?? []).map((i) => [i.id, i])), [items]);
   const itemOf = (e: JournalEntry) => (e.itemId ? itemsById.get(e.itemId) : undefined);
   // The app bar's + opens the entry window here.
   useEffect(() => {
-    const f = () => { setQ(""); setComposing(true); };
+    const f = () => { setQ(""); setCompose({}); };
     window.addEventListener("cadence:journal-compose", f);
     return () => window.removeEventListener("cadence:journal-compose", f);
   }, []);
@@ -526,11 +607,15 @@ export default function JournalPage() {
   const entryDays = useMemo(() => new Set(all.map((e) => e.date)), [all]);
 
   const dayEntries = all.filter((e) => e.date === day).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const tagCounts = useMemo(() => {
+  const tagsOfEntry = (e: JournalEntry) => entryTags(e, itemOf(e), settings);
+  const count = (tags: (e: JournalEntry) => string[]) => {
     const m = new Map<string, number>();
-    for (const e of all) for (const t of tagsOf(e)) m.set(t, (m.get(t) ?? 0) + 1);
+    for (const e of all) for (const t of tags(e)) m.set(t, (m.get(t) ?? 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [all]);
+  };
+  // Every tag to find entries by (task tags included), and the ones saved on entries themselves.
+  const tagCounts = useMemo(() => count(tagsOfEntry), [all, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
+  const savedTagCounts = useMemo(() => count(tagsOf), [all]); // eslint-disable-line react-hooks/exhaustive-deps
   const recentDays = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of all) m.set(e.date, (m.get(e.date) ?? 0) + 1);
@@ -544,14 +629,23 @@ export default function JournalPage() {
     return all
       .filter((e) =>
         terms.every((t) =>
-          t.startsWith("#") ? tagsOf(e).includes(t.slice(1)) : e.body.toLowerCase().includes(t) || tagsOf(e).some((x) => x.includes(t)),
+          t.startsWith("#") ? tagsOfEntry(e).includes(t.slice(1))
+            : e.body.toLowerCase().includes(t) || !!e.title?.toLowerCase().includes(t) || tagsOfEntry(e).some((x) => x.includes(t)),
         ),
       )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [all, query]);
+  }, [all, query, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tapping the tag being searched clears the search.
-  const searchTag = (t: string) => setQ((q) => (q.trim().toLowerCase() === `#${t}` ? "" : `#${t}`));
+  // Tags are toggled in the search, so several can be picked at once (entries need all of them).
+  const toggleTerm = (q: string, term: string, to?: string | null) => {
+    const terms = q.trim().split(/\s+/).filter(Boolean);
+    const has = terms.some((x) => x.toLowerCase() === term);
+    const next = has ? terms.flatMap((x) => (x.toLowerCase() === term ? (to ? [to] : []) : [x])) : to === undefined ? [...terms, term] : terms;
+    return next.join(" ");
+  };
+  const searchTag = (t: string) => setQ((q) => toggleTerm(q, `#${t}`));
+  const picked = new Set(query.split(/\s+/).filter((x) => x.startsWith("#")));
 
   return (
     <>
@@ -606,9 +700,10 @@ export default function JournalPage() {
                         onClick={() => searchTag(t)}
                         className={cn(
                           "inline-flex items-center gap-1 rounded-full h-7 px-2.5 text-xs font-medium transition-colors",
-                          query === `#${t}` ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-accent hover:text-accent-foreground",
+                          picked.has(`#${t}`) ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-accent hover:text-accent-foreground",
                         )}
-                        style={query === `#${t}` ? undefined : tagStyle(tagColor(t))}
+                        style={picked.has(`#${t}`) ? undefined : tagStyle(tagColor(t, settings))}
+                        aria-pressed={picked.has(`#${t}`)}
                         data-testid={`button-tag-${t}`}
                       >
                         #{t}
@@ -643,8 +738,51 @@ export default function JournalPage() {
               </div>
             )}
           </aside>
-          <JournalTagManager open={managing} onOpenChange={setManaging} tags={tagCounts}
-            onRenamed={(from, to) => query === `#${from}` && setQ(to ? `#${to}` : "")} />
+          <Dialog open={!!compose} onOpenChange={(o) => !o && setCompose(null)}>
+            <DialogContent hideClose className="flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col gap-0 overflow-hidden rounded-xl p-0" data-testid="dialog-journal-entry"
+              // Start typing right away, at the end of an entry being edited.
+              onOpenAutoFocus={(ev) => {
+                ev.preventDefault();
+                const area = (ev.currentTarget as HTMLElement).querySelector("textarea");
+                area?.focus();
+                area?.setSelectionRange(area.value.length, area.value.length);
+              }}>
+              <DialogTitle className="sr-only">{compose?.entry ? "Edit entry" : "New entry"}</DialogTitle>
+              <DialogDescription className="sr-only">{fmtDate(compose?.entry?.date ?? day, { weekday: "long", month: "long", day: "numeric" })}</DialogDescription>
+              {compose && (
+                <Composer
+                  key={compose.entry?.id ?? "new"}
+                  initialTitle={compose.entry?.title ?? ""}
+                  initial={compose.entry?.body}
+                  initialTags={compose.entry ? tagsOf(compose.entry) : []}
+                  submitLabel={compose.entry ? "Save" : "Add entry"}
+                  busy={create.isPending || update.isPending}
+                  onCancel={() => setCompose(null)}
+                  onSubmit={async (title, body, tags) => {
+                    if (compose.entry) await update.mutateAsync({ id: compose.entry.id, title, body, tags });
+                    else await create.mutateAsync({ date: day, title, body, tags });
+                    setCompose(null);
+                  }}
+                  onConvert={(to) => {
+                    const entry = compose.entry;
+                    setCompose(null);
+                    // A new task takes the entry's first tag that's a task tag (a task has one tag). The entry
+                    // shows it from the task, so it isn't also saved on the entry.
+                    const taskTag = to.kind === "task" ? to.tags.find((t) => settings.taskTags?.some((x) => x.name === t)) : undefined;
+                    const kept = to.tags.filter((t) => t !== taskTag);
+                    // The new item's notes become its journal entry, which replaces this one once the item is saved.
+                    openEditor({ kind: to.kind, title: to.title, notes: to.body, date: entry?.date ?? day, ...(taskTag ? { tags: JSON.stringify([taskTag]) } : {}) },
+                      undefined, async (item) => {
+                        if (entry) await remove.mutateAsync(entry.id);
+                        if (item.journalId && kept.length) await update.mutateAsync({ id: item.journalId, tags: [...kept, KIND_TAGS[to.kind]] });
+                      });
+                  }}
+                />
+              )}
+            </DialogContent>
+          </Dialog>
+          <JournalTagManager open={managing} onOpenChange={setManaging} tags={savedTagCounts} counts={new Map(tagCounts)}
+            onRenamed={(from, to) => setQ((q) => toggleTerm(q, `#${from}`, to ? `#${to}` : null))} />
 
           <section className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">
             {query ? (
@@ -658,36 +796,18 @@ export default function JournalPage() {
                 {results.length === 0 ? (
                   <div className="card-md p-8 text-center text-sm text-muted-foreground">Nothing matches that yet.</div>
                 ) : (
-                  results.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} showDate item={itemOf(e)} openDetails={openDetails} />)
+                  results.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} showDate item={itemOf(e)} openDetails={openDetails} onEdit={(entry) => setCompose({ entry })} />)
                 )}
               </>
             ) : (
               <>
                 {/* Looks like the Tasks page's add field; tapping it opens the entry window. */}
-                <button type="button" onClick={() => setComposing(true)}
+                <button type="button" onClick={() => setCompose({})}
                   className="flex w-full items-center gap-2 card-md px-3 h-11 text-left text-base text-muted-foreground"
                   data-testid="button-journal-new">
                   <Plus className="h-4 w-4 text-primary shrink-0" />
-                  <span className="truncate text-[14px] italic">Got the zoomies #exercise</span>
+                  <span className="truncate text-[14px] italic">{settings.plain ? "Had a shower thought #ideas" : "Got the zoomies #exercise"}</span>
                 </button>
-                <Dialog open={composing} onOpenChange={setComposing}>
-                  <DialogContent hideClose className="max-w-lg gap-0 overflow-hidden rounded-xl p-0" data-testid="dialog-journal-new"
-                    // Start typing right away.
-                    onOpenAutoFocus={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).querySelector("textarea")?.focus(); }}>
-                    <DialogTitle className="sr-only">New entry</DialogTitle>
-                    <DialogDescription className="sr-only">{fmtDate(day, { weekday: "long", month: "long", day: "numeric" })}</DialogDescription>
-                    <Composer
-                      keep
-                      submitLabel="Add entry"
-                      busy={create.isPending}
-                      onCancel={() => setComposing(false)}
-                      onSubmit={async (body, tags) => {
-                        await create.mutateAsync({ date: day, body, tags });
-                        setComposing(false);
-                      }}
-                    />
-                  </DialogContent>
-                </Dialog>
                 {isLoading ? (
                   <Skeleton className="h-24" />
                 ) : dayEntries.length === 0 ? (
@@ -695,11 +815,10 @@ export default function JournalPage() {
                     <div className="h-12 w-12 rounded-full bg-accent grid place-items-center text-primary">
                       <NotebookPen className="h-5 w-5" />
                     </div>
-                    <div className="font-medium">No entries {isToday ? "today" : "this day"}</div>
-                    <p className="text-sm text-muted-foreground max-w-xs">Thoughts, ideas, how you slept, what went well. Each note is saved as its own entry.</p>
+                    <div className="font-medium">There's nothing here yet...</div>
                   </div>
                 ) : (
-                  dayEntries.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} item={itemOf(e)} openDetails={openDetails} />)
+                  dayEntries.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} item={itemOf(e)} openDetails={openDetails} onEdit={(entry) => setCompose({ entry })} />)
                 )}
               </>
             )}
