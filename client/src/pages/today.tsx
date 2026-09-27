@@ -489,7 +489,7 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
                 <button
                   onClick={() => cycle.mutate({ id: h.id, date: day })}
                   className="h-[18px] w-[18px] shrink-0 rounded-full grid place-items-center border-[1.5px]"
-                  style={{ borderColor: "hsl(var(--k-habit))", background: fillOf(mk, "hsl(var(--k-habit))", 90) }}
+                  style={{ borderColor: "hsl(var(--k-habit))", background: fillOf(mk, "hsl(var(--k-habit))") }}
                   aria-label={`${h.title}: ${["not done", "half done", "done"][mk]}`}
                   data-testid={`button-toggle-habit-${h.id}`}
                 >

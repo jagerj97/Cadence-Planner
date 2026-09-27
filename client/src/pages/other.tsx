@@ -144,7 +144,7 @@ export function HabitsPage() {
                           "h-7 w-7 shrink-0 rounded-full grid place-items-center border-2 transition-colors",
                           !due && "border-dashed opacity-40",
                         )}
-                        style={{ borderColor: colorOf(h), background: fillOf(mk, colorOf(h), 90) }}
+                        style={{ borderColor: colorOf(h), background: fillOf(mk, colorOf(h)) }}
                         aria-label={!due ? `${h.title} isn't scheduled today` : `${h.title}: ${MARK_LABEL[mk]}. Tap for ${MARK_LABEL[((mk + 1) % 3) as 0 | 1 | 2]}`}
                         data-testid={`button-toggle-habit-${h.id}`}
                       >
@@ -237,7 +237,7 @@ export function HabitsPage() {
                                       "inline-grid h-6 w-6 place-items-center rounded-full border-[1.5px] transition-colors",
                                       mk === 0 && "hover:bg-muted",
                                     )}
-                                    style={{ background: fillOf(mk, colorOf(h), 90), borderColor: mk ? colorOf(h) : "hsl(var(--foreground) / .22)" }}
+                                    style={{ background: fillOf(mk, colorOf(h)), borderColor: mk ? colorOf(h) : "hsl(var(--foreground) / .22)" }}
                                     aria-label={`${h.title}, ${fmtDate(d, { weekday: "short", month: "short", day: "numeric" })}: ${MARK_LABEL[mk]}`}
                                     data-testid={`button-habit-${h.id}-${d}`}
                                   >
