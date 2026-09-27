@@ -766,11 +766,16 @@ export default function JournalPage() {
                   onConvert={(to) => {
                     const entry = compose.entry;
                     setCompose(null);
+                    // A new task takes the entry's first tag that's a task tag (a task has one tag). The entry
+                    // shows it from the task, so it isn't also saved on the entry.
+                    const taskTag = to.kind === "task" ? to.tags.find((t) => settings.taskTags?.some((x) => x.name === t)) : undefined;
+                    const kept = to.tags.filter((t) => t !== taskTag);
                     // The new item's notes become its journal entry, which replaces this one once the item is saved.
-                    openEditor({ kind: to.kind, title: to.title, notes: to.body, date: entry?.date ?? day }, undefined, async (item) => {
-                      if (entry) await remove.mutateAsync(entry.id);
-                      if (item.journalId && to.tags.length) await update.mutateAsync({ id: item.journalId, tags: [...to.tags, KIND_TAGS[to.kind]] });
-                    });
+                    openEditor({ kind: to.kind, title: to.title, notes: to.body, date: entry?.date ?? day, ...(taskTag ? { tags: JSON.stringify([taskTag]) } : {}) },
+                      undefined, async (item) => {
+                        if (entry) await remove.mutateAsync(entry.id);
+                        if (item.journalId && kept.length) await update.mutateAsync({ id: item.journalId, tags: [...kept, KIND_TAGS[to.kind]] });
+                      });
                   }}
                 />
               )}
