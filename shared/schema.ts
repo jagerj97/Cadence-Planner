@@ -121,7 +121,7 @@ export type Settings = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  name: "Joshua",
+  name: "",
   wakeTime: "07:00",
   bedTime: "23:00",
   dayStartHour: 6,

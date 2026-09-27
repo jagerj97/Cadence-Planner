@@ -535,7 +535,7 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
 }) {
   const { toast } = useToast();
   const existing = feed && feed !== "new" ? feed : null;
-  const [name, setName] = useState("Calendar");
+  const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [kind, setKind] = useState<"auto" | ImportKind>("auto");
   const [journal, setJournal] = useState(false);
@@ -544,7 +544,7 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (!feed) return;
-    setName(existing?.name ?? "Calendar");
+    setName(existing?.name ?? "");
     setUrl(existing?.url ?? "");
     setKind(existing?.importKind ?? "auto");
     setJournal(!!existing?.journalNotes);
@@ -998,7 +998,7 @@ export function SettingsPage() {
         <div className="grid grid-cols-1 gap-4 max-w-3xl">
           <Section title="You">
             <Field label="Your name">
-              <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} data-testid="input-name" />
+              <Input value={draft.name} placeholder="Your name" onChange={(e) => setDraft({ ...draft, name: e.target.value })} data-testid="input-name" />
             </Field>
           </Section>
 

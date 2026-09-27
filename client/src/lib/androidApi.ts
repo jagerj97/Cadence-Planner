@@ -86,6 +86,8 @@ const pref = async (): Promise<Settings> => {
   return {
     ...merged,
     colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme,
+    // "Joshua" was a placeholder default, not a name anyone entered.
+    name: merged.name === "Joshua" ? "" : merged.name,
     routines: merged.routines.map((r) => (r.color?.toLowerCase() === "#5966ad" ? { ...r, color: "#3f51b5" } : r)),
   };
 };
