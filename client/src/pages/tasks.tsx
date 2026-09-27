@@ -11,6 +11,7 @@ import {
   fmtDur,
   fmtTime,
   isDeadlineTask,
+  dueDateFor,
   isTimed,
   kindOf,
   occursOn,
@@ -63,7 +64,9 @@ export default function TasksPage() {
         const active = i.date <= today && today <= (i.endDate || i.date);
         (isDone ? done : open).push({ i, occ: active ? today : i.date, done: isDone });
       } else {
-        if (occursOn(i, today) && completionsOf(i).has(today)) done.push({ i, occ: today, done: true });
+        // A repeating task done today (or, if it can be done early, done for the due date it's open for).
+        const current = dueDateFor(i, today) ?? today;
+        if (occursOn(i, current) && completionsOf(i).has(current)) done.push({ i, occ: current, done: true });
         const n = nextOcc(i, today);
         if (n) open.push({ i, occ: n, done: false });
       }
@@ -80,7 +83,7 @@ export default function TasksPage() {
     const o = rows.open;
     const overdue = o.filter((r) => r.occ < today);
     const tod = [...o.filter((r) => r.occ === today), ...rows.done.filter((r) => r.occ === today)];
-    const available = o.filter((r) => isDeadlineTask(r.i) && r.i.availableFrom! <= today && r.i.date > today);
+    const available = o.filter((r) => r.occ > today && dueDateFor(r.i, today) === r.occ);
     const tom = o.filter((r) => r.occ === addDays(today, 1));
     const week = o.filter((r) => r.occ > addDays(today, 1) && r.occ <= addDays(today, 7));
     const later = o.filter((r) => r.occ > addDays(today, 7));
@@ -108,7 +111,7 @@ export default function TasksPage() {
 
   const dueToday = rows.open.filter((r) => r.occ <= today).length;
   const counts: Record<Filter, number> = {
-    today: dueToday + rows.open.filter((r) => isDeadlineTask(r.i) && r.i.availableFrom! <= today && r.i.date > today).length,
+    today: dueToday + rows.open.filter((r) => r.occ > today && dueDateFor(r.i, today) === r.occ).length,
     upcoming: rows.open.filter((r) => r.occ > today).length,
     open: rows.open.length,
     done: rows.done.length,

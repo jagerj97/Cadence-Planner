@@ -1,6 +1,6 @@
 import type { Item, Settings } from "@shared/schema";
 import {
-  appearsOn, blocksForDay, canDoTaskOn, completionsOf, kindOf, markOf, occursOn, orderHabits, recOf, routineSchedules, streakOf,
+  appearsOn, blocksForDay, canDoTaskOn, dueDateFor, completionsOf, kindOf, markOf, occursOn, orderHabits, recOf, routineSchedules, streakOf,
 } from "./cal";
 
 /** What the Today page (and the home screen widget) show for a day. */
@@ -33,7 +33,8 @@ export function taskRowsFor(items: Item[], day: string, isToday: boolean): TaskR
   const pr = (x: Item) => (x.priority === "high" ? 0 : x.priority === "normal" ? 1 : 2);
   return [
     ...overdue.map((i) => ({ i, occ: i.date, overdue: true })),
-    ...tasks.map((i) => ({ i, occ: recOf(i).freq === "none" ? i.date : day, overdue: false })),
+    // A deadline task counts towards the due date it's being done for.
+    ...tasks.map((i) => ({ i, occ: dueDateFor(i, day) ?? (recOf(i).freq === "none" ? i.date : day), overdue: false })),
   ]
     .map((r) => ({ ...r, done: completionsOf(r.i).has(r.occ) }))
     .sort((a, b) => Number(a.done) - Number(b.done) || pr(a.i) - pr(b.i) || (a.i.startTime || "99").localeCompare(b.i.startTime || "99"));

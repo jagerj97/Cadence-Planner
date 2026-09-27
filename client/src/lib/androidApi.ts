@@ -104,6 +104,9 @@ function validItem(it: Item | InsertItem): boolean {
       !validTime(it.startTime) || !validTime(it.endTime)) return false;
   if (it.availableFrom && (it.kind !== "task" || !validDate(it.availableFrom) || it.availableFrom > it.date ||
       it.startTime || it.endTime || it.allDay || JSON.parse(it.recurrence || '{"freq":"none"}').freq !== "none")) return false;
+  // Days before each due date a task can be done: a whole number of days, for untimed tasks only.
+  if (it.leadDays != null && (it.kind !== "task" || !Number.isInteger(it.leadDays) || it.leadDays < 1 || it.leadDays > 365 ||
+      it.startTime || it.availableFrom)) return false;
   return true;
 }
 const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => m[2].toLowerCase());
@@ -443,8 +446,8 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
               // Kinds changed on the item stay unless "Import items as" was changed since.
               const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
                 completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
-                autoTimer: old.autoTimer, ...(old.kind === "task" && old.availableFrom ? {
-                  availableFrom: old.availableFrom, startTime: null, endTime: null, endDate: null, allDay: false,
+                autoTimer: old.autoTimer, ...(old.kind === "task" && (old.availableFrom || old.leadDays) ? {
+                  availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, startTime: null, endTime: null, endDate: null, allDay: false,
                 } : {}) });
               await syncNotes(saved, (fresh.notes || "").trim() !== (old.notes || "").trim());
             } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);

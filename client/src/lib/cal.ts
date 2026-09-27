@@ -240,8 +240,23 @@ export function isTimed(i: Item) {
   return !i.allDay && !!i.startTime;
 }
 /** A deadline task is actionable before its due day, but is not a multi-day calendar event. */
+/**
+ * A task that can be done ahead of its due date: from a set day up to a one-off due date
+ * (availableFrom), or in the leadDays before each due date, which can repeat.
+ */
 export function isDeadlineTask(i: Item) {
-  return i.kind === "task" && !!i.availableFrom;
+  return i.kind === "task" && (!!i.availableFrom || (i.leadDays ?? 0) > 0);
+}
+/** The due date a deadline task can be done towards on `day` (the nearest one whose window has opened), if any. */
+export function dueDateFor(i: Item, day: string): string | null {
+  if (i.kind !== "task") return null;
+  if (i.availableFrom) return i.availableFrom <= day && day <= i.date ? i.date : null;
+  const lead = i.leadDays ?? 0;
+  for (let n = 0; lead > 0 && n <= lead; n++) {
+    const due = addDays(day, n);
+    if (occursOn(i, due)) return due;
+  }
+  return null;
 }
 /**
  * Tasks default to "anytime before the due date". They only ask for a due date; the first day they can be
@@ -260,7 +275,7 @@ export function fillOf(mk: 0 | 1 | 2, color: string) {
   return "transparent";
 }
 export function canDoTaskOn(i: Item, day: string) {
-  return isDeadlineTask(i) && i.availableFrom! <= day && day <= i.date;
+  return dueDateFor(i, day) !== null;
 }
 function span(i: Item) {
   const s = toMin(i.startTime);

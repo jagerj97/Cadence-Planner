@@ -97,7 +97,7 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
         .map((i) => ({ title: i.title, color: hexOf(i) })),
       tasks: taskRowsFor(items, day, true).map(({ i, occ, overdue, done }) => ({
         id: i.id, occ, title: i.title, done, overdue,
-        due: isDeadlineTask(i) ? `Due ${fmtDate(i.date, { month: "short", day: "numeric" })}` : "",
+        due: isDeadlineTask(i) ? `Due ${fmtDate(occ, { month: "short", day: "numeric" })}` : "",
         high: i.priority === "high",
         // The first tag's color for the checkbox, or "" for the task yellow.
         color: firstTagColor(i, settings) ?? "",

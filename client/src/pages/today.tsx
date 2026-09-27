@@ -430,7 +430,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
                   <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
                   <div className="text-xs text-muted-foreground flex gap-1.5">
                     {overdue && <span className="text-destructive">Overdue</span>}
-                    {isDeadlineTask(i) && <span>Due {fmtDate(i.date, { month: "short", day: "numeric" })}</span>}
+                    {isDeadlineTask(i) && <span>Due {fmtDate(occ, { month: "short", day: "numeric" })}</span>}
                     {i.priority === "high" && <span className="text-[hsl(var(--k-task))] font-medium">High</span>}
                     {isTimed(i) && <span className="tnum">{fmtTime(i.startTime, true)}</span>}
                     {recOf(i).freq !== "none" && <span>{recLabel(i)}</span>}

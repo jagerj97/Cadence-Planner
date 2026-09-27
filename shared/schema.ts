@@ -21,6 +21,7 @@ export type Item = {
   date: string; // YYYY-MM-DD anchor
   endDate: string | null; // inclusive last date for all-day items; timed items end at endTime on this date
   availableFrom: string | null; // task can be completed starting this day, with date as its due date
+  leadDays?: number | null; // task can be completed this many days before each due date (works with repeats)
   startTime: string | null; // HH:mm
   endTime: string | null; // HH:mm (may be < start => overnight)
   allDay: boolean;
