@@ -1010,7 +1010,7 @@ export function SettingsPage() {
             </div>
           </Section>
 
-          <Section title="Sunrise & sunset" hint={draft.showSun ? `Colors your timeline with the sky. Using ${draft.lat.toFixed(2)}, ${draft.lng.toFixed(2)}.` : "Off"}>
+          <Section title="Sunrise & sunset">
             <Row label="Show sunrise & sunset" hint="Tint your timeline with the sky and mark when the sun rises and sets">
               <Switch checked={draft.showSun} onCheckedChange={(v) => setDraft({ ...draft, showSun: v })} data-testid="switch-show-sun" />
             </Row>
