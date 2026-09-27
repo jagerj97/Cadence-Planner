@@ -159,7 +159,12 @@ export function useJournalMutations() {
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/journal/${id}`),
     onSuccess: inv,
   });
-  return { create, update, remove };
+  // Renames a journal tag, or removes it (to: null), across every entry.
+  const retag = useMutation({
+    mutationFn: async (d: { from: string; to: string | null }) => apiRequest("POST", "/api/journal/retag", d),
+    onSuccess: inv,
+  });
+  return { create, update, remove, retag };
 }
 export const tagsOf = (e: { tags: string }): string[] => {
   try {

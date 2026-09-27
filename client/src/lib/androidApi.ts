@@ -99,6 +99,7 @@ function validItem(it: Item | InsertItem): boolean {
       it.startTime || it.endTime || it.allDay || JSON.parse(it.recurrence || '{"freq":"none"}').freq !== "none")) return false;
   return true;
 }
+const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => m[2].toLowerCase());
 const normTags = (body: string, tags: unknown) => {
   const found = new Set<string>();
   for (const match of body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)) found.add(match[2].toLowerCase());
@@ -452,6 +453,23 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     await (notesBackfilled ??= backfillNotes().catch(() => {}));
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   }
+  // Renames a journal tag (to) or removes it (to: null) on every entry, in its tags and its #hashtags.
+  // A removed hashtag keeps its word. Entries holding an item's notes pass the new text to the item.
+  if (path === "/api/journal/retag" && method === "POST") return exclusive(async () => {
+    const from = String(data.from || "").toLowerCase(), to = data.to ? String(data.to).toLowerCase() : null;
+    if (!from) return fail("Choose a tag");
+    const hashtag = new RegExp(`(^|\\s)#${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_-])`, "giu");
+    for (const entry of await list<JournalEntry>("journal")) {
+      const tags = listOf(entry.tags);
+      if (!tags.includes(from)) continue;
+      const body = entry.body.replace(hashtag, to ? `$1#${to}` : `$1${from}`);
+      const kept = tags.filter((t) => t !== from && !hashtagsIn(entry.body).includes(t));
+      await put("journal", { ...entry, body, tags: normTags(body, to ? [...kept, to] : kept), updatedAt: new Date().toISOString() });
+      const item = entry.itemId ? await read<Item>("items", entry.itemId) : undefined;
+      if (item && body !== entry.body) await put("items", { ...item, notes: body });
+    }
+    return ok({ ok: true });
+  });
   if (path === "/api/journal" && method === "POST") {
     if (!validDate(data.date) || !data.body?.trim()) return fail("Date and body required");
     const now = new Date().toISOString();
