@@ -81,8 +81,13 @@ const KNOWN_THEMES = new Set<string>([...COLOR_THEMES, ...Object.keys(RENAMED_TH
 const pref = async (): Promise<Settings> => {
   const saved = (await read<{ key: string; value: Settings }>("settings", "prefs"))?.value;
   const merged = { ...DEFAULT_SETTINGS, ...saved };
-  // Themes that were renamed carry over to their new names.
-  return { ...merged, colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme };
+  // Themes that were renamed carry over to their new names, and routines on the old default blue
+  // move to the blue swatch so it shows as picked.
+  return {
+    ...merged,
+    colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme,
+    routines: merged.routines.map((r) => (r.color?.toLowerCase() === "#5966ad" ? { ...r, color: "#3f51b5" } : r)),
+  };
 };
 const bodyJSON = async (input?: BodyInit | null) => input ? JSON.parse(String(input)) : {};
 const ok = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
