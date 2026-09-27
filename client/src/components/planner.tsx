@@ -442,7 +442,7 @@ function DetailCheck({ item: i, day }: { item: Item; day: string }) {
   return (
     <button type="button" onClick={() => cycle.mutate({ id: i.id, date: day })}
       className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 transition-colors"
-      style={{ borderColor: c, background: fillOf(mk, c, 90) }}
+      style={{ borderColor: c, background: fillOf(mk, c) }}
       aria-label={`${i.title}: ${["not done", "half done", "done"][mk]}`} data-testid="button-detail-check">
       {mk === 2 && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
     </button>

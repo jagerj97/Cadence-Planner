@@ -75,6 +75,13 @@ export function HabitsPage() {
   const today = todayStr();
   const [showOlder, setShowOlder] = useState(false);
   const [trackerScrolled, setTrackerScrolled] = useState(false);
+  // The tracker's names row and its day rows scroll sideways together.
+  const trackerHead = useRef<HTMLDivElement>(null);
+  const trackerBody = useRef<HTMLDivElement>(null);
+  const syncTracker = (from: HTMLDivElement, to: HTMLDivElement | null) => {
+    if (to && to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
+    setTrackerScrolled(from.scrollLeft > 0);
+  };
   const habits = orderHabits((items ?? []).filter((i) => kindOf(i) === "habit"), settings);
   const dueNow = habits.filter((h) => occursOn(h, today));
   // Today's habits are reordered by dragging; habits not due today keep their slots in the full order.
@@ -90,6 +97,13 @@ export function HabitsPage() {
   const oldest = habits.reduce((m, h) => listOf(h.completions).reduce((o, c) => (c.slice(0, 10) < o ? c.slice(0, 10) : o), m), week);
   const days = Array.from({ length: dayDiff(showOlder ? oldest : week, today) + 1 }, (_, n) => addDays(today, -n));
   const weekStart = settings.weekStartsOn ?? 0;
+  const trackerWidth = 76 + habits.length * 36;
+  const trackerCols = (
+    <colgroup>
+      <col className="w-[76px]" />
+      {habits.map((h) => <col key={h.id} />)}
+    </colgroup>
+  );
 
   return (
     <>
@@ -130,7 +144,7 @@ export function HabitsPage() {
                           "h-7 w-7 shrink-0 rounded-full grid place-items-center border-2 transition-colors",
                           !due && "border-dashed opacity-40",
                         )}
-                        style={{ borderColor: colorOf(h), background: fillOf(mk, colorOf(h), 90) }}
+                        style={{ borderColor: colorOf(h), background: fillOf(mk, colorOf(h)) }}
                         aria-label={!due ? `${h.title} isn't scheduled today` : `${h.title}: ${MARK_LABEL[mk]}. Tap for ${MARK_LABEL[((mk + 1) % 3) as 0 | 1 | 2]}`}
                         data-testid={`button-toggle-habit-${h.id}`}
                       >
@@ -165,16 +179,13 @@ export function HabitsPage() {
                 <span className="text-xs text-muted-foreground">Tap once for half, twice for full</span>
               </div>
               {/* Each habit column is at least 36px wide; with more habits than fit, the tracker scrolls
-                  sideways while the dates stay put and habits fade out as they slide under them. */}
-              <div className="group habit-paper overflow-x-auto pr-2 pb-2 scroll-thin" data-scrolled={trackerScrolled}
-                onScroll={(e) => setTrackerScrolled(e.currentTarget.scrollLeft > 0)} data-testid="habit-tracker-scroll">
-                <table className="w-full table-fixed border-separate border-spacing-0 text-sm" style={{ minWidth: 76 + habits.length * 36 }}>
-                  <colgroup>
-                    <col className="w-[76px]" />
-                    {habits.map((h) => (
-                      <col key={h.id} />
-                    ))}
-                  </colgroup>
+                  sideways while the dates stay put and habits fade out as they slide under them. The habit
+                  names are their own row, pinned to the top of the page and scrolled in step with the rows. */}
+              <div className="group" data-scrolled={trackerScrolled}>
+              <div ref={trackerHead} className="sticky -top-4 md:-top-6 z-20 overflow-x-auto bg-card pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                onScroll={(e) => syncTracker(e.currentTarget, trackerBody.current)}>
+                <table className="w-full table-fixed border-separate border-spacing-0 text-sm" style={{ minWidth: trackerWidth }}>
+                  {trackerCols}
                   <thead className="[&_th]:bg-card">
                     <tr>
                       <th className={STICKY_DATE} />
@@ -192,6 +203,12 @@ export function HabitsPage() {
                       ))}
                     </tr>
                   </thead>
+                </table>
+              </div>
+              <div ref={trackerBody} className="habit-paper overflow-x-auto pr-2 pb-2 scroll-thin"
+                onScroll={(e) => syncTracker(e.currentTarget, trackerHead.current)} data-testid="habit-tracker-scroll">
+                <table className="w-full table-fixed border-separate border-spacing-0 text-sm" style={{ minWidth: trackerWidth }}>
+                  {trackerCols}
                   <tbody>
                     {days.map((d) => {
                       const dt = parseYmd(d);
@@ -217,10 +234,10 @@ export function HabitsPage() {
                                   <button
                                     onClick={() => cycle.mutate({ id: h.id, date: d })}
                                     className={cn(
-                                      "inline-grid h-6 w-6 place-items-center rounded-[5px] border-[1.5px] transition-colors",
+                                      "inline-grid h-6 w-6 place-items-center rounded-full border-[1.5px] transition-colors",
                                       mk === 0 && "hover:bg-muted",
                                     )}
-                                    style={{ background: fillOf(mk, colorOf(h), 135), borderColor: mk ? colorOf(h) : "hsl(var(--foreground) / .22)" }}
+                                    style={{ background: fillOf(mk, colorOf(h)), borderColor: mk ? colorOf(h) : "hsl(var(--foreground) / .22)" }}
                                     aria-label={`${h.title}, ${fmtDate(d, { weekday: "short", month: "short", day: "numeric" })}: ${MARK_LABEL[mk]}`}
                                     data-testid={`button-habit-${h.id}-${d}`}
                                   >
@@ -237,6 +254,7 @@ export function HabitsPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
               </div>
               {oldest < week && (
                 <button type="button" aria-expanded={showOlder} onClick={() => setShowOlder((v) => !v)}

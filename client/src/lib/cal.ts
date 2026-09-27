@@ -253,10 +253,10 @@ export const availableFromFor = (due: string, start = todayStr()) => (start <= d
 export function taskAvailableFrom(due: string, startTime: string | null | undefined, freq: Recurrence["freq"]): string | null {
   return startTime || freq !== "none" ? null : availableFromFor(due);
 }
-/** A habit mark's fill: empty, half (split at the angle), or solid. */
-export function fillOf(mk: 0 | 1 | 2, color: string, angle = 135) {
+/** A habit mark's fill: empty, half (the top-left half, split diagonally, as on the widgets), or solid. */
+export function fillOf(mk: 0 | 1 | 2, color: string) {
   if (mk === 2) return color;
-  if (mk === 1) return `linear-gradient(${angle}deg, ${color} 50%, transparent 50%)`;
+  if (mk === 1) return `linear-gradient(135deg, ${color} 50%, transparent 50%)`;
   return "transparent";
 }
 export function canDoTaskOn(i: Item, day: string) {
