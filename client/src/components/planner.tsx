@@ -41,6 +41,7 @@ import {
   toMin,
   todayStr,
   ymd,
+  isTimed,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { WhatsNew } from "@/components/whatsNew";
@@ -228,6 +229,23 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // After a session of more than 5 minutes, offer to put it on the calendar as a focus item. Not for
+  // one started from something already on the calendar at a set time.
+  const [calendarOffer, setCalendarOffer] = useState<{ title: string; start: Date; end: Date } | null>(null);
+  const offerCalendar = useCallback((f: FocusState, sec: number, endMs: number) => {
+    if (sec <= 300) return;
+    const from = f.itemId != null ? queryClient.getQueryData<Item[]>(["/api/items"])?.find((i) => i.id === f.itemId) : undefined;
+    if (from && isTimed(from)) return;
+    setCalendarOffer({ title: f.title === "Focus session" ? "" : f.title, start: new Date(f.startedAt), end: new Date(endMs) });
+  }, []);
+  const saveOfferToCalendar = () => {
+    if (!calendarOffer) return;
+    const { title, start, end } = calendarOffer;
+    const hm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    setCalendarOffer(null);
+    openEditor({ kind: "focus", title, date: ymd(start), endDate: ymd(end), startTime: hm(start), endTime: hm(end), reminder: null });
+  };
+
   const startFocus: Ctx["startFocus"] = useCallback(
     ({ title, itemId = null, minutes }) => {
       setFocus((prev) => {
@@ -252,7 +270,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     setFocus((f) => (f && f.runStart ? { ...f, accSec: f.accSec + (Date.now() - f.runStart) / 1000, runStart: null } : f));
   const resumeFocus = () => setFocus((f) => (f && !f.runStart ? { ...f, runStart: Date.now() } : f));
   const stopFocus = (completed = false) => {
-    if (focus) logSession(focus, elapsed, completed);
+    if (focus) {
+      logSession(focus, elapsed, completed);
+      if (completed) offerCalendar(focus, elapsed, Date.now());
+    }
     setFocus(null);
   };
   const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
@@ -278,7 +299,11 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       try {
         const stopped: FocusState | null = JSON.parse(bridge.takeFocusStop?.() || "null");
         // The notification's Finish logs the session like the app's Finish button.
-        if (stopped) logSession(stopped, stopped.accSec, true);
+        if (stopped) {
+          logSession(stopped, stopped.accSec, true);
+          // It was stopped while the app was closed, so it ended about its focused time after it began.
+          offerCalendar(stopped, stopped.accSec, Date.parse(stopped.startedAt) + stopped.accSec * 1000);
+        }
       } catch { /* ignore */ }
       try {
         const saved: FocusState | null = JSON.parse(bridge.getFocus() || "null");
@@ -293,7 +318,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("cadence-focus-changed", sync);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [logSession]);
+  }, [logSession, offerCalendar]);
 
   // completion
   const doneRef = useRef<string | null>(null);
@@ -306,9 +331,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       setFocus(null);
       if (settings.sound) chime("done");
       window.CadenceAndroid?.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
-      toast({ title: "Nice work — session complete", description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused` });
+      if (f.plannedSec > 300) offerCalendar(f, f.plannedSec, Date.now());
+      else toast({ title: "Nice work — session complete", description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused` });
     }
-  }, [elapsed, focus, logSession, settings, startFocus, toast]);
+  }, [elapsed, focus, logSession, offerCalendar, settings, startFocus, toast]);
 
   /* reminders */
   const { data: items } = useItems();
@@ -409,6 +435,18 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       />
       <ItemEditor editing={editing} onClose={() => setEditing(null)} />
       <WhatsNew />
+      <Dialog open={!!calendarOffer} onOpenChange={(o) => !o && setCalendarOffer(null)}>
+        <DialogContent hideClose className="max-w-sm" data-testid="dialog-focus-calendar">
+          <DialogTitle className="text-base leading-snug">
+            That was a great focus session! It's saved here, do you want it saved on your calendar too?
+          </DialogTitle>
+          <DialogDescription className="sr-only">Adds the session to your calendar at the times it took place</DialogDescription>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCalendarOffer(null)} data-testid="button-focus-calendar-no">No</Button>
+            <Button size="sm" onClick={saveOfferToCalendar} data-testid="button-focus-calendar-yes">Yes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={!!scopeAsk} onOpenChange={(o) => !o && answerScope(null)}>
         <DialogContent hideClose className="max-w-sm" data-testid="dialog-repeat-scope">
           <DialogHeader className="text-left">
