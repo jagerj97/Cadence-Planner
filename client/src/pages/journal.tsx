@@ -770,7 +770,7 @@ export default function JournalPage() {
                   className="flex w-full items-center gap-2 card-md px-3 h-11 text-left text-base text-muted-foreground"
                   data-testid="button-journal-new">
                   <Plus className="h-4 w-4 text-primary shrink-0" />
-                  <span className="truncate text-[14px] italic">{settings.plain ? "Went for a run #exercise" : "Got the zoomies #exercise"}</span>
+                  <span className="truncate text-[14px] italic">{settings.plain ? "Had a shower thought #ideas" : "Got the zoomies #exercise"}</span>
                 </button>
                 {isLoading ? (
                   <Skeleton className="h-24" />

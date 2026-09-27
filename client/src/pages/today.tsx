@@ -269,7 +269,7 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder={settings.plain ? "#event Lunch with Sam every sat 1pm" : "#event Catnap every sat 1pm"}
+          placeholder={settings.plain ? "#event Art class every sat 1pm" : "#event Catnap every sat 1pm"}
           className={cn("border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
           aria-label="Quick add"
           data-testid="input-quick-add"

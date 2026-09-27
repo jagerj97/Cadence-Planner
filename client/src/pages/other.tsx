@@ -1002,7 +1002,7 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routines" hint={`Background things for every day. Sleeping, eating, ${draft.plain ? "getting ready" : "grooming"}...`}>
+          <Section title="Routines" hint={`Background things for every day. Sleeping, eating, ${draft.plain ? "etc" : "grooming"}...`}>
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
