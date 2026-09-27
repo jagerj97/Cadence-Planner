@@ -103,7 +103,6 @@ export type Settings = {
   dayStartHour: number;
   defaultReminder: number | null;
   focusMinutes: number;
-  breakMinutes: number;
   sound: boolean;
   inAppPopups: boolean; // false = alerts only as system notifications (errors still show)
   haptics: boolean;
@@ -128,7 +127,6 @@ export const DEFAULT_SETTINGS: Settings = {
   dayStartHour: 6,
   defaultReminder: 10,
   focusMinutes: 30,
-  breakMinutes: 5,
   sound: true,
   inAppPopups: true,
   haptics: true,
