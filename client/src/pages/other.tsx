@@ -75,6 +75,13 @@ export function HabitsPage() {
   const today = todayStr();
   const [showOlder, setShowOlder] = useState(false);
   const [trackerScrolled, setTrackerScrolled] = useState(false);
+  // The tracker's names row and its day rows scroll sideways together.
+  const trackerHead = useRef<HTMLDivElement>(null);
+  const trackerBody = useRef<HTMLDivElement>(null);
+  const syncTracker = (from: HTMLDivElement, to: HTMLDivElement | null) => {
+    if (to && to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
+    setTrackerScrolled(from.scrollLeft > 0);
+  };
   const habits = orderHabits((items ?? []).filter((i) => kindOf(i) === "habit"), settings);
   const dueNow = habits.filter((h) => occursOn(h, today));
   // Today's habits are reordered by dragging; habits not due today keep their slots in the full order.
@@ -90,6 +97,13 @@ export function HabitsPage() {
   const oldest = habits.reduce((m, h) => listOf(h.completions).reduce((o, c) => (c.slice(0, 10) < o ? c.slice(0, 10) : o), m), week);
   const days = Array.from({ length: dayDiff(showOlder ? oldest : week, today) + 1 }, (_, n) => addDays(today, -n));
   const weekStart = settings.weekStartsOn ?? 0;
+  const trackerWidth = 76 + habits.length * 36;
+  const trackerCols = (
+    <colgroup>
+      <col className="w-[76px]" />
+      {habits.map((h) => <col key={h.id} />)}
+    </colgroup>
+  );
 
   return (
     <>
@@ -165,16 +179,13 @@ export function HabitsPage() {
                 <span className="text-xs text-muted-foreground">Tap once for half, twice for full</span>
               </div>
               {/* Each habit column is at least 36px wide; with more habits than fit, the tracker scrolls
-                  sideways while the dates stay put and habits fade out as they slide under them. */}
-              <div className="group habit-paper overflow-x-auto pr-2 pb-2 scroll-thin" data-scrolled={trackerScrolled}
-                onScroll={(e) => setTrackerScrolled(e.currentTarget.scrollLeft > 0)} data-testid="habit-tracker-scroll">
-                <table className="w-full table-fixed border-separate border-spacing-0 text-sm" style={{ minWidth: 76 + habits.length * 36 }}>
-                  <colgroup>
-                    <col className="w-[76px]" />
-                    {habits.map((h) => (
-                      <col key={h.id} />
-                    ))}
-                  </colgroup>
+                  sideways while the dates stay put and habits fade out as they slide under them. The habit
+                  names are their own row, pinned to the top of the page and scrolled in step with the rows. */}
+              <div className="group" data-scrolled={trackerScrolled}>
+              <div ref={trackerHead} className="sticky -top-4 md:-top-6 z-20 overflow-x-auto bg-card pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                onScroll={(e) => syncTracker(e.currentTarget, trackerBody.current)}>
+                <table className="w-full table-fixed border-separate border-spacing-0 text-sm" style={{ minWidth: trackerWidth }}>
+                  {trackerCols}
                   <thead className="[&_th]:bg-card">
                     <tr>
                       <th className={STICKY_DATE} />
@@ -192,6 +203,12 @@ export function HabitsPage() {
                       ))}
                     </tr>
                   </thead>
+                </table>
+              </div>
+              <div ref={trackerBody} className="habit-paper overflow-x-auto pr-2 pb-2 scroll-thin"
+                onScroll={(e) => syncTracker(e.currentTarget, trackerHead.current)} data-testid="habit-tracker-scroll">
+                <table className="w-full table-fixed border-separate border-spacing-0 text-sm" style={{ minWidth: trackerWidth }}>
+                  {trackerCols}
                   <tbody>
                     {days.map((d) => {
                       const dt = parseYmd(d);
@@ -237,6 +254,7 @@ export function HabitsPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
               </div>
               {oldest < week && (
                 <button type="button" aria-expanded={showOlder} onClick={() => setShowOlder((v) => !v)}
