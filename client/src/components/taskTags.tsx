@@ -147,10 +147,12 @@ function NewTagForm({ taken, onCreate }: { taken: TaskTag[]; onCreate: (t: TaskT
  * that carry the tag. With onPick (the item editor), tapping a tag picks it and a new tag is picked
  * once it's made; the pencil edits it instead.
  */
-export function TaskTagList({ onPick, picked, onRenamed, countOf }: {
+export function TaskTagList({ onPick, picked, onRenamed, countOf, confirmDelete }: {
   onPick?: (name: string) => void; picked?: string; onRenamed?: (from: string, to: string) => void;
   /** The count beside each tag; tasks by default. */
   countOf?: (name: string) => string;
+  /** Ask before deleting a tag (the journal, where it isn't obvious the tag leaves tasks too). */
+  confirmDelete?: boolean;
 }) {
   const { settings } = useSettings();
   const { data: items } = useItems();
@@ -158,6 +160,7 @@ export function TaskTagList({ onPick, picked, onRenamed, countOf }: {
   const tags = settings.taskTags ?? [];
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [deleting, setDeleting] = useState<TaskTag | null>(null);
   const { retag: retagItems } = useItemMutations();
   const retag = (from: string, to: string | null) => retagItems.mutateAsync({ from, to });
   const rename = async (tag: TaskTag) => {
@@ -204,7 +207,7 @@ export function TaskTagList({ onPick, picked, onRenamed, countOf }: {
                     <Pencil className="h-4 w-4" />
                   </Button>
                 )}
-                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Delete tag ${t.name}`} onClick={() => remove(t)} data-testid={`button-delete-task-tag-${t.name}`}>
+                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Delete tag ${t.name}`} onClick={() => (confirmDelete ? setDeleting(t) : remove(t))} data-testid={`button-delete-task-tag-${t.name}`}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -222,6 +225,19 @@ export function TaskTagList({ onPick, picked, onRenamed, countOf }: {
           ))}
         </ul>
       )}
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent hideClose className="max-w-sm" data-testid="dialog-confirm-delete-task-tag">
+          <DialogTitle className="text-base leading-snug">Are you sure? This will delete this tag everywhere!</DialogTitle>
+          <DialogDescription className="sr-only">Deletes #{deleting?.name} from every task and entry</DialogDescription>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDeleting(null)} data-testid="button-cancel-delete-task-tag">Cancel</Button>
+            <Button variant="destructive" size="sm" data-testid="button-confirm-delete-task-tag" onClick={() => {
+              if (deleting) void remove(deleting);
+              setDeleting(null);
+            }}>Delete</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -236,7 +252,7 @@ export function TagManager({ open, onOpenChange, onRenamed, onPick, picked }: {
       <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-manage-tags">
         <DialogHeader className="pr-8 text-left">
           <DialogTitle>Task tags</DialogTitle>
-          <DialogDescription className={onPick ? "text-left" : "sr-only"}>
+          <DialogDescription className="sr-only">
             {onPick ? "Pick a tag for this task, or add a new one." : "Add, rename, recolor or delete task tags"}
           </DialogDescription>
         </DialogHeader>

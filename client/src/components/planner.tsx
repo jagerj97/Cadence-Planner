@@ -164,10 +164,14 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.colorTheme = settings.colorTheme || DEFAULT_SETTINGS.colorTheme;
   }, [settings.colorTheme]);
-  // "Let Cadence outside" also swaps the app and notification icons.
+  // "Let Cadence outside" also swaps the app and notification icons. Flipping it in Settings does that
+  // (and closes the app); this keeps them matched to the saved setting on start, e.g. after a restore.
+  const iconsSynced = useRef(false);
   useEffect(() => {
-    if (savedSettings) window.CadenceAndroid?.setPlain?.(!!savedSettings.plain);
-  }, [savedSettings?.plain]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!savedSettings || iconsSynced.current) return;
+    iconsSynced.current = true;
+    window.CadenceAndroid?.setPlain?.(!!savedSettings.plain);
+  }, [savedSettings]);
 
   /* editor */
   const [editing, setEditing] = useState<Editing | null>(null);

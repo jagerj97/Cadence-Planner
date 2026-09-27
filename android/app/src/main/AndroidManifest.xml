@@ -15,18 +15,22 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:label="Cadence"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_launcher_plain"
+        android:roundIcon="@mipmap/ic_launcher_plain"
         android:theme="@style/CadenceTheme">
         <activity
             android:name=".AppActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
-        <!-- The home screen icon: the cat, or a plain one with "Let Cadence outside" on (AppActivity.setPlain).
-             The cat's keeps the old MainActivity name so icons already on home screens keep working. -->
+        <!-- The app's own icon is the logotype: Android shows it in expanded notifications and can't
+             switch it. The home screen icon is the cat (the logomark), or the logotype with "Let Cadence
+             outside" on (AppActivity.setPlain). The cat's keeps the old MainActivity name so icons already
+             on home screens keep working. -->
         <activity-alias
             android:name=".MainActivity"
             android:targetActivity=".AppActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

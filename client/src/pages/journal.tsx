@@ -569,11 +569,8 @@ function JournalTagManager({ open, onOpenChange, tags, counts, onRenamed }: {
         <p className="text-xs text-muted-foreground">Deleting a tag keeps its word in your entries, without the #.</p>
         {/* Tasks' tags show on their notes' entries; they're changed here or from the Tasks page. */}
         <div className="grid gap-3 border-t pt-4" data-testid="section-journal-task-tags">
-          <div>
-            <h3 className="text-base font-semibold">Task tags</h3>
-            <p className="text-xs text-muted-foreground">Tagged tasks' notes show their tag here in the journal.</p>
-          </div>
-          {open && <TaskTagList countOf={entries} onRenamed={(from, to) => onRenamed(from, to)} />}
+          <h3 className="text-base font-semibold">Task tags</h3>
+          {open && <TaskTagList countOf={entries} confirmDelete onRenamed={(from, to) => onRenamed(from, to)} />}
         </div>
       </DialogContent>
     </Dialog>

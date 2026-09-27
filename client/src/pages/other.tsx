@@ -984,7 +984,7 @@ export function SettingsPage() {
   if (isLoading) return null;
   return (
     <>
-      <PageHeader title="Settings" sub="Make Cadence fit how you live">
+      <PageHeader title="Settings">
         <span role="status" className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="settings-save-status">
               {saveStatus === "saved" ? "Saved automatically" : saveStatus === "saving" ? "Saving…" : "Couldn't save"}
               {saveStatus === "error" && <button type="button" className="text-primary underline" onClick={() => {
@@ -1183,14 +1183,21 @@ export function SettingsPage() {
                 setDraft((current) => ({ ...current, appearanceTheme: next }));
               }} data-testid="switch-dark" />
             </Row>
-          </Section>
-          <Section title="Let Cadence outside" hint="Hide the cat stuff">
-            <p className="text-sm text-muted-foreground">
-              Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to.
-            </p>
-            <Row label="Let Cadence outside" hint={draft.plain ? "Cadence is outside. Turn this off to let her back in." : undefined}>
-              <Switch checked={!!draft.plain} onCheckedChange={(v) => setDraft({ ...draft, plain: v })} aria-label="Let Cadence outside" data-testid="switch-plain" />
-            </Row>
+            <SubSection title="Let Cadence outside" hint="Hide the cat stuff">
+              <p className="text-sm text-muted-foreground">
+                Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to. (The app will close)
+              </p>
+              <Row label="Let Cadence outside" hint={draft.plain ? "Cadence is outside. Turn this off to let her back in." : undefined}>
+                <Switch checked={!!draft.plain} onCheckedChange={async (v) => {
+                  // Saved first, then the icons switch and the app closes (the same on every phone).
+                  const next = { ...latestDraft.current, plain: v };
+                  latestDraft.current = next;
+                  setDraft(next);
+                  try { await flushAndroidSettings(); } catch { return; }
+                  window.CadenceAndroid?.letOutside?.(v);
+                }} aria-label="Let Cadence outside" data-testid="switch-plain" />
+              </Row>
+            </SubSection>
           </Section>
           <p className="pt-2 text-center text-xs text-muted-foreground tnum" data-testid="text-app-version">
             Cadence v{APP_VERSION}
@@ -1220,6 +1227,25 @@ function Section({ title, hint, children, defaultOpen = false }: { title: string
       </button>
       {open && <div id={id} className="grid grid-cols-1 gap-4 border-t px-4 pb-4 pt-4">{children}</div>}
     </section>
+  );
+}
+/** A collapsible part of a settings section, opened from its title like the section itself. */
+function SubSection({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = `subsection-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  return (
+    <div className="-mx-4 border-t">
+      <button type="button" aria-expanded={open} aria-controls={id}
+        className="flex w-full items-center justify-between gap-3 px-4 pt-4 text-left"
+        onClick={() => setOpen((v) => !v)} data-testid={`toggle-${id}`}>
+        <span className="min-w-0">
+          <span className="block text-sm font-medium">{title}</span>
+          {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
+        </span>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && <div id={id} className="grid grid-cols-1 gap-4 px-4 pt-4">{children}</div>}
+    </div>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
