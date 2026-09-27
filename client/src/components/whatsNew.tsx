@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useSaveSettings, useSettings } from "@/lib/data";
 import { APP_VERSION, CHANGELOG } from "@/lib/changelog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 
 /**
  * The first time the app opens after an update: the version and quick notes on what changed.
@@ -28,9 +27,6 @@ export function WhatsNew() {
         <ul className="grid gap-2 pl-5 text-sm list-disc marker:text-primary" data-testid="list-whats-new">
           {notes.map((note) => <li key={note}>{note}</li>)}
         </ul>
-        <div className="flex justify-end">
-          <Button size="sm" onClick={dismiss} data-testid="button-whats-new-done">Got it</Button>
-        </div>
       </DialogContent>
     </Dialog>
   );
