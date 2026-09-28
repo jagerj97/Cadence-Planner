@@ -4,6 +4,11 @@ export const KINDS = ["task", "event", "meeting", "habit", "sleep", "focus"] as 
 export type Kind = (typeof KINDS)[number];
 /** The journal tag an item's notes get, by kind. */
 export const KIND_TAGS: Record<Kind, string> = { task: "tasks", event: "events", meeting: "meetings", habit: "habits", sleep: "sleep", focus: "focus" };
+/** Journal tags written the other way (#meeting) that count as a kind tag (#meetings). */
+const TAG_ALIASES: Record<string, string> = { task: "tasks", event: "events", meeting: "meetings", habit: "habits" };
+export const canonicalTag = (tag: string) => TAG_ALIASES[tag] ?? tag;
+/** Every way a tag can be written as a #hashtag (#meetings and #meeting). */
+export const tagSpellings = (tag: string) => [tag, ...Object.keys(TAG_ALIASES).filter((alias) => TAG_ALIASES[alias] === tag)];
 export const IMPORT_KINDS = ["event", "task", "meeting", "habit", "focus"] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
 
@@ -73,6 +78,8 @@ export type Session = {
   plannedMin: number;
   actualSec: number;
   completed: boolean;
+  /** The calendar item the session was saved as (from the prompt after it); they're deleted together. */
+  calendarItemId?: number | null;
 };
 
 export type JournalEntry = {
@@ -81,6 +88,8 @@ export type JournalEntry = {
   title?: string | null; // entries holding an item's notes show the item's title instead
   body: string;
   tags: string; // JSON string[] (lowercase, no #)
+  /** false: #words in the text are just text, not tags ("Use tags in entry" unchecked). */
+  hashtags?: boolean;
   itemId?: number | null; // the planner item whose notes this entry mirrors
   createdAt: string;
   updatedAt: string;

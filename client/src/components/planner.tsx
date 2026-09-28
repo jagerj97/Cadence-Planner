@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { Item, InsertItem, Kind, Recurrence } from "@shared/schema";
+import type { Item, InsertItem, Kind, Recurrence, Session } from "@shared/schema";
 import { DEFAULT_SETTINGS, KINDS } from "@shared/schema";
 import { useForm } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -211,10 +211,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const elapsed = focus ? focus.accSec + (focus.runStart ? (Date.now() - focus.runStart) / 1000 : 0) : 0;
   void tick;
 
-  const logSession = useCallback(async (f: FocusState, sec: number, completed: boolean) => {
-    if (sec < 30) return;
+  const logSession = useCallback(async (f: FocusState, sec: number, completed: boolean): Promise<Session | null> => {
+    if (sec < 30) return null;
     try {
-      await apiRequest("POST", "/api/sessions", {
+      const saved = await apiRequest("POST", "/api/sessions", {
         itemId: f.itemId,
         title: f.title,
         date: todayStr(),
@@ -224,26 +224,33 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         completed,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      return (await saved.json()) as Session;
     } catch {
-      /* ignore */
+      return null;
     }
   }, []);
 
   // After a session of more than 5 minutes, offer to put it on the calendar as a focus item. Not for
   // one started from something already on the calendar at a set time.
-  const [calendarOffer, setCalendarOffer] = useState<{ title: string; start: Date; end: Date } | null>(null);
-  const offerCalendar = useCallback((f: FocusState, sec: number, endMs: number) => {
+  const [calendarOffer, setCalendarOffer] = useState<{ title: string; start: Date; end: Date; session: Promise<Session | null> } | null>(null);
+  const offerCalendar = useCallback((f: FocusState, sec: number, endMs: number, session: Promise<Session | null>) => {
     if (sec <= 300) return;
     const from = f.itemId != null ? queryClient.getQueryData<Item[]>(["/api/items"])?.find((i) => i.id === f.itemId) : undefined;
     if (from && isTimed(from)) return;
-    setCalendarOffer({ title: f.title === "Focus session" ? "" : f.title, start: new Date(f.startedAt), end: new Date(endMs) });
+    setCalendarOffer({ title: f.title === "Focus session" ? "" : f.title, start: new Date(f.startedAt), end: new Date(endMs), session });
   }, []);
   const saveOfferToCalendar = () => {
     if (!calendarOffer) return;
-    const { title, start, end } = calendarOffer;
+    const { title, start, end, session } = calendarOffer;
     const hm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     setCalendarOffer(null);
-    openEditor({ kind: "focus", title, date: ymd(start), endDate: ymd(end), startTime: hm(start), endTime: hm(end), reminder: null });
+    // The session and its calendar item are linked, so deleting either deletes both.
+    openEditor({ kind: "focus", title, date: ymd(start), endDate: ymd(end), startTime: hm(start), endTime: hm(end), reminder: null },
+      undefined, async (item) => {
+        const saved = await session;
+        if (saved) await apiRequest("PATCH", `/api/sessions/${saved.id}`, { calendarItemId: item.id }).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      });
   };
 
   const startFocus: Ctx["startFocus"] = useCallback(
@@ -271,8 +278,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const resumeFocus = () => setFocus((f) => (f && !f.runStart ? { ...f, runStart: Date.now() } : f));
   const stopFocus = (completed = false) => {
     if (focus) {
-      logSession(focus, elapsed, completed);
-      if (completed) offerCalendar(focus, elapsed, Date.now());
+      const saved = logSession(focus, elapsed, completed);
+      if (completed) offerCalendar(focus, elapsed, Date.now(), saved);
     }
     setFocus(null);
   };
@@ -300,10 +307,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         const stopped: (FocusState & { stoppedAt?: number }) | null = JSON.parse(bridge.takeFocusStop?.() || "null");
         // The notification's Finish logs the session like the app's Finish button.
         if (stopped) {
-          logSession(stopped, stopped.accSec, true);
+          const saved = logSession(stopped, stopped.accSec, true);
           // The notification's Finish opens the app and says when it stopped (older builds didn't: then it
           // ended about its focused time after it began).
-          offerCalendar(stopped, stopped.accSec, stopped.stoppedAt ?? Date.parse(stopped.startedAt) + stopped.accSec * 1000);
+          offerCalendar(stopped, stopped.accSec, stopped.stoppedAt ?? Date.parse(stopped.startedAt) + stopped.accSec * 1000, saved);
         }
       } catch { /* ignore */ }
       try {
@@ -328,11 +335,11 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     if (elapsed >= focus.plannedSec && doneRef.current !== focus.startedAt) {
       doneRef.current = focus.startedAt;
       const f = focus;
-      logSession(f, f.plannedSec, true);
+      const saved = logSession(f, f.plannedSec, true);
       setFocus(null);
       if (settings.sound) chime("done");
       window.CadenceAndroid?.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
-      if (f.plannedSec > 300) offerCalendar(f, f.plannedSec, Date.now());
+      if (f.plannedSec > 300) offerCalendar(f, f.plannedSec, Date.now(), saved);
       else toast({ title: "Nice work — session complete", description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused` });
     }
   }, [elapsed, focus, logSession, offerCalendar, settings, startFocus, toast]);
@@ -736,10 +743,8 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
     if (existing) {
       const scope = await saveItem(existing, payload, editing?.occDate);
       if (!scope) return;
-      toast({ title: scope === "one" ? "Saved this one" : "Saved", description: payload.title });
     } else {
       const created = await create.mutateAsync(blankItem(payload));
-      toast({ title: "Added to your plan", description: payload.title });
       await editing?.onCreated?.(created);
     }
     onClose();
@@ -1090,7 +1095,6 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   className="text-destructive"
                   onClick={async () => {
                     await remove.mutateAsync(existing.id);
-                    toast({ title: "Deleted", description: existing.title });
                     onClose();
                   }}
                   data-testid="button-delete"
@@ -1104,7 +1108,6 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                     variant="ghost"
                     onClick={async () => {
                       await skip.mutateAsync({ id: existing.id, date: editing.occDate! });
-                      toast({ title: "Skipped this one", description: `${existing.title} · ${editing.occDate}` });
                       onClose();
                     }}
                     data-testid="button-skip"

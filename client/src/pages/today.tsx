@@ -238,7 +238,7 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
     if (!p) return;
     if (p.kind === "sleep") {
       nav("/settings");
-      toast({ title: "Sleep is a schedule", description: "Set bedtime and wake time in Settings." });
+      toast({ title: "Sleep is a schedule", description: "Set bedtime and wake time in Settings.", variant: "destructive" });
       setText("");
       onDone?.();
       return;
@@ -254,7 +254,6 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
       availableFrom: p.kind === "task" ? taskAvailableFrom(p.date, p.startTime, p.recurrence.freq) : null,
     });
     await create.mutateAsync(item);
-    toast({ title: `${KIND_META[p.kind].label} added`, description: summary(p) });
     setText("");
     onDone?.();
   };

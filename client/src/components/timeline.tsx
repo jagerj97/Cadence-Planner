@@ -105,7 +105,7 @@ export function DayColumn({
         pendingRef.current = null;
         suppressClickRef.current = true;
         haptic("warn");
-        toast({ title: "Synced items cannot be moved!" });
+        toast({ title: "Synced items cannot be moved!", variant: "destructive" });
       }, 750);
       pendingRef.current = locked;
       return;

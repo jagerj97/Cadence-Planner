@@ -4,6 +4,7 @@ import { usePlanner, Ring, clock, chime, JournalNotesCheckbox } from "@/componen
 import { ColorSwatches, TAG_COLORS } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { APP_VERSION } from "@/lib/changelog";
+import { DurationInput } from "@/components/durationInput";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   DAY_SHORT,
@@ -291,10 +292,10 @@ export function FocusPage() {
   const { data: sessions } = useSessions();
   const { toast } = useToast();
   const [label, setLabel] = useState("");
-  const [duration, setDuration] = useState(String(settings.focusMinutes));
-  useEffect(() => setDuration(String(settings.focusMinutes)), [settings.focusMinutes]);
-  const minutes = Number(duration);
-  const validDuration = duration.trim() !== "" && Number.isInteger(minutes) && minutes >= 1 && minutes <= 720;
+  const [duration, setDuration] = useState<number | null>(settings.focusMinutes);
+  useEffect(() => setDuration(settings.focusMinutes), [settings.focusMinutes]);
+  const minutes = duration ?? 0;
+  const validDuration = minutes >= 1 && minutes <= 720;
   const today = todayStr();
 
   const upcoming = useMemo(() => {
@@ -367,7 +368,7 @@ export function FocusPage() {
                       key={m}
                       role="radio"
                       aria-checked={validDuration && minutes === m}
-                      onClick={() => setDuration(String(m))}
+                      onClick={() => setDuration(m)}
                       className={cn(
                         "flex-1 h-10 rounded-md border text-sm tnum",
                         minutes === m ? "bg-primary text-primary-foreground border-transparent font-medium" : "hover-elevate text-muted-foreground",
@@ -381,25 +382,14 @@ export function FocusPage() {
                 <label className="flex items-center justify-between gap-3 text-sm" htmlFor="input-focus-duration">
                   <span className="font-medium">Custom duration</span>
                   <span className="flex items-center gap-2">
-                    <Input
-                      id="input-focus-duration"
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={720}
-                      step={1}
-                      value={duration}
-                      onChange={(e) => setDuration(e.target.value)}
-                      className="h-10 w-24 text-right tnum"
-                      aria-invalid={!validDuration}
-                      data-testid="input-focus-duration"
-                    />
-                    <span className="text-muted-foreground">minutes</span>
+                    <DurationInput id="input-focus-duration" value={duration} onChange={setDuration}
+                      className="h-10 w-24" invalid={!validDuration} testId="input-focus-duration" />
+                    <span className="text-muted-foreground">hrs:mins</span>
                   </span>
                 </label>
-                {!validDuration && <p className="text-xs text-destructive">Enter a whole number from 1 to 720 minutes.</p>}
+                {!validDuration && <p className="text-xs text-destructive">Enter a time from 00:01 to 12:00.</p>}
                 <Button size="lg" disabled={!validDuration} onClick={() => startFocus({ title: label.trim() || "Focus session", minutes })} data-testid="button-start-focus">
-                  <Play className="h-4 w-4 mr-1.5" /> {validDuration ? `Start ${minutes}-minute focus` : "Start focus"}
+                  <Play className="h-4 w-4 mr-1.5" /> {validDuration ? `Start ${fmtDur(minutes)} focus` : "Start focus"}
                 </Button>
               </div>
             )}
@@ -480,12 +470,14 @@ export function FocusPage() {
                   <DialogTitle className="min-w-0 break-words">{openSession?.title}</DialogTitle>
                   <DialogDescription>{openSession && sessionWhen(openSession)}</DialogDescription>
                 </DialogHeader>
+                {openSession?.calendarItemId != null && (items ?? []).some((i) => i.id === openSession.calendarItemId) && (
+                  <p className="text-sm text-muted-foreground">It's on your calendar too. Deleting it removes it from there as well.</p>
+                )}
                 <div className="flex justify-end gap-2">
                   <Button variant="destructive" size="sm" data-testid="button-delete-session" onClick={async () => {
                     if (!openSession) return;
                     await deleteSession.mutateAsync(openSession.id);
                     setOpenSession(null);
-                    toast({ title: "Session deleted" });
                   }}>
                     <Trash2 className="h-4 w-4 mr-1.5" /> Delete session
                   </Button>
@@ -577,7 +569,6 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
     await apiRequest("DELETE", `/api/feeds/${existing.id}`);
     queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
     queryClient.invalidateQueries({ queryKey: ["/api/items"] });
-    toast({ title: "Calendar removed", description: existing.name });
     onClose();
   };
   return (
@@ -633,12 +624,10 @@ export function CalendarLinks() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
 
-  const syncFeed = async (id: number, quiet = false) => {
+  const syncFeed = async (id: number) => {
     setBusy(id);
     try {
-      const r = await apiRequest("POST", `/api/feeds/${id}/sync`, { tz: TZ });
-      const f = await r.json();
-      if (!quiet) toast({ title: "Calendar synced", description: `${f.eventCount} events from ${f.name}` });
+      await apiRequest("POST", `/api/feeds/${id}/sync`, { tz: TZ });
     } catch (e: any) {
       toast({ title: "Sync failed", description: String(e.message).replace(/^\d+: /, "").replace(/^\{"message":"|".*$/g, ""), variant: "destructive" });
     } finally {
@@ -650,20 +639,18 @@ export function CalendarLinks() {
   };
 
   const syncAll = async () => {
-    for (const f of feeds ?? []) await syncFeed(f.id, true);
-    toast({ title: "Calendars synced", description: `${feeds?.length ?? 0} calendar${feeds?.length === 1 ? "" : "s"}` });
+    for (const f of feeds ?? []) await syncFeed(f.id);
   };
 
   const onFile = async (file: File) => {
     setImporting(true);
     try {
       const ics = await file.text();
-      const r = await (await apiRequest("POST", "/api/import", {
+      await apiRequest("POST", "/api/import", {
         ics, tz: TZ, importKind: fileKind === "auto" ? null : fileKind, journalNotes: fileJournal,
-      })).json();
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/journal"] });
-      toast({ title: "Import complete", description: `${r.imported} items added from ${file.name}` });
     } catch (e: any) {
       toast({ title: "Import failed", description: String(e.message).replace(/^\d+: /, ""), variant: "destructive" });
     } finally {
@@ -942,7 +929,8 @@ export function SettingsPage() {
     if (serialized === lastQueued.current) return saveQueue.current;
     lastQueued.current = serialized;
     const version = ++saveVersion.current;
-    queryClient.setQueryData(["/api/settings"], payload);
+    // Merged into what's cached, so fields the page doesn't keep (seenVersion) aren't lost meanwhile.
+    queryClient.setQueryData<Settings>(["/api/settings"], (old) => ({ ...old, ...payload }) as Settings);
     saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
       await apiRequest("PUT", "/api/settings", payload);
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
@@ -1062,9 +1050,8 @@ export function SettingsPage() {
                   try {
                     const { lat, lng } = await getDeviceLocation();
                     setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4) }));
-                    toast({ title: "Location found", description: "Your settings will save automatically." });
                   } catch (err) {
-                    toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead.` });
+                    toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead.`, variant: "destructive" });
                   } finally {
                     setLocating(false);
                   }
@@ -1098,19 +1085,19 @@ export function SettingsPage() {
                 </SelectContent>
               </Select>
             </Field>
-            <Row label="In-app pop-ups" hint="Show reminders and confirmations inside Cadence. Turn off to get reminders only as phone notifications, like a calendar app. Errors always show.">
+            <Row label="In-app pop-ups">
               <Switch checked={draft.inAppPopups !== false} onCheckedChange={(v) => setDraft({ ...draft, inAppPopups: v })} data-testid="switch-in-app-popups" />
             </Row>
-            <Row label="Play a sound" hint="Soft chime for reminders and when a timer ends">
+            <Row label="Play a sound">
               <Switch checked={draft.sound} onCheckedChange={(v) => setDraft({ ...draft, sound: v })} data-testid="switch-sound" />
             </Row>
-            <Row label="Haptic feedback" hint="Vibrate when you pick up an item to move it and when you check off a task or habit">
+            <Row label="Haptic feedback">
               <Switch checked={draft.haptics !== false} onCheckedChange={(v) => {
                 if (v) haptic("complete", true);
                 setDraft((d) => ({ ...d, haptics: v }));
               }} data-testid="switch-haptics" />
             </Row>
-            <Row label="Phone notifications" hint="Allow notifications for reminders and the running timer.">
+            <Row label="Phone notifications">
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={askPermission} disabled={perm === "granted"} data-testid="button-notify-permission">
                   <Bell className="h-3.5 w-3.5 mr-1.5" />
@@ -1133,8 +1120,11 @@ export function SettingsPage() {
           </Section>
 
           <Section title="Focus timer">
-            <Field label="Default focus (min)">
-              <Input type="number" min={5} max={180} className="max-w-32" value={draft.focusMinutes} onChange={(e) => setDraft({ ...draft, focusMinutes: Number(e.target.value) || 30 })} data-testid="input-focus-min" />
+            <Field label="Default focus (hrs:mins)">
+              {/* Saved as it's typed; left empty, it goes back to 30 minutes. */}
+              <DurationInput value={draft.focusMinutes || null} className="max-w-32" testId="input-focus-min"
+                onChange={(m) => m && m <= 720 && setDraft((d) => ({ ...d, focusMinutes: m }))}
+                onBlur={(m) => setDraft((d) => ({ ...d, focusMinutes: m && m <= 720 ? m : 30 }))} />
             </Field>
           </Section>
 

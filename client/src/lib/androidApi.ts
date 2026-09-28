@@ -1,4 +1,4 @@
-import { COLOR_THEMES, DEFAULT_SETTINGS, IMPORT_KINDS, RENAMED_THEMES } from "@shared/schema";
+import { COLOR_THEMES, DEFAULT_SETTINGS, IMPORT_KINDS, RENAMED_THEMES, canonicalTag } from "@shared/schema";
 import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, type Session, type Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
@@ -118,12 +118,13 @@ function validItem(it: Item | InsertItem): boolean {
   return true;
 }
 const entryTitle = (title: unknown) => (typeof title === "string" && title.trim() ? title.trim().slice(0, 200) : null);
-const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => m[2].toLowerCase());
-const normTags = (body: string, tags: unknown) => {
-  const found = new Set<string>();
-  for (const match of body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)) found.add(match[2].toLowerCase());
+// #meeting counts as #meetings, and so on (canonicalTag).
+const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => canonicalTag(m[2].toLowerCase()));
+/** An entry's tags: its text's #hashtags (unless it has them turned off) and the ones added to it. */
+const normTags = (body: string, tags: unknown, useHashtags = true) => {
+  const found = new Set<string>(useHashtags ? hashtagsIn(body) : []);
   if (Array.isArray(tags)) for (const tag of tags) {
-    if (typeof tag === "string" && tag.trim()) found.add(tag.trim().replace(/^#/, "").toLowerCase());
+    if (typeof tag === "string" && tag.trim()) found.add(canonicalTag(tag.trim().replace(/^#/, "").toLowerCase()));
   }
   return JSON.stringify([...found]);
 };
@@ -162,10 +163,13 @@ const backfillNotes = () => exclusive(async () => {
     if (item.journalId === undefined && !item.journalOff && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
   }
 });
-/** Deletes an item; its notes stay in the journal as a plain entry. */
+/**
+ * Deletes an item along with what belongs to it: the journal entry holding its notes, and a focus
+ * session that was saved to the calendar as it.
+ */
 async function removeItem(item: Item) {
-  const entry = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
-  if (entry) await put("journal", { ...entry, itemId: null });
+  if (item.journalId) await remove("journal", item.journalId);
+  for (const session of await list<Session>("sessions")) if (session.calendarItemId === item.id) await remove("sessions", session.id);
   await remove("items", item.id);
 }
 let notesBackfilled: Promise<void> | null = null;
@@ -497,10 +501,20 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/sessions" && method === "GET") return ok(await list<Session>("sessions"));
   if (path === "/api/sessions" && method === "POST") return ok(await put("sessions", data));
   const sessionRoute = /^\/api\/sessions\/(\d+)$/.exec(path);
-  if (sessionRoute && method === "DELETE") {
+  // A session saved to the calendar is deleted with its calendar item (and that item's journal entry).
+  if (sessionRoute && method === "DELETE") return exclusive(async () => {
+    const session = await read<Session>("sessions", Number(sessionRoute[1]));
+    const item = session?.calendarItemId ? await read<Item>("items", session.calendarItemId) : undefined;
+    if (item) await removeItem(item);
     await remove("sessions", Number(sessionRoute[1]));
     return ok({ ok: true });
-  }
+  });
+  if (sessionRoute && method === "PATCH") return exclusive(async () => {
+    const session = await read<Session>("sessions", Number(sessionRoute[1]));
+    if (!session) return fail("Not found", 404);
+    const calendarItemId = Number.isSafeInteger(data.calendarItemId) ? data.calendarItemId : null;
+    return ok(await put("sessions", { ...session, calendarItemId }));
+  });
   if (path === "/api/journal" && method === "GET") {
     await (notesBackfilled ??= backfillNotes().catch(() => {}));
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
@@ -514,9 +528,11 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     for (const entry of await list<JournalEntry>("journal")) {
       const tags = listOf(entry.tags);
       if (!tags.includes(from)) continue;
-      const body = entry.body.replace(hashtag, to ? `$1#${to}` : `$1${from}`);
-      const kept = tags.filter((t) => t !== from && !hashtagsIn(entry.body).includes(t));
-      await put("journal", { ...entry, body, tags: normTags(body, to ? [...kept, to] : kept), updatedAt: new Date().toISOString() });
+      // With tags from the text turned off, its #words aren't this tag, so the text stays as it is.
+      const useHashtags = entry.hashtags !== false;
+      const body = useHashtags ? entry.body.replace(hashtag, to ? `$1#${to}` : `$1${from}`) : entry.body;
+      const kept = tags.filter((t) => t !== from && !(useHashtags && hashtagsIn(entry.body).includes(t)));
+      await put("journal", { ...entry, body, tags: normTags(body, to ? [...kept, to] : kept, useHashtags), updatedAt: new Date().toISOString() });
       const item = entry.itemId ? await read<Item>("items", entry.itemId) : undefined;
       if (item && body !== entry.body) await put("items", { ...item, notes: body });
     }
@@ -526,7 +542,8 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     if (!validDate(data.date) || !data.body?.trim()) return fail("Date and body required");
     const now = new Date().toISOString();
     return ok(await put("journal", {
-      date: data.date, title: entryTitle(data.title), body: data.body.trim(), tags: normTags(data.body, data.tags),
+      date: data.date, title: entryTitle(data.title), body: data.body.trim(), hashtags: data.hashtags !== false,
+      tags: normTags(data.body, data.tags, data.hashtags !== false),
       createdAt: now, updatedAt: now,
     }));
   }
@@ -545,7 +562,9 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         ...entry, ...data, itemId: entry.itemId,
         title: data.title !== undefined ? entryTitle(data.title) : entry.title ?? null,
         body: typeof data.body === "string" ? data.body.trim() : entry.body,
-        tags: data.body !== undefined || data.tags ? normTags(data.body ?? "", data.tags ?? JSON.parse(entry.tags)) : entry.tags,
+        hashtags: data.hashtags !== undefined ? data.hashtags !== false : entry.hashtags !== false,
+        tags: data.body !== undefined || data.tags || data.hashtags !== undefined
+          ? normTags(data.body ?? entry.body, data.tags ?? JSON.parse(entry.tags), (data.hashtags ?? entry.hashtags) !== false) : entry.tags,
         updatedAt: new Date().toISOString(),
       });
       // Editing the entry edits the item's notes.
