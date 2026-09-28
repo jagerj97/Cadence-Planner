@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
-import { usePlanner, Ring, clock, chime, JournalNotesCheckbox } from "@/components/planner";
+import { usePlanner, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { APP_VERSION } from "@/lib/changelog";
@@ -24,7 +24,6 @@ import {
   orderHabits,
   dayDiff,
   parseYmd,
-  rateOf,
   recLabel,
   streakOf,
   sunTimes,
@@ -160,12 +159,9 @@ export function HabitsPage() {
                         </div>
                       </button>
                       <div className="shrink-0 text-right text-xs tnum leading-tight">
-                        <div className={cn("inline-flex items-center gap-0.5 font-medium", st > 0 ? "text-[hsl(var(--k-task))]" : "text-muted-foreground")} title="Current streak">
-                          <Flame className="h-3.5 w-3.5" />
-                          {st}
-                        </div>
-                        <div className="text-muted-foreground" title="Best streak · last 30 days">
-                          best {bestStreak(h, today)} · {Math.round(rateOf(h, today) * 100)}%
+                        <StreakBadge streak={st} className="text-xs" zero />
+                        <div className="text-muted-foreground" title="Best streak">
+                          best {bestStreak(h, today)}
                         </div>
                       </div>
                     </div>

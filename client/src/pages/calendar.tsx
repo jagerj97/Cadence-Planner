@@ -542,3 +542,49 @@ function WeekPicker({ title, start, weekStartsOn, onPick }: {
     </PickerTitle>
   );
 }
+
+/** A page's date title (Today, Journal) that opens a month calendar to jump to a day; `marked` days (the journal's with entries) get a small dot. */
+export function DayPicker({ day, label, marked, onPick, testId = "button-pick-journal-day" }: {
+  day: string; label: string; marked?: Set<string>; onPick: (d: string) => void; testId?: string;
+}) {
+  const { settings } = useSettings();
+  const [open, setOpen] = useState(false);
+  const firstOf = (d: string) => { const x = parseYmd(d); return new Date(x.getFullYear(), x.getMonth(), 1); };
+  const [view, setView] = useState(() => firstOf(day));
+  useEffect(() => { if (open) setView(firstOf(day)); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthStart = ymd(view);
+  const monthEnd = ymd(new Date(view.getFullYear(), view.getMonth() + 1, 0));
+  const gridStart = startOfWeek(monthStart, settings.weekStartsOn);
+  const cells: string[] = [];
+  for (let d = gridStart; d <= monthEnd || cells.length % 7; d = addDays(d, 1)) cells.push(d);
+  const today = todayStr();
+  return (
+    <PickerTitle label={label} open={open} onOpenChange={setOpen} testId={testId}>
+      <StepHeader label={fmtDate(monthStart, { month: "long", year: "numeric" })} unit="month"
+        onPrev={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
+        onNext={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} />
+      <div className="grid grid-cols-7 gap-0.5 text-center">
+        {Array.from({ length: 7 }, (_, n) => (
+          <div key={n} className="pb-1 text-xs text-muted-foreground">{DAY_SHORT[(n + settings.weekStartsOn) % 7].slice(0, 2)}</div>
+        ))}
+        {cells.map((d) => {
+          const inMonth = d >= monthStart && d <= monthEnd;
+          const selected = d === day;
+          return (
+            <button key={d} type="button" onClick={() => { onPick(d); setOpen(false); }}
+              className={cn("relative grid h-9 place-items-center rounded-md text-sm tnum transition-colors",
+                selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted",
+                !inMonth && !selected && "text-muted-foreground/50", d === today && !selected && "text-primary font-semibold")}
+              aria-pressed={selected} aria-label={`${fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}${marked?.has(d) ? ", has entries" : ""}`}
+              data-testid={`button-pick-day-${d}`}>
+              {parseYmd(d).getDate()}
+              {marked?.has(d) && (
+                <span className={cn("absolute bottom-1 h-1 w-1 rounded-full", selected ? "bg-primary-foreground" : "bg-primary")} aria-hidden />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </PickerTitle>
+  );
+}

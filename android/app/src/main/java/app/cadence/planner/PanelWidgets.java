@@ -430,11 +430,12 @@ final class PanelWidgets {
                 v.setTextViewText(R.id.row_sub, r.optString("sub"));
                 v.setViewVisibility(R.id.row_sub, r.optString("sub").isEmpty() ? View.GONE : View.VISIBLE);
                 int streak = r.optInt("streak");
-                v.setViewVisibility(R.id.row_flame, streak > 0 ? View.VISIBLE : View.GONE);
-                v.setViewVisibility(R.id.row_streak, streak > 0 ? View.VISIBLE : View.GONE);
-                v.setInt(R.id.row_flame, "setColorFilter", theme.task);
-                v.setTextViewText(R.id.row_streak, String.valueOf(streak));
-                v.setTextColor(R.id.row_streak, theme.task);
+                // A streak below zero is the days in a row it's been missed, in grey.
+                v.setViewVisibility(R.id.row_flame, streak != 0 ? View.VISIBLE : View.GONE);
+                v.setViewVisibility(R.id.row_streak, streak != 0 ? View.VISIBLE : View.GONE);
+                v.setInt(R.id.row_flame, "setColorFilter", streak < 0 ? theme.mutedForeground : theme.task);
+                v.setTextViewText(R.id.row_streak, streak < 0 ? "\u2212" + (-streak) : String.valueOf(streak));
+                v.setTextColor(R.id.row_streak, streak < 0 ? theme.mutedForeground : theme.task);
                 v.setContentDescription(R.id.row_mark, title + ": " + new String[] { "not done", "half done", "done" }[Math.max(0, Math.min(2, mark))]);
                 v.setOnClickFillInIntent(R.id.row_mark, new Intent().putExtra("op", "cycle")
                     .putExtra("id", r.optInt("id")).putExtra("date", LocalDate.now().toString()));

@@ -4,7 +4,7 @@ import { KIND_TAGS, canonicalTag, tagSpellings, type Item, type JournalEntry, ty
 import { PageHeader } from "@/components/shell";
 import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations, useSettings } from "@/lib/data";
 import { DAY_SHORT, KIND_META, addDays, colorOf, fmtDate, kindOf, parseYmd, startOfWeek, todayStr, ymd } from "@/lib/cal";
-import { PickerTitle, StepHeader } from "@/pages/calendar";
+import { DayPicker } from "@/pages/calendar";
 import { usePlanner } from "@/components/planner";
 import { TaskTagList, accentOf, cleanTag, itemTags, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronLeft, ChevronRight, Hash, Settings2, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Hash, Settings2, NotebookPen, Plus, Search, Trash2, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+/** When an entry was last edited: the time, with the date too if that wasn't the day it was written. */
+const editedAt = (e: JournalEntry) => {
+  const at = new Date(e.updatedAt);
+  return at.toDateString() === new Date(e.createdAt).toDateString()
+    ? timeOf(e.updatedAt)
+    : `${at.toLocaleDateString([], { month: "short", day: "numeric" })}, ${timeOf(e.updatedAt)}`;
+};
 
 /**
  * A kind tag (#events, #tasks...) takes its item's color, or its kind's; a task tag takes its own
@@ -398,32 +405,23 @@ function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
   const extraTags = tags.filter((t) => !fromText.includes(t));
   return (
     <article
-      className={cn("card-md p-4 group", item && "cursor-pointer")}
-      // An entry holding an item's notes opens that item; its buttons, tags and links keep their own taps.
-      onClick={(ev) => item && !(ev.target as HTMLElement).closest("button, a, input, textarea") && openDetails(item)}
+      className="card-md p-4 group cursor-pointer"
+      // Tapping an entry opens it to edit; one holding an item's notes opens that item. Its buttons, tags
+      // and links keep their own taps.
+      onClick={(ev) => !(ev.target as HTMLElement).closest("button, a, input, textarea") && (item ? openDetails(item) : onEdit(e))}
       data-testid={`card-entry-${e.id}`}
     >
-      <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {showDate ? (
           <button onClick={() => nav(`/journal/${e.date}`)} className="font-medium text-foreground hover:text-primary">
             {fmtDate(e.date, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
           </button>
         ) : null}
-        {item ? (
-          <button onClick={() => openDetails(item)} className="min-w-0 truncate font-medium hover:underline" style={{ color: accentOf(item, settings) }} data-testid={`button-entry-item-${e.id}`}>
-            {item.title}
-          </button>
-        ) : e.title ? (
-          // A titled entry reads like one from an item: its title where the item's would be.
-          <span className="min-w-0 truncate font-medium text-foreground" data-testid={`text-entry-title-${e.id}`}>{e.title}</span>
-        ) : <span className="tnum">{timeOf(e.createdAt)}</span>}
-        {e.updatedAt !== e.createdAt && <span className="shrink-0">· edited</span>}
-        {/* An entry holding an item's notes is changed from that item, so it has no edit or delete. */}
+        <span className="tnum" data-testid={`text-entry-time-${e.id}`}>{timeOf(e.createdAt)}</span>
+        {e.updatedAt !== e.createdAt && <span className="shrink-0 tnum" data-testid={`text-entry-edited-${e.id}`}>· edited {editedAt(e)}</span>}
+        {/* An entry holding an item's notes is changed from that item, so it has no delete. */}
         {!e.itemId && (
-          <div className="ml-auto flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
-            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit(e)} aria-label="Edit entry" data-testid={`button-edit-entry-${e.id}`}>
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
+          <div className="ml-auto -my-1 flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
             <Button
               size="icon"
               variant="ghost"
@@ -439,6 +437,15 @@ function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
           </div>
         )}
       </div>
+      {/* The title (the item's, for an item's notes) on its own line under the time. */}
+      {item ? (
+        <button onClick={() => openDetails(item)} className="mt-1 block max-w-full truncate text-left text-sm font-semibold hover:underline" style={{ color: accentOf(item, settings) }} data-testid={`button-entry-item-${e.id}`}>
+          {item.title}
+        </button>
+      ) : e.title ? (
+        <div className="mt-1 truncate text-sm font-semibold text-foreground" data-testid={`text-entry-title-${e.id}`}>{e.title}</div>
+      ) : null}
+      <div className="mb-2" />
       <Clamp footer={<TagChips tags={extraTags} onClick={onTag} item={item} />}>
         <Body text={e.body} onTag={e.hashtags === false ? undefined : onTag} />
       </Clamp>
@@ -479,50 +486,6 @@ function Clamp({ children, footer }: { children: React.ReactNode; footer?: React
         </button>
       )}
     </div>
-  );
-}
-
-/** The journal's date title opens a month calendar; days with entries have a small dot. */
-function DayPicker({ day, label, marked, onPick }: { day: string; label: string; marked: Set<string>; onPick: (d: string) => void }) {
-  const { settings } = useSettings();
-  const [open, setOpen] = useState(false);
-  const firstOf = (d: string) => { const x = parseYmd(d); return new Date(x.getFullYear(), x.getMonth(), 1); };
-  const [view, setView] = useState(() => firstOf(day));
-  useEffect(() => { if (open) setView(firstOf(day)); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-  const monthStart = ymd(view);
-  const monthEnd = ymd(new Date(view.getFullYear(), view.getMonth() + 1, 0));
-  const gridStart = startOfWeek(monthStart, settings.weekStartsOn);
-  const cells: string[] = [];
-  for (let d = gridStart; d <= monthEnd || cells.length % 7; d = addDays(d, 1)) cells.push(d);
-  const today = todayStr();
-  return (
-    <PickerTitle label={label} open={open} onOpenChange={setOpen} testId="button-pick-journal-day">
-      <StepHeader label={fmtDate(monthStart, { month: "long", year: "numeric" })} unit="month"
-        onPrev={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
-        onNext={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} />
-      <div className="grid grid-cols-7 gap-0.5 text-center">
-        {Array.from({ length: 7 }, (_, n) => (
-          <div key={n} className="pb-1 text-xs text-muted-foreground">{DAY_SHORT[(n + settings.weekStartsOn) % 7].slice(0, 2)}</div>
-        ))}
-        {cells.map((d) => {
-          const inMonth = d >= monthStart && d <= monthEnd;
-          const selected = d === day;
-          return (
-            <button key={d} type="button" onClick={() => { onPick(d); setOpen(false); }}
-              className={cn("relative grid h-9 place-items-center rounded-md text-sm tnum transition-colors",
-                selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted",
-                !inMonth && !selected && "text-muted-foreground/50", d === today && !selected && "text-primary font-semibold")}
-              aria-pressed={selected} aria-label={`${fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}${marked.has(d) ? ", has entries" : ""}`}
-              data-testid={`button-pick-day-${d}`}>
-              {parseYmd(d).getDate()}
-              {marked.has(d) && (
-                <span className={cn("absolute bottom-1 h-1 w-1 rounded-full", selected ? "bg-primary-foreground" : "bg-primary")} aria-hidden />
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </PickerTitle>
   );
 }
 

@@ -142,7 +142,9 @@ export function DayColumn({
     }
     const current = dragRef.current;
     if (!current) return;
-    const delta = Math.round(pxToMin(dy) / 5) * 5;
+    // Snap to the quarter hour: the new start (moving) or end (resizing) lands on :00, :15, :30 or :45.
+    const edge = current.mode === "move" ? current.s0 : current.e0;
+    const delta = Math.round((edge + pxToMin(dy)) / 15) * 15 - edge;
     if (Math.abs(dy) > 4 || current.moved) {
       dragRef.current = { ...current, delta, moved: true };
       setDrag(dragRef.current);

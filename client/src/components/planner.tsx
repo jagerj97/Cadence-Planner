@@ -46,7 +46,7 @@ import {
 import { cn } from "@/lib/utils";
 import { WhatsNew } from "@/components/whatsNew";
 import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
-import { Check, Plus, Trash2, Timer, X, Link2 } from "lucide-react";
+import { Check, Flame, Plus, Trash2, Timer, X, Link2 } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
@@ -583,6 +583,23 @@ function ItemDetails({ details, onClose, onEdit }: {
 }
 
 /* ============ focus dock ============ */
+/**
+ * A habit's streak: a flame and the days in a row it's been done, or, greyed, a count below zero of
+ * the days in a row it's been missed. Nothing at zero unless `zero`.
+ */
+export function StreakBadge({ streak, className, zero = false }: { streak: number; className?: string; zero?: boolean }) {
+  if (!streak && !zero) return null;
+  return (
+    <span className={cn("inline-flex items-center gap-0.5 font-medium tnum",
+      streak > 0 ? "text-[hsl(var(--k-task))]" : "text-muted-foreground", className)}
+      title={streak > 0 ? `${streak}-day streak` : streak < 0 ? `Missed ${-streak} ${streak === -1 ? "day" : "days"} in a row` : "No streak yet"}
+      data-testid="text-streak">
+      <Flame className="h-3.5 w-3.5" />
+      {streak < 0 ? `−${-streak}` : streak}
+    </span>
+  );
+}
+
 export function Ring({ pct, size = 44, stroke = 4, color }: { pct: number; size?: number; stroke?: number; color?: string }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;

@@ -399,6 +399,11 @@ function historyStart(i: Item) {
   const marks = listOf(i.completions) as string[];
   return marks.reduce((m, c) => (c.slice(0, 10) < m ? c.slice(0, 10) : m), i.date);
 }
+/**
+ * The days in a row a habit has been done (half counts), or, with no streak going, minus the days in
+ * a row it's been missed (-3: missed its last three days). Today counts once it's done, and isn't
+ * missed until it's over. Days it isn't scheduled don't count either way.
+ */
 export function streakOf(i: Item, today: string) {
   const done = touchedOf(i);
   const start = historyStart(i);
@@ -414,7 +419,14 @@ export function streakOf(i: Item, today: string) {
     }
     d = addDays(d, -1);
   }
-  return cur;
+  if (cur > 0) return cur;
+  let missed = 0;
+  for (let n = 0, day = addDays(today, -1); n < 400 && day >= start; n++, day = addDays(day, -1)) {
+    if (!occursOn(i, day)) continue;
+    if (done.has(day)) break;
+    missed++;
+  }
+  return -missed;
 }
 export function bestStreak(i: Item, today: string) {
   const done = touchedOf(i);
