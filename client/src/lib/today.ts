@@ -10,10 +10,10 @@ import {
 export const TODAY_PANELS = [
   { id: "now", label: "Right now", hint: "What's happening now and next" },
   { id: "day", label: "Your day", hint: "How your day splits between routines, plans, and free time" },
-  { id: "schedule", label: "Schedule", hint: "All-day items and the timeline" },
+  { id: "schedule", label: "Timeline", hint: "All-day items and the timeline" },
   { id: "tasks", label: "Tasks", hint: "Today's tasks" },
   { id: "habits", label: "Habits", hint: "Today's habits" },
-  { id: "agenda", label: "Schedule list", hint: "The day's items as a list, like the calendar's schedule view" },
+  { id: "agenda", label: "Schedule", hint: "The day's items as a list, like the calendar's schedule view" },
 ] as const;
 export type TodayPanel = (typeof TODAY_PANELS)[number]["id"];
 

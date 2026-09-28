@@ -463,7 +463,7 @@ function AgendaCard({ items, day }: { items: Item[]; day: string }) {
   const list = items.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep");
   return (
     <div className="card-md" data-testid="card-agenda">
-      <CardHeaderLink to="/schedule" title="Schedule list" testId="link-schedule-page">{null}</CardHeaderLink>
+      <CardHeaderLink to="/schedule" title="Schedule" testId="link-schedule-page">{null}</CardHeaderLink>
       <div className="px-4 pb-4">
         <ScheduleList list={list} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
       </div>
