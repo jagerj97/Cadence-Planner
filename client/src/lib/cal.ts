@@ -371,28 +371,49 @@ export function untimedForDay(list: Item[], day: string) {
   return list.filter((i) => !isTimed(i) && appearsOn(i, day));
 }
 
-/** lay out overlapping blocks into columns */
-export function layoutBlocks(blocks: Block[]) {
-  const res: { b: Block; col: number; cols: number }[] = [];
-  let cluster: { b: Block; col: number }[] = [];
+/**
+ * Overlapping blocks laid out like Google Calendar. Blocks come in by start (longer first):
+ * - one goes in the first column that's free by its start;
+ * - failing that, if it starts at least `nestMin` minutes after the block it lands on (so that one's
+ *   title and time stay in view), it's drawn on top of it, indented one step (`depth`);
+ * - otherwise it starts too close to share the space, so it gets a column of its own, side by side.
+ * `cols` is how many columns its cluster of overlapping blocks uses.
+ */
+export function arrangeBlocks(blocks: Block[], nestMin: number) {
+  const res: { b: Block; col: number; cols: number; depth: number }[] = [];
+  let cluster: { b: Block; col: number; depth: number }[] = [];
+  let colEnds: number[] = [];
   let clusterEnd = -1;
   const flush = () => {
-    const cols = Math.max(1, ...cluster.map((c) => c.col + 1));
+    const cols = Math.max(1, colEnds.length);
     for (const c of cluster) res.push({ ...c, cols });
     cluster = [];
+    colEnds = [];
   };
   for (const b of blocks) {
     if (b.start >= clusterEnd && cluster.length) flush();
-    const used = new Set(cluster.filter((c) => c.b.end > b.start).map((c) => c.col));
-    let col = 0;
-    while (used.has(col)) col++;
-    cluster.push({ b, col });
+    let col = colEnds.findIndex((end) => end <= b.start);
+    let depth = 0;
+    if (col < 0) {
+      // The block it would sit on: the latest to start of those still going (the innermost, on a tie).
+      const under = cluster
+        .filter((c) => c.b.end > b.start)
+        .reduce<{ b: Block; col: number; depth: number } | null>((best, c) => (!best || c.b.start > best.b.start || (c.b.start === best.b.start && c.depth > best.depth) ? c : best), null);
+      if (under && b.start - under.b.start >= nestMin) {
+        col = under.col;
+        depth = under.depth + 1;
+      } else {
+        col = colEnds.length;
+        colEnds.push(b.end);
+      }
+    }
+    colEnds[col] = Math.max(colEnds[col] ?? 0, b.end);
+    cluster.push({ b, col, depth });
     clusterEnd = Math.max(clusterEnd, b.end);
   }
   if (cluster.length) flush();
   return res;
 }
-
 
 /** Where a habit's history begins: its date, or its earliest mark if one was logged before that. */
 function historyStart(i: Item) {

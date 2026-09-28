@@ -214,7 +214,7 @@ final class WidgetDraw {
         boolean fromBefore = "before".equals(continues) || "through".equals(continues);
         boolean intoAfter = "after".equals(continues) || "through".equals(continues);
         int start = b.optInt("start"), end = b.optInt("end");
-        int cols = Math.max(1, b.optInt("cols", 1)), col = b.optInt("col");
+        int cols = Math.max(1, b.optInt("cols", 1)), col = b.optInt("col"), depth = b.optInt("depth");
         int color = parse(b.optString("color"), theme.primary);
         // A tagged task keeps its yellow tint but takes the tag color for its edge and checkbox.
         int accent = b.optString("accent").isEmpty() ? color : parse(b.optString("accent"), color);
@@ -222,7 +222,9 @@ final class WidgetDraw {
         float gap = 4 * d;
         float top = fromBefore ? 0 : start / 60f * hourPx + d;
         float height = Math.max((end - start) / 60f * hourPx - 2 * d, 18 * d) + (fromBefore ? d : 0) + (intoAfter ? d : 0);
-        float left = colLeft + col * colWidth / cols + gap, width = colWidth / cols - gap * 2;
+        // An item drawn on top of another (depth) is indented a step per level and edged in the card color.
+        float indent = depth * 10 * d;
+        float left = colLeft + col * colWidth / cols + gap + indent, width = colWidth / cols - gap * 2 - indent;
         RectF rect = new RectF(left, top, left + width, top + height);
         float r = 6 * d;
         float[] radii = {
@@ -232,6 +234,12 @@ final class WidgetDraw {
         Path shape = new Path();
         shape.addRoundRect(rect, radii, Path.Direction.CW);
 
+        if (depth > 0) {
+            Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+            edge.setColor(theme.card);
+            RectF outer = new RectF(rect.left - d, rect.top - d, rect.right + d, rect.bottom + d);
+            canvas.drawRoundRect(outer, r + d, r + d, edge);
+        }
         int layer = canvas.saveLayerAlpha(rect, done ? 140 : 255);
         canvas.clipPath(shape);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);

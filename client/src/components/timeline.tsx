@@ -10,7 +10,7 @@ import {
   fmtTime,
   fromMin,
   kindOf,
-  layoutBlocks,
+  arrangeBlocks,
   nowMin,
   recOf,
   skyGradient,
@@ -69,7 +69,9 @@ export function DayColumn({
   const { openEditor, openDetails, startFocus } = usePlanner();
   const saveItem = useSaveItem();
   const { toggle } = useItemMutations();
-  const blocks = layoutBlocks(blocksForDay(items, day));
+  // Overlaps are laid out like Google Calendar: an item that starts once the one under it has room
+  // for its title and time (about 36px) is drawn on top, indented; closer starts go side by side.
+  const blocks = arrangeBlocks(blocksForDay(items, day), Math.ceil((36 / hourPx) * 60));
   const routineBlocks = showRoutines ? blocksForDay(routineSchedules(settings), day) : [];
   const isToday = day === todayStr();
   const [now, setNow] = useState(nowMin());
@@ -231,7 +233,7 @@ export function DayColumn({
         </>
       )}
 
-      {blocks.map(({ b, col, cols }) => {
+      {blocks.map(({ b, col, cols, depth }) => {
         const k = kindOf(b.item);
         const M = KIND_META[k];
         const live = drag?.key === b.key && drag.moved ? drag : null;
@@ -249,6 +251,10 @@ export function DayColumn({
         const recurring = recOf(b.item).freq !== "none";
         const active = isToday && now >= b.start && now < b.end;
         const gap = compact ? 2 : 4;
+        const indent = depth * (compact ? 8 : 14);
+        // Drawn on top of another item: solid, with a thin edge in the card color to set it apart.
+        const nested = depth > 0;
+        const fill = tint(b.item, k === "sleep" ? 0.1 : 0.15);
         return (
           <div
             key={b.key}
@@ -279,15 +285,15 @@ export function DayColumn({
             style={{
               top: b.continues === "before" || b.continues === "through" ? 0 : top + 1,
               height: h + (b.continues === "before" || b.continues === "through" ? 1 : 0) + (b.continues === "after" || b.continues === "through" ? 1 : 0),
-              left: `calc(${(col / cols) * 100}% + ${gap}px)`,
-              width: `calc(${100 / cols}% - ${gap * 2}px)`,
-              // While lifted, a solid card under the tint keeps the grid from showing through.
-              background: lifted
-                ? `linear-gradient(${tint(b.item, k === "sleep" ? 0.1 : 0.15)}, ${tint(b.item, k === "sleep" ? 0.1 : 0.15)}), hsl(var(--card))`
-                : tint(b.item, k === "sleep" ? 0.1 : 0.15),
+              left: `calc(${(col / cols) * 100}% + ${gap + indent}px)`,
+              width: `calc(${100 / cols}% - ${gap * 2 + indent}px)`,
+              zIndex: lifted ? undefined : nested ? depth : undefined,
+              // While lifted (or on top of another item), a solid card under the tint keeps what's
+              // behind from showing through.
+              background: lifted || nested ? `linear-gradient(${fill}, ${fill}), hsl(var(--card))` : fill,
               transform: lifted ? "scale(1.04)" : undefined,
               borderLeft: `3px solid ${accentOf(b.item, settings)}`,
-              boxShadow: active ? `inset 0 0 0 1.5px ${accentOf(b.item, settings)}` : undefined,
+              boxShadow: [active && `inset 0 0 0 1.5px ${accentOf(b.item, settings)}`, nested && "0 0 0 1px hsl(var(--card))"].filter(Boolean).join(", ") || undefined,
             }}
             data-testid={`block-${b.key}`}
           >
