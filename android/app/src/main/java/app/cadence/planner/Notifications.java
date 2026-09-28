@@ -10,7 +10,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.ContentResolver;
 import android.graphics.Color;
+import android.media.AudioAttributes;
+import android.net.Uri;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 
@@ -18,14 +21,44 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 final class Notifications {
-    static final String CHANNEL = "cadence_reminders";
+    /** The one channel older versions used, for everything, with the phone's default sound. */
+    private static final String OLD_CHANNEL = "cadence_reminders";
     private static final String PREFS = "cadence_alarms";
     private static final int FOCUS_CODE = 500001;
     private static final String TICK = "app.cadence.planner.REMINDER_TICK";
 
+    /**
+     * Reminders and "timer finished" play the cat toy's jingle while Cadence is inside and the soft
+     * chime with her outside (res/raw, see android/tools/make_sounds.py). A channel's sound is fixed
+     * once it's made, so each sound has its own channel; the pair not in use is removed, so the phone's
+     * settings list just "Reminders" and "Timer finished".
+     */
+    private static String channel(boolean plain, boolean done) {
+        return "cadence_" + (done ? "timer_done_" : "reminders_") + (plain ? "chime" : "jingle");
+    }
+
     static void createChannel(Context context) {
-        context.getSystemService(NotificationManager.class)
-            .createNotificationChannel(new NotificationChannel(CHANNEL, "Cadence reminders", NotificationManager.IMPORTANCE_DEFAULT));
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager.getNotificationChannel(OLD_CHANNEL) != null) manager.deleteNotificationChannel(OLD_CHANNEL);
+        boolean plain = AppActivity.plain(context);
+        AudioAttributes attributes = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
+        for (boolean done : new boolean[] { false, true }) {
+            String unused = channel(!plain, done);
+            if (manager.getNotificationChannel(unused) != null) manager.deleteNotificationChannel(unused);
+            String id = channel(plain, done);
+            if (manager.getNotificationChannel(id) != null) continue;
+            NotificationChannel made = new NotificationChannel(id, done ? "Timer finished" : "Reminders", NotificationManager.IMPORTANCE_DEFAULT);
+            int sound = done ? (plain ? R.raw.cadence_chime_done : R.raw.cadence_jingle_done) : (plain ? R.raw.cadence_chime : R.raw.cadence_jingle);
+            made.setSound(Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + context.getPackageName() + "/" + sound), attributes);
+            manager.createNotificationChannel(made);
+        }
+    }
+
+    /** "Play a sound" in Settings: off, notifications arrive silently. */
+    static void setSound(Context context, boolean on) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("sound", on).apply();
     }
 
     static void show(Context context, String title, String body, int id) {
@@ -41,11 +74,12 @@ final class Notifications {
         Intent launch = new Intent(context, AppActivity.class);
         PendingIntent pending = PendingIntent.getActivity(context, 0, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channel(AppActivity.plain(context), id == FOCUS_CODE))
             .setSmallIcon(AppActivity.plain(context) ? R.drawable.ic_notification_plain : R.drawable.ic_notification).setColor(Color.rgb(214, 96, 57))
             .setContentTitle(title).setContentText(body).setOnlyAlertOnce(true)
             .setAutoCancel(true).setContentIntent(pending);
         if (when > 0) builder.setWhen(when);
+        if (!context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("sound", true)) builder.setSilent(true);
         manager.notify(id, builder.build());
     }
 

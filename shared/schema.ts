@@ -111,6 +111,8 @@ export const RENAMED_THEMES: Record<string, ColorTheme> = {
   tomato: "ribbon", orange: "carrot", lemon: "butter", avocado: "grass", blueberry: "denim", blackberry: "denim", monochrome: "mouse", mushroom: "mouse",
 };
 export type ColorTheme = (typeof COLOR_THEMES)[number];
+export const DISPLAY_MODES = ["dark", "light", "system", "sun"] as const;
+export type DisplayMode = (typeof DISPLAY_MODES)[number];
 export type Settings = {
   name: string;
   wakeTime: string;
@@ -126,7 +128,9 @@ export type Settings = {
   lng: number;
   routines: Routine[];
   colorTheme: ColorTheme;
-  appearanceTheme: "light" | "dark";
+  appearanceTheme: "light" | "dark"; // the look before Display mode; kept for older backups
+  /** Dark, light, the phone's setting, or light from sunrise to sunset. */
+  displayMode: DisplayMode;
   habitOrder: number[];
   hiddenTodayPanels: string[]; // Today page panels the user turned off (see TODAY_PANELS)
   todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
@@ -156,6 +160,7 @@ export const DEFAULT_SETTINGS: Settings = {
   plain: false,
   colorTheme: "carrot",
   appearanceTheme: "dark",
+  displayMode: "dark",
   habitOrder: [],
   hiddenTodayPanels: [],
   todayPanelOrder: [],

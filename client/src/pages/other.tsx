@@ -38,7 +38,7 @@ import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS, PLAIN_THEME_NAMES } from "@shared/schema";
-import type { ColorTheme, Feed, ImportKind, Routine, Session, Settings, WeekDay } from "@shared/schema";
+import type { ColorTheme, DisplayMode, Feed, ImportKind, Routine, Session, Settings, WeekDay } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -887,7 +887,7 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
 export function SettingsPage() {
   const { settings, isLoading } = useSettings();
   const { toast } = useToast();
-  const { setTheme } = usePlanner();
+  const { setDisplayMode } = usePlanner();
   const [locating, setLocating] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
@@ -1164,13 +1164,23 @@ export function SettingsPage() {
                 </button>
               ))}
             </div>
-            <Row label="Dark mode">
-              <Switch checked={draft.appearanceTheme === "dark"} onCheckedChange={(v) => {
-                const next = v ? "dark" : "light";
-                setTheme(next);
-                setDraft((current) => ({ ...current, appearanceTheme: next }));
-              }} data-testid="switch-dark" />
-            </Row>
+            <Field label="Display mode">
+              <Select value={draft.displayMode ?? draft.appearanceTheme ?? "dark"} onValueChange={(v) => {
+                const next = v as DisplayMode;
+                setDisplayMode(next);
+                setDraft((current) => ({ ...current, displayMode: next }));
+              }}>
+                <SelectTrigger data-testid="select-display-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dark">Dark mode</SelectItem>
+                  <SelectItem value="light">Light mode</SelectItem>
+                  <SelectItem value="system">System setting</SelectItem>
+                  <SelectItem value="sun">Sunrise/sunset</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
             <SubSection title="Let Cadence outside" hint="Hide the cat stuff">
               <p className="text-sm text-muted-foreground">
                 Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to. (The app will close)

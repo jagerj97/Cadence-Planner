@@ -1,4 +1,4 @@
-import { COLOR_THEMES, DEFAULT_SETTINGS, IMPORT_KINDS, RENAMED_THEMES, canonicalTag } from "@shared/schema";
+import { COLOR_THEMES, DEFAULT_SETTINGS, DISPLAY_MODES, IMPORT_KINDS, RENAMED_THEMES, canonicalTag } from "@shared/schema";
 import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, type Session, type Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
@@ -10,6 +10,10 @@ export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
   /** Switches to the plain app and notification icons ("Let Cadence outside"), or back. Older builds lack it. */
   setPlain?(plain: boolean): void;
+  /** Whether the phone is set to dark mode (Display mode: System setting). Older builds lack it. */
+  systemDark?(): boolean;
+  /** "Play a sound": whether notifications (reminders, a finished timer) make their sound. Older builds lack it. */
+  setSound?(on: boolean): void;
   /** The same from the Settings switch, then closes the app. Older builds lack it. */
   letOutside?(plain: boolean): void;
   requestLocation?(): void;
@@ -94,6 +98,8 @@ const pref = async (): Promise<Settings> => {
   return {
     ...merged,
     colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme,
+    // Settings from before Display mode keep the look they had.
+    displayMode: saved?.displayMode ?? (saved?.appearanceTheme === "light" ? "light" : "dark"),
     // "Joshua" was a placeholder default, not a name anyone entered.
     name: merged.name === "Joshua" ? "" : merged.name,
     routines: merged.routines.map((r) => (r.color?.toLowerCase() === "#5966ad" ? { ...r, color: "#3f51b5" } : r)),
@@ -394,7 +400,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     const next = { ...await pref(), ...data };
     if (!Array.isArray(next.routines) || !Array.isArray(next.habitOrder) || !Array.isArray(next.hiddenTodayPanels) || !Array.isArray(next.todayPanelOrder) ||
         !Array.isArray(next.taskTags) || next.taskTags.some((t: any) => typeof t?.name !== "string" || !t.name || !/^#[0-9a-f]{6}$/i.test(t.color)) ||
-        !["light", "dark"].includes(next.appearanceTheme) ||
+        !["light", "dark"].includes(next.appearanceTheme) || !(DISPLAY_MODES as readonly string[]).includes(next.displayMode) ||
         !KNOWN_THEMES.has(next.colorTheme) ||
         next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime)) {
       return fail("Check routine settings, theme and habit order");

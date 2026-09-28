@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { Item, InsertItem, Kind, Recurrence, Session } from "@shared/schema";
+import type { DisplayMode, Item, InsertItem, Kind, Recurrence, Session } from "@shared/schema";
 import { DEFAULT_SETTINGS, KINDS } from "@shared/schema";
 import { useForm } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -43,6 +43,7 @@ import {
   ymd,
   isTimed,
   shiftedToToday,
+  sunTimes,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { WhatsNew } from "@/components/whatsNew";
@@ -51,7 +52,13 @@ import { Check, Flame, Plus, Trash2, Timer, X, Link2 } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
+/**
+ * The soft chime for reminders and a finished timer, in a browser. In the Android app the phone's
+ * notification plays the sound instead (on the notification volume: the jingle, or this chime with
+ * Cadence outside), so this does nothing there.
+ */
 export function chime(kind: "soft" | "done" = "soft") {
+  if (window.CadenceAndroid) return;
   try {
     audioCtx = audioCtx || new (window.AudioContext || (window as any).webkitAudioContext)();
     const notes = kind === "done" ? [660, 880, 1100] : [880, 660];
@@ -76,6 +83,37 @@ export function chime(kind: "soft" | "done" = "soft") {
 /* ============ theme ============ */
 type Theme = "light" | "dark";
 
+/** Whether the phone is in dark mode (the app asks Android; a browser, its own setting). */
+function readSystemDark() {
+  const bridge = window.CadenceAndroid;
+  if (bridge?.systemDark) {
+    try { return bridge.systemDark(); } catch { /* fall back below */ }
+  }
+  return !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+}
+
+/** Sunrise/sunset: dark before sunrise and from sunset, at the location in Settings. */
+function sunIsDown(now: Date, lat: number, lng: number) {
+  const sun = sunTimes(ymd(now), lat, lng);
+  if (sun.polar) return sun.polar === "night";
+  const m = now.getHours() * 60 + now.getMinutes();
+  return m < sun.sunrise || m >= sun.sunset;
+}
+
+/** Switches the page to light or dark, cross-fading the whole page when `fade` (and the WebView can). */
+function applyTheme(theme: Theme, fade: boolean) {
+  const root = document.documentElement;
+  const set = () => root.classList.toggle("dark", theme === "dark");
+  const doc = document as Document & { startViewTransition?: (update: () => void) => { finished: Promise<void> } };
+  if (!fade || root.classList.contains("dark") === (theme === "dark") || !doc.startViewTransition ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    set();
+    return;
+  }
+  root.classList.add("theme-fading");
+  doc.startViewTransition(set).finished.finally(() => root.classList.remove("theme-fading"));
+}
+
 /* ============ focus timer ============ */
 export type FocusState = {
   itemId: number | null;
@@ -89,7 +127,8 @@ export type FocusState = {
 
 type Ctx = {
   theme: Theme;
-  setTheme: (t: Theme) => void;
+  /** Applies a Display mode straight away (Settings saves it too). */
+  setDisplayMode: (mode: DisplayMode) => void;
   /** onCreated runs after a new item is saved (not when the window is closed without saving). */
   openEditor: (target: Item | Partial<InsertItem>, occDate?: string, onCreated?: (item: Item) => void) => void;
   openDetails: (target: Item, occDate?: string) => void;
@@ -148,25 +187,60 @@ export function useSaveItem() {
 }
 
 export function PlannerProvider({ children }: { children: ReactNode }) {
-  // Dark is the default until saved settings say otherwise.
-  const [theme, setTheme] = useState<Theme>("dark");
-  const [themeLoaded, setThemeLoaded] = useState(false);
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    if (themeLoaded) window.CadenceAndroid?.setAppearance?.(theme);
-  }, [theme, themeLoaded]);
-
   const { toast } = useToast();
   const { settings, data: savedSettings } = useSettings();
+  // Display mode: dark (the default until saved settings say otherwise), light, the phone's setting,
+  // or light between sunrise and sunset. Settings changes it straight away with setDisplayMode.
+  const [mode, setDisplayMode] = useState<DisplayMode>("dark");
+  const [themeLoaded, setThemeLoaded] = useState(false);
   useEffect(() => {
-    if (savedSettings) {
-      setTheme(savedSettings.appearanceTheme);
-      setThemeLoaded(true);
-    }
-  }, [savedSettings?.appearanceTheme]);
+    if (!savedSettings) return;
+    setDisplayMode(savedSettings.displayMode ?? savedSettings.appearanceTheme ?? "dark");
+    setThemeLoaded(true);
+  }, [savedSettings?.displayMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [systemDark, setSystemDark] = useState(readSystemDark);
+  useEffect(() => {
+    if (mode !== "system") return;
+    const sync = () => setSystemDark(readSystemDark());
+    const query = window.matchMedia?.("(prefers-color-scheme: dark)");
+    sync();
+    query?.addEventListener?.("change", sync);
+    window.addEventListener("cadence-ui-mode", sync); // the phone's dark mode changed (AppActivity)
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      query?.removeEventListener?.("change", sync);
+      window.removeEventListener("cadence-ui-mode", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [mode]);
+  // Sunrise/sunset looks at the clock every half minute, and when the app comes back.
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    if (mode !== "sun") return;
+    const tick = () => setClock(new Date());
+    const t = setInterval(tick, 30000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); };
+  }, [mode]);
+  const theme: Theme = mode === "light" ? "light" : mode === "dark" ? "dark"
+    : mode === "system" ? (systemDark ? "dark" : "light")
+    : sunIsDown(clock, settings.lat, settings.lng) ? "dark" : "light";
+  // Changes the app makes on its own (sunrise, sunset, the phone switching) fade across; picking a
+  // mode in Settings switches at once.
+  const lastLook = useRef<{ theme: Theme; mode: DisplayMode } | null>(null);
+  useEffect(() => {
+    const last = lastLook.current;
+    lastLook.current = { theme, mode };
+    applyTheme(theme, themeLoaded && !!last && last.mode === mode && last.theme !== theme);
+    if (themeLoaded) window.CadenceAndroid?.setAppearance?.(theme);
+  }, [theme, mode, themeLoaded]);
   useEffect(() => {
     document.documentElement.dataset.colorTheme = settings.colorTheme || DEFAULT_SETTINGS.colorTheme;
   }, [settings.colorTheme]);
+  // "Play a sound" decides whether the phone's notifications (which make the sounds) are silent.
+  useEffect(() => {
+    if (savedSettings) window.CadenceAndroid?.setSound?.(savedSettings.sound !== false);
+  }, [savedSettings?.sound]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Let Cadence outside" also swaps the app and notification icons. Flipping it in Settings does that
   // (and closes the app); this keeps them matched to the saved setting on start, e.g. after a restore.
   const iconsSynced = useRef(false);
@@ -415,7 +489,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     theme,
-    setTheme,
+    setDisplayMode,
     openEditor,
     openDetails,
     focus,
