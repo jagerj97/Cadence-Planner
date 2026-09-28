@@ -50,6 +50,7 @@ export function DayColumn({
   compact = false,
   showNow = true,
   showRoutines = true,
+  labelContinued = true,
 }: {
   day: string;
   items: Item[];
@@ -57,6 +58,9 @@ export function DayColumn({
   compact?: boolean;
   showNow?: boolean;
   showRoutines?: boolean;
+  /** Label the part of an overnight item (or routine) carried on from the day before; the week view
+   *  leaves it unlabelled after its first day, so a night reads as one item. */
+  labelContinued?: boolean;
   bedMin?: number;
   wakeMin?: number;
 }) {
@@ -204,9 +208,11 @@ export function DayColumn({
             borderColor: colorOf(b.item),
           }}
         >
-          <span className="block max-w-full truncate text-[10px] sm:text-xs font-medium" style={{ color: colorOf(b.item) }}>
-            {b.item.title}
-          </span>
+          {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && (
+            <span className="block max-w-full truncate text-[10px] sm:text-xs font-medium" style={{ color: colorOf(b.item) }}>
+              {b.item.title}
+            </span>
+          )}
         </div>
       ))}
       {!compact && !sun.polar && settings.showSun && (
@@ -303,7 +309,7 @@ export function DayColumn({
                   {b.done && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                 </button>
               )}
-              <div className="min-w-0 flex-1 overflow-hidden">
+              {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && <div className="min-w-0 flex-1 overflow-hidden">
                 <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm", b.done && "line-through")}>
                   {!checkable && !compact && <M.icon className="h-3.5 w-3.5 shrink-0" style={{ color: colorOf(b.item) }} />}
                   <span className="truncate whitespace-nowrap">{b.item.title}</span>
@@ -327,7 +333,7 @@ export function DayColumn({
                     {b.item.notes.trim()}
                   </p>
                 )}
-              </div>
+              </div>}
               {!compact && k !== "sleep" && !tiny && (
                 <button
                   type="button"

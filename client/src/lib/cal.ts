@@ -285,6 +285,49 @@ function span(i: Item) {
   return { s, e };
 }
 
+/** How many days after the one it starts on an occurrence reaches (0: it's over the same day). */
+export function lastDayOffset(i: Item): number {
+  if (isTimed(i)) return Math.max(0, Math.floor((span(i).e - 1) / 1440));
+  return i.endDate && i.endDate > i.date ? Math.min(366, dayDiff(i.date, i.endDate)) : 0;
+}
+
+/**
+ * Items the month and week views draw as one bar across the days they cover: all-day (or anytime)
+ * items over several days, and timed ones lasting a day or more. Shorter overnight items stay per day.
+ */
+export function isLong(i: Item): boolean {
+  if (isTimed(i)) { const { s, e } = span(i); return e - s >= 1440; }
+  return lastDayOffset(i) > 0;
+}
+
+/** A long item's bar within a run of days: its first and last column, and whether it carries on past them. */
+export type Bar = { item: Item; occ: string; from: number; to: number; before: boolean; after: boolean; lane: number };
+
+/** The bars for `days` days from `start`, stacked into lanes so none overlap. */
+export function barsFor(list: Item[], start: string, days: number): { bars: Bar[]; lanes: number } {
+  const end = addDays(start, days - 1);
+  const bars: Bar[] = [];
+  for (const i of list) {
+    if (!isLong(i)) continue;
+    const len = lastDayOffset(i);
+    // Occurrences that begin up to `len` days before the range still reach into it.
+    for (let d = addDays(start, -len); d <= end; d = addDays(d, 1)) {
+      if (!occursOn(i, d)) continue;
+      const last = addDays(d, len);
+      bars.push({ item: i, occ: d, from: Math.max(0, dayDiff(start, d)), to: Math.min(days - 1, dayDiff(start, last)), before: d < start, after: last > end, lane: 0 });
+    }
+  }
+  bars.sort((a, b) => a.from - b.from || b.to - b.from - (a.to - a.from) || a.item.title.localeCompare(b.item.title));
+  const laneEnds: number[] = [];
+  for (const bar of bars) {
+    let lane = laneEnds.findIndex((endCol) => endCol < bar.from);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = bar.to;
+    bar.lane = lane;
+  }
+  return { bars, lanes: laneEnds.length };
+}
+
 /** True on any date covered by a single or recurring occurrence. */
 export function appearsOn(i: Item, day: string): boolean {
   const days = i.endDate && i.endDate >= i.date ? Math.min(366, dayDiff(i.date, i.endDate)) : isTimed(i) && toMin(i.endTime) <= toMin(i.startTime) ? 1 : 0;
