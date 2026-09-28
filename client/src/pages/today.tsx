@@ -3,6 +3,7 @@ import { useLocation, useRoute } from "wouter";
 import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { DayPicker } from "@/pages/calendar";
+import { ScheduleList } from "@/components/scheduleList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
 import { usePlanner, useNow, Ring, StreakBadge } from "@/components/planner";
 import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
@@ -35,7 +36,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
-import { TODAY_PANELS, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
+import { TODAY_PANELS, panelShown, panelToggle, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
 import { ChevronLeft, ChevronRight, Plus, Check, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
@@ -49,8 +50,7 @@ export default function Today() {
   const now = useNow(30000);
   const list = items ?? [];
 
-  const hidden = new Set(settings.hiddenTodayPanels ?? []);
-  const shows = (panel: TodayPanel) => !hidden.has(panel);
+  const shows = (panel: TodayPanel) => panelShown(settings, panel);
   const panelOrder = todayPanelOrder(settings.todayPanelOrder);
   // On phones the two columns below dissolve (display: contents) into one list in this order;
   // on wide screens each column keeps the same relative order.
@@ -147,10 +147,11 @@ export default function Today() {
           <aside className="contents lg:grid lg:grid-cols-1 lg:content-start lg:gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 lg:pb-4" aria-label="Day details">
             {shows("tasks") && <div style={at("tasks")}><TasksCard items={list} day={day} /></div>}
             {shows("habits") && <div style={at("habits")}><HabitsCard items={list} day={day} /></div>}
+            {shows("agenda") && <div style={at("agenda")}><AgendaCard items={list} day={day} /></div>}
             {TODAY_PANELS.every((p) => !shows(p.id)) && (
               <p className="text-sm text-muted-foreground text-center" style={{ order: 98 }}>All cards are hidden.</p>
             )}
-            <div className="pb-4 lg:pb-0" style={{ order: 99 }}><CustomizeToday hidden={hidden} order={panelOrder} /></div>
+            <div className="pb-4 lg:pb-0" style={{ order: 99 }}><CustomizeToday order={panelOrder} /></div>
           </aside>
         </div>
       </div>
@@ -159,15 +160,11 @@ export default function Today() {
 }
 
 
-function CustomizeToday({ hidden, order }: { hidden: Set<string>; order: TodayPanel[] }) {
+function CustomizeToday({ order }: { order: TodayPanel[] }) {
   const [open, setOpen] = useState(false);
   const save = useSaveSettings();
-
-  const toggle = (panel: TodayPanel, shown: boolean) => {
-    const next = new Set(hidden);
-    if (shown) next.delete(panel); else next.add(panel);
-    save.mutate({ hiddenTodayPanels: TODAY_PANELS.map((p) => p.id).filter((id) => next.has(id)) });
-  };
+  const { settings } = useSettings();
+  const toggle = (panel: TodayPanel, shown: boolean) => save.mutate(panelToggle(settings, panel, shown));
   return (
     <>
       <div className="flex justify-center">
@@ -191,7 +188,7 @@ function CustomizeToday({ hidden, order }: { hidden: Set<string>; order: TodayPa
                 <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-today-${p.id}`}>
                   <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                   <span className="min-w-0 flex-1 text-sm font-medium">{p.label}</span>
-                  <Switch checked={!hidden.has(p.id)} onCheckedChange={(v) => toggle(p.id, v)} aria-label={`Show ${p.label}`} data-testid={`switch-today-${p.id}`} />
+                  <Switch checked={panelShown(settings, p.id)} onCheckedChange={(v) => toggle(p.id, v)} aria-label={`Show ${p.label}`} data-testid={`switch-today-${p.id}`} />
                 </div>
               );
             }}
@@ -456,6 +453,20 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** The page's day as the calendar's schedule view lists it; the header opens that view. */
+function AgendaCard({ items, day }: { items: Item[]; day: string }) {
+  // As the calendar shows by default: no habits, and no sleep.
+  const list = items.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep");
+  return (
+    <div className="card-md" data-testid="card-agenda">
+      <CardHeaderLink to="/schedule" title="Schedule list" testId="link-schedule-page">{null}</CardHeaderLink>
+      <div className="px-4 pb-4">
+        <ScheduleList list={list} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
+      </div>
     </div>
   );
 }

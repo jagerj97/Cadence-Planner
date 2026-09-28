@@ -13,8 +13,25 @@ export const TODAY_PANELS = [
   { id: "schedule", label: "Schedule", hint: "All-day items and the timeline" },
   { id: "tasks", label: "Tasks", hint: "Today's tasks" },
   { id: "habits", label: "Habits", hint: "Today's habits" },
+  { id: "agenda", label: "Schedule list", hint: "The day's items as a list, like the calendar's schedule view" },
 ] as const;
 export type TodayPanel = (typeof TODAY_PANELS)[number]["id"];
+
+/** Cards that start off hidden: they show once turned on in Edit cards (Settings.shownTodayPanels). */
+const OFF_BY_DEFAULT = new Set<string>(["agenda"]);
+
+/** Whether a card is on: the usual ones unless turned off, the off-by-default ones once turned on. */
+export function panelShown(settings: Settings, panel: TodayPanel) {
+  return OFF_BY_DEFAULT.has(panel) ? (settings.shownTodayPanels ?? []).includes(panel) : !(settings.hiddenTodayPanels ?? []).includes(panel);
+}
+
+/** The settings change that turns a card on or off. */
+export function panelToggle(settings: Settings, panel: TodayPanel, on: boolean): Partial<Settings> {
+  const key = OFF_BY_DEFAULT.has(panel) ? "shownTodayPanels" : "hiddenTodayPanels";
+  const next = new Set(settings[key] ?? []);
+  if (on === (key === "shownTodayPanels")) next.add(panel); else next.delete(panel);
+  return { [key]: TODAY_PANELS.map((p) => p.id).filter((id) => next.has(id)) };
+}
 
 /** Every panel in the user's order; ones they haven't placed keep their default position at the end. */
 export function todayPanelOrder(saved: string[] | undefined): TodayPanel[] {

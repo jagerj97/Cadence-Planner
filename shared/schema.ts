@@ -133,6 +133,7 @@ export type Settings = {
   displayMode: DisplayMode;
   habitOrder: number[];
   hiddenTodayPanels: string[]; // Today page panels the user turned off (see TODAY_PANELS)
+  shownTodayPanels?: string[]; // Today page panels that start off hidden and the user turned on
   todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
   taskTags: TaskTag[];
   /** Tint timelines with the sky and mark sunrise and sunset. */

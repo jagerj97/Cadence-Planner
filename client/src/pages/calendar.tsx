@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { accentOf } from "@/components/taskTags";
+import { ScheduleList } from "@/components/scheduleList";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -372,12 +373,36 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
   );
 }
 
-/* ---------- Calendar tab: swaps between week and month ---------- */
-type CalView = "week" | "month";
+/** The schedule view: upcoming days as a list (like Google Calendar's), from today; more on request. */
+export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
+  const { data: items } = useItems();
+  const [days, setDays] = useState(60);
+  const list = (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; });
+  const today = todayStr();
+  return (
+    <>
+      <PageHeader title="Schedule" sub={`From ${fmtDate(today, { weekday: "long", month: "long", day: "numeric" })}`}>
+        {toggle}
+      </PageHeader>
+      {filters}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
+        <div className="mx-auto grid max-w-2xl gap-4 pb-4">
+          <ScheduleList list={list} from={today} days={days} />
+          <Button variant="ghost" size="sm" className="justify-self-center text-muted-foreground" onClick={() => setDays((n) => n + 60)} data-testid="button-schedule-more">
+            Show more
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------- Calendar tab: swaps between week, month and schedule ---------- */
+type CalView = "week" | "month" | "schedule";
 let lastView: CalView = "month"; // remembered while the app is open
 export function CalendarPage() {
   const [loc] = useLocation();
-  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : lastView));
+  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/schedule") ? "schedule" : lastView));
   const [visibility, setVisibility] = useState<CalendarVisibility>(() => ({ ...lastVisibility }));
   const pick = (v: CalView) => {
     lastView = v;
@@ -417,14 +442,14 @@ export function CalendarPage() {
   );
   const toggle = (
     <div className="ml-auto flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Calendar view">
-      {(["week", "month"] as CalView[]).map((v) => (
+      {(["week", "month", "schedule"] as CalView[]).map((v) => (
         <button
           key={v}
           role="tab"
           aria-selected={view === v}
           onClick={() => pick(v)}
           className={cn(
-            "h-8 px-4 rounded-full text-xs font-medium transition-colors",
+            "h-8 px-3 sm:px-4 rounded-full text-xs font-medium transition-colors",
             view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
           )}
           data-testid={`tab-view-${v}`}
@@ -436,7 +461,9 @@ export function CalendarPage() {
   );
   return view === "week"
     ? <WeekPage toggle={toggle} filters={filters} visibility={visibility} />
-    : <MonthPage toggle={toggle} filters={filters} visibility={visibility} />;
+    : view === "schedule"
+      ? <SchedulePage toggle={toggle} filters={filters} visibility={visibility} />
+      : <MonthPage toggle={toggle} filters={filters} visibility={visibility} />;
 }
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
