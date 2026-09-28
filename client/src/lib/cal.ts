@@ -400,6 +400,30 @@ function historyStart(i: Item) {
   return marks.reduce((m, c) => (c.slice(0, 10) < m ? c.slice(0, 10) : m), i.date);
 }
 /**
+ * "Shift to today" for a habit that isn't on today: its schedule moves so the next day it's due becomes
+ * today, and every later one moves by the same number of days (a Mon/Wed/Fri habit shifted on a
+ * Tuesday becomes Sun/Tue/Thu; an every-other-day one starts counting from today). Weekdays-only
+ * habits become weekly on the shifted days. Returns the new start date and repeat, or null if the
+ * habit is already on today.
+ */
+export function shiftedToToday(i: Pick<Item, "date" | "recurrence" | "kind" | "exceptions" | "uid">, today: string): { date: string; recurrence: Recurrence } | null {
+  const item = i as Item;
+  if (occursOn(item, today)) return null;
+  const r = recOf(item);
+  let next: string | null = null;
+  for (let n = 1, d = addDays(today, 1); n <= 400; n++, d = addDays(d, 1)) if (occursOn(item, d)) { next = d; break; }
+  if (!next) return null;
+  const shift = -dayDiff(today, next);
+  const days = r.freq === "weekdays" ? [1, 2, 3, 4, 5] : r.freq === "weekly" ? (r.days?.length ? r.days : [dow(i.date)]) : null;
+  return {
+    date: today,
+    recurrence: days
+      ? { ...r, freq: "weekly", days: [...new Set(days.map((w) => mod(w + shift, 7)))].sort((a, b) => a - b) }
+      : r,
+  };
+}
+
+/**
  * The days in a row a habit has been done (half counts), or, with no streak going, minus the days in
  * a row it's been missed (-3: missed its last three days). Today counts once it's done, and isn't
  * missed until it's over. Days it isn't scheduled don't count either way.

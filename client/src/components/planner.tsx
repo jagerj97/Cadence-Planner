@@ -42,6 +42,7 @@ import {
   todayStr,
   ymd,
   isTimed,
+  shiftedToToday,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { WhatsNew } from "@/components/whatsNew";
@@ -692,6 +693,9 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
 
   const form = useForm<FormVals>({ defaultValues: toForm(blankItem({}), settings.defaultReminder) });
   const { register, watch, setValue, handleSubmit, reset } = form;
+  // "Shift to today" was used: the new schedule is in the form, waiting for Save.
+  const [shifted, setShifted] = useState(false);
+  useEffect(() => setShifted(false), [editing]);
 
   useEffect(() => {
     if (!editing) return;
@@ -1056,6 +1060,32 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
               </div>}
             </div>
           )}
+
+          {/* A habit that isn't on today can have its schedule moved so its next day is today. */}
+          {existing && v.kind === "habit" && (() => {
+            const shift = shiftedToToday({
+              kind: "habit", uid: existing.uid, exceptions: existing.exceptions, date: v.date,
+              recurrence: JSON.stringify({ freq: v.freq, interval: v.interval > 1 ? Number(v.interval) : undefined, days: v.days.length ? v.days : undefined }),
+            }, todayStr());
+            if (!shift && !shifted) return null;
+            return (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {shift && (
+                  <Button type="button" variant="outline" size="sm" data-testid="button-shift-today" onClick={() => {
+                    setValue("date", shift.date);
+                    setValue("freq", shift.recurrence.freq);
+                    setValue("days", shift.recurrence.days ?? []);
+                    setShifted(true);
+                  }}>
+                    Shift to today
+                  </Button>
+                )}
+                <span className="text-xs text-muted-foreground" data-testid="text-shift-today">
+                  {shift ? "It isn't on today. This moves its schedule so it is." : "Shifted to today. Save to keep it."}
+                </span>
+              </div>
+            );
+          })()}
 
           {v.timeMode === "timed" && v.kind !== "sleep" && (
             <label className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5 cursor-pointer" data-testid="row-autotimer">
