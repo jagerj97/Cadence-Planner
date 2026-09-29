@@ -3,7 +3,7 @@ import {
   KIND_META, addDays, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
   routineSchedules, sunTimes, todayStr,
 } from "./cal";
-import { allDayFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
+import { agendaFor, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
 import { firstTagColor } from "@/components/taskTags";
 
 /**
@@ -14,6 +14,8 @@ import { firstTagColor } from "@/components/taskTags";
  * applyWidgetActions in androidApi.ts).
  */
 export const WIDGET_DAYS = 7;
+/** The agenda widget lists this many days from today. */
+export const AGENDA_DAYS = 14;
 
 /** "H S% L%" or "H S% L% / A" (a CSS variable's value) to "#rrggbb" or "#aarrggbb" for Android. */
 const hslToHex = (hsl: string) => {
@@ -109,5 +111,25 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       })),
     };
   }
-  return { version: 2, generatedAt: Date.now(), themes: { light: themeFor(false), dark: themeFor(true) }, days };
+  // The agenda widget: the next two weeks as the Today card's agenda lists them (no habits or sleep),
+  // skipping days with nothing on except today.
+  const listed = items.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep");
+  const agenda = [];
+  for (let offset = 0; offset < AGENDA_DAYS; offset++) {
+    const day = addDays(today, offset);
+    const entries = agendaFor(listed, day);
+    if (!entries.length && offset > 0) continue;
+    agenda.push({
+      day,
+      num: String(Number(day.slice(8))),
+      weekday: fmtDate(day, { weekday: "short" }),
+      month: fmtDate(day, { month: "long" }),
+      entries: entries.map((e) => ({
+        title: e.i.title, kind: kindOf(e.i), done: e.done, color: hexOf(e.i),
+        accent: firstTagColor(e.i, settings) ?? "",
+        sub: [e.time, e.i.location].filter(Boolean).join(" · "),
+      })),
+    });
+  }
+  return { version: 2, generatedAt: Date.now(), themes: { light: themeFor(false), dark: themeFor(true) }, days, agenda };
 }

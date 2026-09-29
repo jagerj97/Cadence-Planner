@@ -30,7 +30,7 @@ import java.time.ZoneId;
 import java.util.Locale;
 
 /**
- * One home screen widget per Today card: Right now, Your day, Schedule, Tasks, and Habits. The web
+ * One home screen widget per Today card: Right now, Your day, Timeline, Agenda, Tasks, and Habits. The web
  * app saves a week-long snapshot through the bridge (widget.ts); the widgets draw today's part in
  * the app's colors and work out "Right now" from the clock, so they keep up while the app is closed.
  * Tapping a task's checkbox or a habit's circle changes it right away here and is queued for the app,
@@ -77,7 +77,7 @@ final class PanelWidgets {
         refreshAll(context, true);
     }
 
-    static final Class<?>[] PROVIDERS = { Now.class, Day.class, Schedule.class, Tasks.class, Habits.class };
+    static final Class<?>[] PROVIDERS = { Now.class, Day.class, Schedule.class, Agenda.class, Tasks.class, Habits.class };
 
     /** Redraws every widget. `full` also re-sends list data and scrolls the schedule to the current hour. */
     static void refreshAll(Context context, boolean full) {
@@ -89,6 +89,7 @@ final class PanelWidgets {
             any = true;
             for (int id : ids) render(context, manager, provider, id, full);
             if (provider == Schedule.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.schedule_list);
+            if (provider == Agenda.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.agenda_list);
             if (provider == Tasks.class || provider == Habits.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.list_rows);
         }
         if (any) scheduleTick(context);
@@ -147,6 +148,7 @@ final class PanelWidgets {
         if (provider == Now.class) views = renderNow(context, theme, day);
         else if (provider == Day.class) views = renderDay(context, manager, id, theme, day);
         else if (provider == Schedule.class) views = renderSchedule(context, id, theme, day, full);
+        else if (provider == Agenda.class) views = renderAgenda(context, id, theme, snapshot);
         else views = renderList(context, id, provider == Tasks.class, theme, day);
         manager.updateAppWidget(id, views);
     }
@@ -246,8 +248,37 @@ final class PanelWidgets {
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         v.setPendingIntentTemplate(R.id.schedule_list, PendingIntent.getActivity(context, 800003 + id, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
-        // Open at the current hour, like the app. Ticks leave the scroll where the user put it.
-        if (full) v.setScrollPosition(R.id.schedule_list, Math.max(0, LocalTime.now().getHour()));
+        // Open at the current hour, like the app: once when it's placed and once a day. Changes saved
+        // from the app and ticks leave the scroll where the user put it, so it never jumps mid-scroll.
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String today = LocalDate.now().toString(), key = "scrolledDay" + id;
+        if (!today.equals(prefs.getString(key, ""))) {
+            v.setScrollPosition(R.id.schedule_list, Math.max(0, LocalTime.now().getHour()));
+            prefs.edit().putString(key, today).apply();
+        }
+        return v;
+    }
+
+    // ---- Agenda ----
+
+    private static RemoteViews renderAgenda(Context context, int id, WidgetTheme theme, JSONObject snapshot) {
+        RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_agenda);
+        paintCard(v, theme, theme.card, theme.border);
+        v.setTextColor(R.id.agenda_heading, theme.foreground);
+        v.setInt(R.id.agenda_add, "setColorFilter", theme.mutedForeground);
+        v.setOnClickPendingIntent(R.id.agenda_header, openApp(context, 800040, "open-agenda"));
+        v.setOnClickPendingIntent(R.id.agenda_add, openApp(context, 800041, "add-event"));
+        Intent rows = new Intent(context, AgendaService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
+        rows.setData(Uri.parse(rows.toUri(Intent.URI_INTENT_SCHEME)));
+        v.setRemoteAdapter(R.id.agenda_list, rows);
+        v.setEmptyView(R.id.agenda_list, R.id.agenda_empty);
+        v.setTextColor(R.id.agenda_empty, theme.mutedForeground);
+        // Tapping the list opens the app's agenda.
+        Intent launch = new Intent(context, AppActivity.class)
+            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_ADD, "open-agenda").setData(Uri.parse("cadence-widget://open-agenda"));
+        v.setPendingIntentTemplate(R.id.agenda_list, PendingIntent.getActivity(context, 800042 + id, launch,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
         return v;
     }
 
@@ -319,6 +350,7 @@ final class PanelWidgets {
             }
             AppWidgetManager manager = AppWidgetManager.getInstance(context);
             for (int id : manager.getAppWidgetIds(new ComponentName(context, Now.class))) render(context, manager, Now.class, id, false);
+            // The agenda drops days as they pass, so it's redrawn at midnight with the rest (newDay above).
             if (manager.getAppWidgetIds(new ComponentName(context, Schedule.class)).length > 0) {
                 manager.notifyAppWidgetViewDataChanged(manager.getAppWidgetIds(new ComponentName(context, Schedule.class)), R.id.schedule_list);
             }
@@ -503,12 +535,144 @@ final class PanelWidgets {
         }
     }
 
+    // ---- agenda rows ----
+
+    public static class AgendaService extends RemoteViewsService {
+        @Override public RemoteViewsFactory onGetViewFactory(Intent intent) {
+            return new AgendaFactory(getApplicationContext());
+        }
+    }
+
+    /**
+     * The snapshot's two weeks as rows: a month's name where a new month starts, then each item with
+     * its day's date beside the first one. Days already past (the snapshot may be a few days old) are
+     * left out, and today shows "Nothing planned" when it's empty.
+     */
+    static final class AgendaFactory implements RemoteViewsService.RemoteViewsFactory {
+        private final Context context;
+        /** Each row: {"month": "October"} or {"day": {...}, "entry": {...} or null, "first": true/false}. */
+        private final java.util.ArrayList<JSONObject> rows = new java.util.ArrayList<>();
+        private WidgetTheme theme = new WidgetTheme(null);
+        private String today = "";
+
+        AgendaFactory(Context context) { this.context = context; }
+
+        @Override public void onCreate() {}
+        @Override public void onDataSetChanged() {
+            JSONObject snapshot = snapshot(context);
+            theme = theme(context, snapshot);
+            today = LocalDate.now().toString();
+            rows.clear();
+            JSONArray days = snapshot.optJSONArray("agenda");
+            String lastMonth = null;
+            boolean todayListed = false;
+            for (int d = 0; days != null && d < days.length(); d++) {
+                JSONObject day = days.optJSONObject(d);
+                if (day == null || day.optString("day").compareTo(today) < 0) continue;
+                JSONArray entries = day.optJSONArray("entries");
+                boolean isToday = today.equals(day.optString("day"));
+                if ((entries == null || entries.length() == 0) && !isToday) continue;
+                todayListed |= isToday;
+                try {
+                    String month = day.optString("month");
+                    if (!month.equals(lastMonth) && lastMonth != null) rows.add(new JSONObject().put("month", month));
+                    lastMonth = month;
+                    if (entries == null || entries.length() == 0) rows.add(new JSONObject().put("day", day).put("first", true));
+                    for (int e = 0; entries != null && e < entries.length(); e++) {
+                        rows.add(new JSONObject().put("day", day).put("entry", entries.optJSONObject(e)).put("first", e == 0));
+                    }
+                } catch (Exception ignored) {}
+            }
+            // A snapshot from before today began still leaves today at the top, empty.
+            if (!todayListed && days != null) {
+                try {
+                    LocalDate now = LocalDate.now();
+                    String weekday = now.getDayOfWeek().getDisplayName(java.time.format.TextStyle.SHORT, Locale.US);
+                    rows.add(0, new JSONObject().put("first", true).put("day", new JSONObject()
+                        .put("day", today).put("num", String.valueOf(now.getDayOfMonth())).put("weekday", weekday)));
+                } catch (Exception ignored) {}
+            }
+        }
+        @Override public void onDestroy() {}
+        @Override public int getCount() { return rows.size(); }
+        @Override public RemoteViews getLoadingView() { return null; }
+        @Override public int getViewTypeCount() { return 2; }
+        @Override public long getItemId(int position) { return position; }
+        @Override public boolean hasStableIds() { return false; }
+
+        @Override public RemoteViews getViewAt(int position) {
+            JSONObject r = position < rows.size() ? rows.get(position) : new JSONObject();
+            if (r.has("month")) {
+                RemoteViews m = new RemoteViews(context.getPackageName(), R.layout.widget_agenda_month);
+                m.setTextViewText(R.id.agenda_month, r.optString("month"));
+                m.setTextColor(R.id.agenda_month, theme.mutedForeground);
+                return m;
+            }
+            RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_agenda_row);
+            JSONObject day = r.optJSONObject("day");
+            JSONObject entry = r.optJSONObject("entry");
+            boolean first = r.optBoolean("first");
+            boolean isToday = day != null && today.equals(day.optString("day"));
+            // The date shows beside a day's first item; the rest leave the space so the items line up.
+            v.setViewVisibility(R.id.agenda_date, first ? View.VISIBLE : View.INVISIBLE);
+            v.setViewPadding(R.id.agenda_row, dp(8), first && position > 0 ? dp(9) : dp(3), dp(12), dp(3));
+            if (day != null) {
+                v.setTextViewText(R.id.agenda_num, day.optString("num"));
+                v.setTextViewText(R.id.agenda_weekday, day.optString("weekday"));
+            }
+            v.setTextColor(R.id.agenda_num, isToday ? theme.primary : theme.foreground);
+            v.setTextColor(R.id.agenda_weekday, isToday ? theme.primary : theme.mutedForeground);
+            if (entry == null) {
+                v.setViewVisibility(R.id.agenda_item, View.GONE);
+                v.setViewVisibility(R.id.agenda_nothing, View.VISIBLE);
+                v.setTextColor(R.id.agenda_nothing, theme.mutedForeground);
+            } else {
+                v.setViewVisibility(R.id.agenda_nothing, View.GONE);
+                v.setViewVisibility(R.id.agenda_item, View.VISIBLE);
+                String kind = entry.optString("kind");
+                int color = WidgetDraw.parse(entry.optString("color"), theme.primary);
+                String accentHex = entry.optString("accent");
+                int accent = accentHex.isEmpty() ? color : WidgetDraw.parse(accentHex, color);
+                boolean done = entry.optBoolean("done");
+                // A tint of the item's color over the card, as the app draws it (15%, 10% for sleep).
+                v.setInt(R.id.agenda_item_bg, "setColorFilter", mix(color, theme.card, "sleep".equals(kind) ? 0.10f : 0.15f));
+                v.setInt(R.id.agenda_item_edge, "setColorFilter", accent);
+                v.setImageViewResource(R.id.agenda_icon, WidgetDraw.kindIcon(kind));
+                v.setInt(R.id.agenda_icon, "setColorFilter", color);
+                String title = entry.optString("title");
+                SpannableStringBuilder t = new SpannableStringBuilder(title);
+                if (done) t.setSpan(new StrikethroughSpan(), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                v.setTextViewText(R.id.agenda_title, t);
+                v.setTextColor(R.id.agenda_title, done ? theme.mutedForeground : theme.foreground);
+                String sub = entry.optString("sub");
+                v.setTextViewText(R.id.agenda_sub, sub);
+                v.setViewVisibility(R.id.agenda_sub, sub.isEmpty() ? View.GONE : View.VISIBLE);
+                v.setTextColor(R.id.agenda_sub, theme.mutedForeground);
+            }
+            v.setOnClickFillInIntent(R.id.agenda_row, new Intent());
+            return v;
+        }
+
+        private int dp(int value) {
+            return Math.round(value * context.getResources().getDisplayMetrics().density);
+        }
+    }
+
+    /** `t` of color `a` over color `b`, opaque. */
+    static int mix(int a, int b, float t) {
+        int r = Math.round(android.graphics.Color.red(a) * t + android.graphics.Color.red(b) * (1 - t));
+        int g = Math.round(android.graphics.Color.green(a) * t + android.graphics.Color.green(b) * (1 - t));
+        int bl = Math.round(android.graphics.Color.blue(a) * t + android.graphics.Color.blue(b) * (1 - t));
+        return android.graphics.Color.rgb(r, g, bl);
+    }
+
     // ---- providers (one per widget in the picker) ----
 
     public abstract static class Base extends AppWidgetProvider {
         @Override public void onUpdate(Context context, AppWidgetManager manager, int[] ids) {
             for (int id : ids) render(context, manager, getClass(), id, true);
             if (getClass() == Schedule.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.schedule_list);
+            if (getClass() == Agenda.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.agenda_list);
             if (getClass() == Tasks.class || getClass() == Habits.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.list_rows);
             scheduleTick(context);
         }
@@ -531,6 +695,7 @@ final class PanelWidgets {
     public static class Now extends Base {}
     public static class Day extends Base {}
     public static class Schedule extends Base {}
+    public static class Agenda extends Base {}
     public static class Tasks extends Base {}
     public static class Habits extends Base {}
 }

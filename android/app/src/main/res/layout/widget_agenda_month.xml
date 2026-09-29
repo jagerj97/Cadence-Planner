@@ -1,0 +1,5 @@
+<!-- A month's name above its first day, as in the app's agenda. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/agenda_month" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="8dp" android:paddingBottom="2dp"
+    android:textSize="13sp" android:fontFamily="sans-serif-medium" />

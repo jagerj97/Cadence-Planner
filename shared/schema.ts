@@ -135,6 +135,8 @@ export type Settings = {
   hiddenTodayPanels: string[]; // Today page panels the user turned off (see TODAY_PANELS)
   shownTodayPanels?: string[]; // Today page panels that start off hidden and the user turned on
   todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
+  /** Which way the Today page's day card shows the day. */
+  todayView?: "timeline" | "agenda";
   taskTags: TaskTag[];
   /** Tint timelines with the sky and mark sunrise and sunset. */
   showSun: boolean;

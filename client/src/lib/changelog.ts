@@ -8,6 +8,21 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  */
 export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
+  "1.5.4-beta": {
+    fixes: [
+      "The agenda opens quickly, even with a lot planned.",
+      "Dragging on an item scrolls, in the timeline and every list. Hold an item to move it, as before.",
+      "The Timeline widget no longer jumps back to the current hour while you scroll it.",
+    ],
+    changes: [
+      "The schedule view is now called Agenda. The calendar switch reads Agenda, Week, Month.",
+      "Today's timeline and agenda are one card, with a switch between them.",
+      "Swipe left or right to go to the next page.",
+      "A new Agenda widget for the next two weeks.",
+      "Delete a journal entry from its edit window.",
+      "UI changes to the focus timer.",
+    ],
+  },
   "1.5.3-beta": {
     fixes: [
       "Deleting an item deletes its journal entry too, and a focus session saved to the calendar goes with its item.",

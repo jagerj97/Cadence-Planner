@@ -60,6 +60,7 @@ import {
   Sunset,
   ChevronDown,
   GripVertical,
+  Target,
 } from "lucide-react";
 
 /* ====================== HABITS ====================== */
@@ -322,69 +323,74 @@ export function FocusPage() {
       <PageHeader title="Focus" sub={`${fmtDur(totalToday)} focused today · ${todays.length} session${todays.length === 1 ? "" : "s"}`} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
-          <section className="card-md min-w-0 p-6 md:p-10 grid justify-items-center gap-6" aria-label="Timer">
-            <div className="relative">
-              <Ring pct={pct} size={260} stroke={10} color={ringColor} />
+          <section className="card-md focus-hero min-w-0 p-4 md:p-6 grid gap-5" aria-label="Timer">
+            <h2 className="text-sm font-semibold tracking-tight">Timer</h2>
+            <div className="relative justify-self-center">
+              <Ring pct={pct} size={236} stroke={12} color={ringColor} track="hsl(var(--k-focus) / .14)" />
               <div className="absolute inset-0 grid place-items-center text-center">
-                <div>
-                  <div className="font-mono text-5xl tnum tracking-tight" data-testid="text-timer">
+                <div className="grid justify-items-center gap-1.5">
+                  <div className="text-[56px] font-semibold leading-none tracking-tight tnum" data-testid="text-timer">
                     {clock(remaining)}
                   </div>
-                  <div className="text-sm text-muted-foreground mt-1 max-w-[180px] truncate">
-                    {focus ? focus.title : "Ready"}
+                  <div className="flex max-w-[170px] items-center gap-1 text-sm text-muted-foreground">
+                    <Target className="h-3.5 w-3.5 shrink-0" style={{ color: ringColor }} aria-hidden />
+                    <span className="truncate">{focus ? focus.title : label.trim() || "Focus session"}</span>
                   </div>
                 </div>
               </div>
             </div>
 
             {focus ? (
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <Button variant="outline" onClick={() => addFocusTime(5)} data-testid="button-timer-add5">
+              <div className="flex items-center justify-center gap-3">
+                <Button variant="outline" className="h-11 rounded-full px-4" onClick={() => addFocusTime(5)} data-testid="button-timer-add5">
                   +5 min
                 </Button>
                 {focus.runStart ? (
-                  <Button size="icon" onClick={pauseFocus} aria-label="Pause" title="Pause" data-testid="button-timer-pause">
-                    <Pause className="h-4 w-4" />
+                  <Button size="icon" className="h-14 w-14 rounded-full" onClick={pauseFocus} aria-label="Pause" title="Pause" data-testid="button-timer-pause">
+                    <Pause className="h-6 w-6" />
                   </Button>
                 ) : (
-                  <Button size="icon" onClick={resumeFocus} aria-label="Resume" title="Resume" data-testid="button-timer-resume">
-                    <Play className="h-4 w-4" />
+                  <Button size="icon" className="h-14 w-14 rounded-full" onClick={resumeFocus} aria-label="Resume" title="Resume" data-testid="button-timer-resume">
+                    <Play className="h-6 w-6" />
                   </Button>
                 )}
-                <Button variant="outline" size="icon" onClick={() => stopFocus(true)} aria-label="Finish" title="Finish" data-testid="button-timer-finish">
-                  <Check className="h-4 w-4" />
+                <Button variant="outline" className="h-11 rounded-full px-4" onClick={() => stopFocus(true)} aria-label="Finish" title="Finish" data-testid="button-timer-finish">
+                  <Check className="h-4 w-4 mr-1" /> Finish
                 </Button>
               </div>
             ) : (
-              <div className="grid gap-4 w-full max-w-md">
-                <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="What are you focusing on?" className="h-11 text-base" data-testid="input-focus-label" />
+              <div className="grid gap-3 w-full max-w-md justify-self-center">
+                <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="What are you focusing on?" className="h-11 rounded-full px-4 text-base" data-testid="input-focus-label" />
                 <div className="flex gap-1.5" role="radiogroup" aria-label="Duration">
-                  {[10, 30, 60, 90].map((m) => (
-                    <button
-                      key={m}
-                      role="radio"
-                      aria-checked={validDuration && minutes === m}
-                      onClick={() => setDuration(m)}
-                      className={cn(
-                        "flex-1 h-10 rounded-md border text-sm tnum",
-                        minutes === m ? "bg-primary text-primary-foreground border-transparent font-medium" : "hover-elevate text-muted-foreground",
-                      )}
-                      data-testid={`button-duration-${m}`}
-                    >
-                      {m}m
-                    </button>
-                  ))}
+                  {[10, 30, 60, 90].map((m) => {
+                    const on = validDuration && minutes === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => setDuration(m)}
+                        // Round pills; the chosen one is tinted and ringed in the focus color, like the kinds in the item window.
+                        className={cn("flex-1 h-9 rounded-full border text-[13px] font-medium tnum transition-colors", on ? "border-transparent text-foreground" : "text-muted-foreground hover-elevate")}
+                        style={on ? { background: "hsl(var(--k-focus) / .16)", boxShadow: "inset 0 0 0 1.5px hsl(var(--k-focus))" } : undefined}
+                        data-testid={`button-duration-${m}`}
+                      >
+                        {fmtDur(m)}
+                      </button>
+                    );
+                  })}
                 </div>
                 <label className="flex items-center justify-between gap-3 text-sm" htmlFor="input-focus-duration">
-                  <span className="font-medium">Custom duration</span>
+                  <span className="text-muted-foreground">Custom</span>
                   <span className="flex items-center gap-2">
                     <DurationInput id="input-focus-duration" value={duration} onChange={setDuration}
-                      className="h-10 w-24" invalid={!validDuration} testId="input-focus-duration" />
-                    <span className="text-muted-foreground">hrs:mins</span>
+                      className="h-9 w-24 rounded-full" invalid={!validDuration} testId="input-focus-duration" />
+                    <span className="text-xs text-muted-foreground">hrs:mins</span>
                   </span>
                 </label>
                 {!validDuration && <p className="text-xs text-destructive">Enter a time from 00:01 to 12:00.</p>}
-                <Button size="lg" disabled={!validDuration} onClick={() => startFocus({ title: label.trim() || "Focus session", minutes })} data-testid="button-start-focus">
+                <Button size="lg" className="rounded-full" disabled={!validDuration} onClick={() => startFocus({ title: label.trim() || "Focus session", minutes })} data-testid="button-start-focus">
                   <Play className="h-4 w-4 mr-1.5" /> {validDuration ? `Start ${fmtDur(minutes)} focus` : "Start focus"}
                 </Button>
               </div>

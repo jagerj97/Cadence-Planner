@@ -214,6 +214,20 @@ export type ConvertTo = { kind: Kind; title: string; body: string; tags: string[
  * (then scrolls once it fills the screen above the keyboard), tags, and format buttons along the bottom.
  * Picking a kind tag (#tasks, #events...) offers to turn the entry into that kind of item instead.
  */
+/** A bin that opens into a "Delete?" pill; tapping that deletes. Tapping anywhere else closes it again. */
+function DeleteButton({ onDelete }: { onDelete: () => void }) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <button type="button" onClick={() => (armed ? onDelete() : setArmed(true))} onBlur={() => setArmed(false)}
+      className={cn("mt-3 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full text-xs font-medium transition-all duration-200",
+        armed ? "bg-destructive px-3 text-destructive-foreground" : "w-8 text-muted-foreground hover:bg-muted hover:text-destructive")}
+      aria-label={armed ? "Delete? Tap again to delete" : "Delete entry"} data-testid="button-journal-delete">
+      <Trash2 className="h-4 w-4" />
+      {armed && <span>Delete?</span>}
+    </button>
+  );
+}
+
 function Composer({
   initialTitle = "",
   initial = "",
@@ -225,6 +239,7 @@ function Composer({
   onConvert,
   saveRef,
   busy,
+  onDelete,
 }: {
   initialTitle?: string;
   initial?: string;
@@ -238,6 +253,8 @@ function Composer({
   /** Set to save (or, with nothing written, cancel): tapping outside the window does this. */
   saveRef?: React.MutableRefObject<(() => void) | null>;
   busy?: boolean;
+  /** Deletes the entry being edited (not offered for a new one). */
+  onDelete?: () => void;
 }) {
   const [sel, setSel] = useState<[number, number]>([initial.length, initial.length]);
   const [title, setTitle] = useState(initialTitle);
@@ -303,6 +320,7 @@ function Composer({
   const hasKind = all.some((t) => KIND_OF_TAG.has(t));
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex shrink-0 items-start gap-2 pr-3">
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -311,10 +329,12 @@ function Composer({
         }}
         placeholder="Title"
         maxLength={200}
-        className="shrink-0 bg-transparent px-4 pt-4 text-[17px] font-semibold outline-none placeholder:font-medium placeholder:text-muted-foreground"
+        className="min-w-0 flex-1 bg-transparent px-4 pt-4 text-[17px] font-semibold outline-none placeholder:font-medium placeholder:text-muted-foreground"
         aria-label="Title"
         data-testid="input-journal-title"
       />
+      {onDelete && <DeleteButton onDelete={onDelete} />}
+      </div>
       <Textarea
         ref={ref}
         value={body}
@@ -396,7 +416,6 @@ function Composer({
 function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
   e: JournalEntry; onTag: (t: string) => void; showDate?: boolean; item?: Item; openDetails: (i: Item) => void; onEdit: (e: JournalEntry) => void;
 }) {
-  const { remove } = useJournalMutations();
   const { toast } = useToast();
   const { settings } = useSettings();
   const [, nav] = useLocation();
@@ -419,23 +438,6 @@ function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
         ) : null}
         <span className="tnum" data-testid={`text-entry-time-${e.id}`}>{timeOf(e.createdAt)}</span>
         {e.updatedAt !== e.createdAt && <span className="shrink-0 tnum" data-testid={`text-entry-edited-${e.id}`}>· edited {editedAt(e)}</span>}
-        {/* An entry holding an item's notes is changed from that item, so it has no delete. */}
-        {!e.itemId && (
-          <div className="ml-auto -my-1 flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7"
-              onClick={() => {
-                remove.mutate(e.id);
-              }}
-              aria-label="Delete entry"
-              data-testid={`button-delete-entry-${e.id}`}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
       </div>
       {/* The title (the item's, for an item's notes) on its own line under the time. */}
       {item ? (
@@ -743,6 +745,13 @@ export default function JournalPage() {
                   busy={create.isPending || update.isPending}
                   saveRef={saveEntry}
                   onCancel={() => setCompose(null)}
+                  // An entry holding an item's notes is changed from that item, so it has no delete.
+                  onDelete={compose.entry && !compose.entry.itemId ? () => {
+                    const id = compose.entry!.id;
+                    saveEntry.current = null;
+                    setCompose(null);
+                    remove.mutate(id);
+                  } : undefined}
                   onSubmit={async (title, body, tags, hashtags) => {
                     if (compose.entry) await update.mutateAsync({ id: compose.entry.id, title, body, tags, hashtags });
                     else await create.mutateAsync({ date: day, title, body, tags, hashtags });

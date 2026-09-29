@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
-const HOLD_MS = 350;
+const HOLD_MS = 500; // Android's long press; a finger resting briefly before a scroll still scrolls
 const SLOP_PX = 8; // moving farther than this before the hold completes means the user is scrolling
 
 type Drag = { index: number; startY: number; dy: number; over: number; mids: number[]; step: number };
