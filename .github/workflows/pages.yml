@@ -1,0 +1,46 @@
+name: Publish the web version
+
+# Puts the web version of Cadence on GitHub Pages whenever code is pushed to main, or on demand from
+# the Actions tab ("Run workflow"). It's the same app as the APK, keeping its data in the browser.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push takes over from one still waiting.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Build the web version
+        run: |
+          npm ci
+          npm run build:web
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

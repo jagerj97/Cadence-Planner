@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build:android:web": "vite build --config vite.android.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
     "check": "tsc"
   },
   "dependencies": {

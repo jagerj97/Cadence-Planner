@@ -14,6 +14,13 @@ when a version lands on `main`.
 3. Run `npm run build:android:web` and commit the result.
 4. Push, open a PR to `main`, and merge it.
 
+## Web version
+
+The same app also runs in a browser, published to GitHub Pages by `.github/workflows/pages.yml` on
+every push to `main`. `client/index.html` loads `client/src/web-main.tsx`, which stands in for the
+Android bridge (`client/src/lib/webBridge.ts`) before starting the app; `npm run build:web` builds it
+into `dist/web` (not committed). Data stays in each browser; phone-only features do nothing there.
+
 ## Icons
 
 `client/public/favicon.svg` is the logomark (the cat) and `client/public/cadence-logotype.svg` the
