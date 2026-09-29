@@ -161,17 +161,25 @@ export function routineSchedules(settings: Settings): Item[] {
 
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
+/** Each item's repeat rule and skipped dates, read once (items are replaced, never changed, on save). */
+const parsed = new WeakMap<Item, { r: Recurrence; ex: Set<string> }>();
+function rulesOf(i: Item) {
+  let p = parsed.get(i);
+  if (!p) parsed.set(i, (p = { r: recOf(i), ex: exceptionsOf(i) }));
+  return p;
+}
+
 export function occursOn(i: Item, d: string): boolean {
-  const r = recOf(i);
+  const { r, ex } = rulesOf(i);
   // The schedule in Settings describes every night, including nights before it was saved.
   if ((i.uid === "cadence:sleep-schedule" || i.uid?.startsWith("cadence:routine:")) && i.kind === "sleep" && r.freq === "daily") {
-    return !exceptionsOf(i).has(d);
+    return !ex.has(d);
   }
   // Habits have no start or end: their pattern runs back and forward forever, anchored on their date.
   const habit = i.kind === "habit";
   if (!habit && d < i.date) return false;
   if (!habit && r.until && d > r.until) return false;
-  if (r.freq !== "none" && exceptionsOf(i).has(d)) return false;
+  if (r.freq !== "none" && ex.has(d)) return false;
   const iv = Math.max(1, r.interval || 1);
   switch (r.freq) {
     case "none":

@@ -379,36 +379,47 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
  * item on; it opens at today and loads further ahead as it's scrolled. The title is the month in view
  * and opens the month picker to jump to a day; Today comes back to today.
  */
+/** Days drawn before and after today on opening, and how many more load at a time. */
+const BEFORE = 14, AHEAD = 45, STEP = 60;
+
 export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
   const { data: items } = useItems();
   const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
   const today = todayStr();
-  const [range, setRange] = useState<{ start: string; end: string } | null>(null);
-  // Back to the earliest item (at most three years), and ahead to the last one-off item or four months.
-  useEffect(() => {
-    if (!items || range) return;
-    const floor = addDays(today, -3 * 365);
-    const earliest = items.reduce((m, i) => (i.date < m ? i.date : m), today);
-    const latest = items.reduce((m, i) => { const last = i.endDate || i.date; return recOf(i).freq === "none" && last > m ? last : m; }, addDays(today, 120));
-    setRange({ start: earliest < floor ? floor : earliest, end: latest });
-  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Only a few weeks around today are drawn at first; more load as the list nears either end.
+  const around = (day: string) => ({ start: addDays(day, -BEFORE), end: addDays(day, AHEAD) });
+  const [range, setRange] = useState(() => around(today));
+  // How far back scrolling goes: the earliest item (at most three years).
+  const floor = useMemo(() => {
+    const limit = addDays(today, -3 * 365);
+    const earliest = (items ?? []).reduce((m, i) => (i.date < m ? i.date : m), today);
+    return earliest < limit ? limit : earliest;
+  }, [items, today]);
   const scroller = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(today);
   const [jump, setJump] = useState<string | null>(today);
   // Scroll to a day (the first shown on or after it), once it's in the list.
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (!jump || !range || !el) return;
+    if (!jump || !items || !el) return;
     const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
     const row = rows.find((r) => (r.dataset.day ?? "") >= jump) ?? rows[rows.length - 1];
     if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
     setInView(jump);
     setJump(null);
-  }, [jump, range]);
+  }, [jump, range, items]);
+  // A day outside what's loaded starts a fresh window around it rather than drawing everything between.
   const goTo = (day: string) => {
-    setRange((r) => r && { start: day < r.start ? day : r.start, end: day > r.end ? addDays(day, 60) : r.end });
+    if (day < range.start || day > range.end) setRange(around(day));
     setJump(day);
   };
+  // Days added above would push the list down, so the scroll moves by however much taller it got.
+  const grewFrom = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && grewFrom.current != null) el.scrollTop += el.scrollHeight - grewFrom.current;
+    grewFrom.current = null;
+  }, [range.start]);
   // The title follows the first day in view.
   const onScroll = () => {
     const el = scroller.current;
@@ -417,17 +428,23 @@ export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
     const row = [...el.querySelectorAll<HTMLElement>("[data-day]")].find((r) => r.getBoundingClientRect().bottom > top + 8);
     if (row?.dataset.day && row.dataset.day !== inView) setInView(row.dataset.day);
   };
-  // Nearing the end loads the next three months.
-  const sentinel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = sentinel.current;
-    if (!el || !range) return;
+  // Nearing either end loads the next two months that way.
+  const topEdge = useRef<HTMLDivElement>(null);
+  const bottomEdge = useRef<HTMLDivElement>(null);
+  const watchEdge = (edge: HTMLDivElement | null, grow: () => void) => {
+    if (!edge || !items) return;
     const watch = new IntersectionObserver((seen) => {
-      if (seen.some((e) => e.isIntersecting)) setRange((r) => r && { ...r, end: addDays(r.end, 90) });
+      if (seen.some((e) => e.isIntersecting)) grow();
     }, { root: scroller.current, rootMargin: "600px" });
-    watch.observe(el);
+    watch.observe(edge);
     return () => watch.disconnect();
-  }, [range?.end]); // eslint-disable-line react-hooks/exhaustive-deps
+  };
+  useEffect(() => watchEdge(bottomEdge.current, () => setRange((r) => ({ ...r, end: addDays(r.end, STEP) }))), [range.end, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => watchEdge(topEdge.current, () => {
+    if (range.start <= floor || jump) return;
+    grewFrom.current = scroller.current?.scrollHeight ?? null;
+    setRange((r) => { const start = addDays(r.start, -STEP); return { ...r, start: start < floor ? floor : start }; });
+  }), [range.start, floor, jump, items]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-schedule-day" />}>
@@ -439,10 +456,11 @@ export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
         {toggle}
       </PageHeader>
       {filters}
-      <div ref={scroller} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6" data-testid="schedule-scroller">
+      <div ref={scroller} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 [overflow-anchor:none]" data-testid="schedule-scroller">
         <div className="mx-auto grid max-w-2xl gap-4 pb-4">
-          {range && <ScheduleList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
-          <div ref={sentinel} className="h-px" aria-hidden />
+          <div ref={topEdge} className="h-px" aria-hidden />
+          {items && <ScheduleList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
+          <div ref={bottomEdge} className="h-px" aria-hidden />
         </div>
       </div>
     </>
