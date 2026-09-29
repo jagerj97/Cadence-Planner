@@ -285,6 +285,49 @@ function span(i: Item) {
   return { s, e };
 }
 
+/** How many days after the one it starts on an occurrence reaches (0: it's over the same day). */
+export function lastDayOffset(i: Item): number {
+  if (isTimed(i)) return Math.max(0, Math.floor((span(i).e - 1) / 1440));
+  return i.endDate && i.endDate > i.date ? Math.min(366, dayDiff(i.date, i.endDate)) : 0;
+}
+
+/**
+ * Items the month and week views draw as one bar across the days they cover: all-day (or anytime)
+ * items over several days, and timed ones lasting a day or more. Shorter overnight items stay per day.
+ */
+export function isLong(i: Item): boolean {
+  if (isTimed(i)) { const { s, e } = span(i); return e - s >= 1440; }
+  return lastDayOffset(i) > 0;
+}
+
+/** A long item's bar within a run of days: its first and last column, and whether it carries on past them. */
+export type Bar = { item: Item; occ: string; from: number; to: number; before: boolean; after: boolean; lane: number };
+
+/** The bars for `days` days from `start`, stacked into lanes so none overlap. */
+export function barsFor(list: Item[], start: string, days: number): { bars: Bar[]; lanes: number } {
+  const end = addDays(start, days - 1);
+  const bars: Bar[] = [];
+  for (const i of list) {
+    if (!isLong(i)) continue;
+    const len = lastDayOffset(i);
+    // Occurrences that begin up to `len` days before the range still reach into it.
+    for (let d = addDays(start, -len); d <= end; d = addDays(d, 1)) {
+      if (!occursOn(i, d)) continue;
+      const last = addDays(d, len);
+      bars.push({ item: i, occ: d, from: Math.max(0, dayDiff(start, d)), to: Math.min(days - 1, dayDiff(start, last)), before: d < start, after: last > end, lane: 0 });
+    }
+  }
+  bars.sort((a, b) => a.from - b.from || b.to - b.from - (a.to - a.from) || a.item.title.localeCompare(b.item.title));
+  const laneEnds: number[] = [];
+  for (const bar of bars) {
+    let lane = laneEnds.findIndex((endCol) => endCol < bar.from);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = bar.to;
+    bar.lane = lane;
+  }
+  return { bars, lanes: laneEnds.length };
+}
+
 /** True on any date covered by a single or recurring occurrence. */
 export function appearsOn(i: Item, day: string): boolean {
   const days = i.endDate && i.endDate >= i.date ? Math.min(366, dayDiff(i.date, i.endDate)) : isTimed(i) && toMin(i.endTime) <= toMin(i.startTime) ? 1 : 0;
@@ -328,34 +371,84 @@ export function untimedForDay(list: Item[], day: string) {
   return list.filter((i) => !isTimed(i) && appearsOn(i, day));
 }
 
-/** lay out overlapping blocks into columns */
-export function layoutBlocks(blocks: Block[]) {
-  const res: { b: Block; col: number; cols: number }[] = [];
-  let cluster: { b: Block; col: number }[] = [];
+/**
+ * Overlapping blocks laid out like Google Calendar. Blocks come in by start (longer first):
+ * - one goes in the first column that's free by its start;
+ * - failing that, if it starts at least `nestMin` minutes after the block it lands on (so that one's
+ *   title and time stay in view), it's drawn on top of it, indented one step (`depth`);
+ * - otherwise it starts too close to share the space, so it gets a column of its own, side by side.
+ * `cols` is how many columns its cluster of overlapping blocks uses.
+ */
+export function arrangeBlocks(blocks: Block[], nestMin: number) {
+  const res: { b: Block; col: number; cols: number; depth: number }[] = [];
+  let cluster: { b: Block; col: number; depth: number }[] = [];
+  let colEnds: number[] = [];
   let clusterEnd = -1;
   const flush = () => {
-    const cols = Math.max(1, ...cluster.map((c) => c.col + 1));
+    const cols = Math.max(1, colEnds.length);
     for (const c of cluster) res.push({ ...c, cols });
     cluster = [];
+    colEnds = [];
   };
   for (const b of blocks) {
     if (b.start >= clusterEnd && cluster.length) flush();
-    const used = new Set(cluster.filter((c) => c.b.end > b.start).map((c) => c.col));
-    let col = 0;
-    while (used.has(col)) col++;
-    cluster.push({ b, col });
+    let col = colEnds.findIndex((end) => end <= b.start);
+    let depth = 0;
+    if (col < 0) {
+      // The block it would sit on: the latest to start of those still going (the innermost, on a tie).
+      const under = cluster
+        .filter((c) => c.b.end > b.start)
+        .reduce<{ b: Block; col: number; depth: number } | null>((best, c) => (!best || c.b.start > best.b.start || (c.b.start === best.b.start && c.depth > best.depth) ? c : best), null);
+      if (under && b.start - under.b.start >= nestMin) {
+        col = under.col;
+        depth = under.depth + 1;
+      } else {
+        col = colEnds.length;
+        colEnds.push(b.end);
+      }
+    }
+    colEnds[col] = Math.max(colEnds[col] ?? 0, b.end);
+    cluster.push({ b, col, depth });
     clusterEnd = Math.max(clusterEnd, b.end);
   }
   if (cluster.length) flush();
   return res;
 }
 
-
 /** Where a habit's history begins: its date, or its earliest mark if one was logged before that. */
 function historyStart(i: Item) {
   const marks = listOf(i.completions) as string[];
   return marks.reduce((m, c) => (c.slice(0, 10) < m ? c.slice(0, 10) : m), i.date);
 }
+/**
+ * "Shift to today" for a habit that isn't on today: its schedule moves so the next day it's due becomes
+ * today, and every later one moves by the same number of days (a Mon/Wed/Fri habit shifted on a
+ * Tuesday becomes Sun/Tue/Thu; an every-other-day one starts counting from today). Weekdays-only
+ * habits become weekly on the shifted days. Returns the new start date and repeat, or null if the
+ * habit is already on today.
+ */
+export function shiftedToToday(i: Pick<Item, "date" | "recurrence" | "kind" | "exceptions" | "uid">, today: string): { date: string; recurrence: Recurrence } | null {
+  const item = i as Item;
+  if (occursOn(item, today)) return null;
+  const r = recOf(item);
+  let next: string | null = null;
+  for (let n = 1, d = addDays(today, 1); n <= 400; n++, d = addDays(d, 1)) if (occursOn(item, d)) { next = d; break; }
+  if (!next) return null;
+  const shift = -dayDiff(today, next);
+  const days = r.freq === "weekdays" ? [1, 2, 3, 4, 5] : r.freq === "weekly" ? (r.days?.length ? r.days : [dow(i.date)]) : null;
+  return {
+    date: today,
+    recurrence: days
+      ? { ...r, freq: "weekly", days: [...new Set(days.map((w) => mod(w + shift, 7)))].sort((a, b) => a - b) }
+      : r,
+  };
+}
+
+/**
+ * The days in a row a habit has been done (half counts), or, with no streak going, minus the days in
+ * a row it's been missed (-3: missed its last three days). Today counts once it's done, and isn't
+ * missed until it's over. Days it isn't scheduled don't count either way.
+ */
 export function streakOf(i: Item, today: string) {
   const done = touchedOf(i);
   const start = historyStart(i);
@@ -371,7 +464,14 @@ export function streakOf(i: Item, today: string) {
     }
     d = addDays(d, -1);
   }
-  return cur;
+  if (cur > 0) return cur;
+  let missed = 0;
+  for (let n = 0, day = addDays(today, -1); n < 400 && day >= start; n++, day = addDays(day, -1)) {
+    if (!occursOn(i, day)) continue;
+    if (done.has(day)) break;
+    missed++;
+  }
+  return -missed;
 }
 export function bestStreak(i: Item, today: string) {
   const done = touchedOf(i);

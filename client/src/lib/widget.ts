@@ -1,6 +1,6 @@
 import type { Item, Settings } from "@shared/schema";
 import {
-  KIND_META, addDays, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, layoutBlocks, recLabel, recOf,
+  KIND_META, addDays, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
   routineSchedules, sunTimes, todayStr,
 } from "./cal";
 import { allDayFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
@@ -78,9 +78,10 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       // No sky or sunrise and sunset marks when they're turned off in Settings.
       sunrise: sun.polar || !settings.showSun ? null : Math.round(sun.sunrise),
       sunset: sun.polar || !settings.showSun ? null : Math.round(sun.sunset),
-      blocks: layoutBlocks(blocksForDay(items, day)).map(({ b, col, cols }) => ({
+      // Laid out like the app's timeline (items well into another nest on top of it, indented).
+      blocks: arrangeBlocks(blocksForDay(items, day), 45).map(({ b, col, cols, depth }) => ({
         title: b.item.title, start: b.start, end: b.end, fullStart: b.fullStart, fullEnd: b.fullEnd,
-        continues: b.continues ?? "", col, cols, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),
+        continues: b.continues ?? "", col, cols, depth, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),
         accent: firstTagColor(b.item, settings) ?? "",
         // The line under the title, as the timeline shows it.
         sub: (b.continues === "before" || b.continues === "through"

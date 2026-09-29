@@ -77,7 +77,9 @@ public class AppActivity extends Activity {
     /** Shows the plain or the cat home screen icon; the new one is turned on before the old one is turned off. */
     static void setPlain(Context context, boolean plain) {
         if (plain(context) == plain) return;
-        context.getSharedPreferences("cadence_appearance", MODE_PRIVATE).edit().putBoolean(PLAIN, plain).apply();
+        context.getSharedPreferences("cadence_appearance", MODE_PRIVATE).edit().putBoolean(PLAIN, plain).commit();
+        // Reminders switch between the jingle and the chime.
+        Notifications.createChannel(context);
         PackageManager packages = context.getPackageManager();
         String base = AppActivity.class.getPackage().getName();
         ComponentName cat = new ComponentName(context, base + ".MainActivity");
@@ -259,6 +261,12 @@ public class AppActivity extends Activity {
             intent.setAction(null); // not again if the activity is recreated
             FocusTimer.finish(this);
         }
+    }
+
+    /** The phone switched between light and dark: the page follows it with Display mode set to System. */
+    @Override public void onConfigurationChanged(android.content.res.Configuration config) {
+        super.onConfigurationChanged(config);
+        dispatchToPage("cadence-ui-mode");
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -463,6 +471,15 @@ public class AppActivity extends Activity {
                 pendingBridgeLocation = true;
                 requestPermissions(new String[] { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }, PERMISSION_LOCATION);
             });
+        }
+
+        @JavascriptInterface public boolean systemDark() {
+            int night = getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+            return night == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        }
+
+        @JavascriptInterface public void setSound(boolean on) {
+            Notifications.setSound(AppActivity.this, on);
         }
 
         @JavascriptInterface public void setPlain(boolean plain) {

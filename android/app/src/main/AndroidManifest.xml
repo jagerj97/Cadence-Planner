@@ -21,6 +21,7 @@
         <activity
             android:name=".AppActivity"
             android:exported="false"
+            android:configChanges="uiMode"
             android:windowSoftInputMode="adjustResize" />
         <!-- The app's own icon is the logotype: Android shows it in expanded notifications and can't
              switch it. The home screen icon is the cat (the logomark), or the logotype with "Let Cadence

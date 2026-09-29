@@ -315,7 +315,6 @@ function TaskQuickAdd() {
         priority: high ? "high" : "normal",
       }),
     );
-    toast({ title: "Task added", description: p.title });
     setText("");
   };
   return (

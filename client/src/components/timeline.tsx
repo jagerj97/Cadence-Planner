@@ -10,7 +10,7 @@ import {
   fmtTime,
   fromMin,
   kindOf,
-  layoutBlocks,
+  arrangeBlocks,
   nowMin,
   recOf,
   skyGradient,
@@ -50,6 +50,7 @@ export function DayColumn({
   compact = false,
   showNow = true,
   showRoutines = true,
+  labelContinued = true,
 }: {
   day: string;
   items: Item[];
@@ -57,6 +58,9 @@ export function DayColumn({
   compact?: boolean;
   showNow?: boolean;
   showRoutines?: boolean;
+  /** Label the part of an overnight item (or routine) carried on from the day before; the week view
+   *  leaves it unlabelled after its first day, so a night reads as one item. */
+  labelContinued?: boolean;
   bedMin?: number;
   wakeMin?: number;
 }) {
@@ -65,7 +69,9 @@ export function DayColumn({
   const { openEditor, openDetails, startFocus } = usePlanner();
   const saveItem = useSaveItem();
   const { toggle } = useItemMutations();
-  const blocks = layoutBlocks(blocksForDay(items, day));
+  // Overlaps are laid out like Google Calendar: an item that starts once the one under it has room
+  // for its title and time (about 36px) is drawn on top, indented; closer starts go side by side.
+  const blocks = arrangeBlocks(blocksForDay(items, day), Math.ceil((36 / hourPx) * 60));
   const routineBlocks = showRoutines ? blocksForDay(routineSchedules(settings), day) : [];
   const isToday = day === todayStr();
   const [now, setNow] = useState(nowMin());
@@ -105,7 +111,7 @@ export function DayColumn({
         pendingRef.current = null;
         suppressClickRef.current = true;
         haptic("warn");
-        toast({ title: "Synced items cannot be moved!" });
+        toast({ title: "Synced items cannot be moved!", variant: "destructive" });
       }, 750);
       pendingRef.current = locked;
       return;
@@ -138,7 +144,9 @@ export function DayColumn({
     }
     const current = dragRef.current;
     if (!current) return;
-    const delta = Math.round(pxToMin(dy) / 5) * 5;
+    // Snap to the quarter hour: the new start (moving) or end (resizing) lands on :00, :15, :30 or :45.
+    const edge = current.mode === "move" ? current.s0 : current.e0;
+    const delta = Math.round((edge + pxToMin(dy)) / 15) * 15 - edge;
     if (Math.abs(dy) > 4 || current.moved) {
       dragRef.current = { ...current, delta, moved: true };
       setDrag(dragRef.current);
@@ -163,7 +171,7 @@ export function DayColumn({
     if (d.mode === "move") {
       const s = toMin(i.startTime) + d.delta;
       const e = toMin(i.endTime || fromMin(toMin(i.startTime) + 30)) + d.delta;
-      changes = { startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: fromMin(e) };
+      changes = { startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: kindOf(i) === "task" ? null : fromMin(e) };
     } else {
       const e = Math.max(b.start + 15, d.e0 + d.delta);
       changes = { endTime: fromMin(Math.min(e, 1440 - 1)) };
@@ -204,9 +212,11 @@ export function DayColumn({
             borderColor: colorOf(b.item),
           }}
         >
-          <span className="block max-w-full truncate text-[10px] sm:text-xs font-medium" style={{ color: colorOf(b.item) }}>
-            {b.item.title}
-          </span>
+          {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && (
+            <span className="block max-w-full truncate text-[10px] sm:text-xs font-medium" style={{ color: colorOf(b.item) }}>
+              {b.item.title}
+            </span>
+          )}
         </div>
       ))}
       {!compact && !sun.polar && settings.showSun && (
@@ -223,7 +233,7 @@ export function DayColumn({
         </>
       )}
 
-      {blocks.map(({ b, col, cols }) => {
+      {blocks.map(({ b, col, cols, depth }) => {
         const k = kindOf(b.item);
         const M = KIND_META[k];
         const live = drag?.key === b.key && drag.moved ? drag : null;
@@ -241,6 +251,10 @@ export function DayColumn({
         const recurring = recOf(b.item).freq !== "none";
         const active = isToday && now >= b.start && now < b.end;
         const gap = compact ? 2 : 4;
+        const indent = depth * (compact ? 8 : 14);
+        // Drawn on top of another item: solid, with a thin edge in the card color to set it apart.
+        const nested = depth > 0;
+        const fill = tint(b.item, k === "sleep" ? 0.1 : 0.15);
         return (
           <div
             key={b.key}
@@ -271,15 +285,15 @@ export function DayColumn({
             style={{
               top: b.continues === "before" || b.continues === "through" ? 0 : top + 1,
               height: h + (b.continues === "before" || b.continues === "through" ? 1 : 0) + (b.continues === "after" || b.continues === "through" ? 1 : 0),
-              left: `calc(${(col / cols) * 100}% + ${gap}px)`,
-              width: `calc(${100 / cols}% - ${gap * 2}px)`,
-              // While lifted, a solid card under the tint keeps the grid from showing through.
-              background: lifted
-                ? `linear-gradient(${tint(b.item, k === "sleep" ? 0.1 : 0.15)}, ${tint(b.item, k === "sleep" ? 0.1 : 0.15)}), hsl(var(--card))`
-                : tint(b.item, k === "sleep" ? 0.1 : 0.15),
+              left: `calc(${(col / cols) * 100}% + ${gap + indent}px)`,
+              width: `calc(${100 / cols}% - ${gap * 2 + indent}px)`,
+              zIndex: lifted ? undefined : nested ? depth : undefined,
+              // While lifted (or on top of another item), a solid card under the tint keeps what's
+              // behind from showing through.
+              background: lifted || nested ? `linear-gradient(${fill}, ${fill}), hsl(var(--card))` : fill,
               transform: lifted ? "scale(1.04)" : undefined,
               borderLeft: `3px solid ${accentOf(b.item, settings)}`,
-              boxShadow: active ? `inset 0 0 0 1.5px ${accentOf(b.item, settings)}` : undefined,
+              boxShadow: [active && `inset 0 0 0 1.5px ${accentOf(b.item, settings)}`, nested && "0 0 0 1px hsl(var(--card))"].filter(Boolean).join(", ") || undefined,
             }}
             data-testid={`block-${b.key}`}
           >
@@ -303,7 +317,7 @@ export function DayColumn({
                   {b.done && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                 </button>
               )}
-              <div className="min-w-0 flex-1 overflow-hidden">
+              {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && <div className="min-w-0 flex-1 overflow-hidden">
                 <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm", b.done && "line-through")}>
                   {!checkable && !compact && <M.icon className="h-3.5 w-3.5 shrink-0" style={{ color: colorOf(b.item) }} />}
                   <span className="truncate whitespace-nowrap">{b.item.title}</span>
@@ -327,7 +341,7 @@ export function DayColumn({
                     {b.item.notes.trim()}
                   </p>
                 )}
-              </div>
+              </div>}
               {!compact && k !== "sleep" && !tiny && (
                 <button
                   type="button"
@@ -344,7 +358,8 @@ export function DayColumn({
                 </button>
               )}
             </div>
-            {b.continues !== "before" && b.continues !== "through" && !b.item.source.startsWith("feed:") && (
+            {/* The resize handle; tasks have no end to drag (they're due at their time). */}
+            {b.continues !== "before" && b.continues !== "through" && !b.item.source.startsWith("feed:") && k !== "task" && (
               <div
                 className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"
                 onPointerDown={(ev) => beginDrag(ev, b, "resize")}

@@ -16,7 +16,8 @@ export function WhatsNew() {
     setClosed(true);
     save.mutate({ seenVersion: APP_VERSION });
   };
-  const notes = CHANGELOG[APP_VERSION] ?? ["Fixes and improvements."];
+  const notes = CHANGELOG[APP_VERSION] ?? { changes: ["Fixes and improvements."] };
+  const sections = [["Fixes", notes.fixes], ["Changes", notes.changes]] as const;
   return (
     <Dialog open={open} onOpenChange={(o) => !o && dismiss()}>
       <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-whats-new">
@@ -24,9 +25,14 @@ export function WhatsNew() {
           <DialogTitle className="text-base leading-snug">v{APP_VERSION} — What's new</DialogTitle>
           <DialogDescription className="sr-only">What changed in this update</DialogDescription>
         </DialogHeader>
-        <ul className="grid gap-2 pl-5 text-sm list-disc marker:text-primary" data-testid="list-whats-new">
-          {notes.map((note) => <li key={note}>{note}</li>)}
-        </ul>
+        {sections.map(([heading, list]) => !!list?.length && (
+          <section key={heading} className="grid gap-2" data-testid={`section-whats-new-${heading.toLowerCase()}`}>
+            <h3 className="text-sm font-semibold">{heading}</h3>
+            <ul className="grid gap-2 pl-5 text-sm list-disc marker:text-primary">
+              {list.map((note) => <li key={note}>{note}</li>)}
+            </ul>
+          </section>
+        ))}
       </DialogContent>
     </Dialog>
   );

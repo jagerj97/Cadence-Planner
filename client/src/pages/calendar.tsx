@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/components/shell";
 import { DayColumn, HourLabels } from "@/components/timeline";
@@ -8,6 +8,12 @@ import type { Item, WeekDay } from "@shared/schema";
 import {
   DAY_SHORT,
   addDays,
+  barsFor,
+  dayDiff,
+  isLong,
+  isTimed,
+  lastDayOffset,
+  type Bar,
   blocksForDay,
   colorOf,
   fmtDate,
@@ -24,10 +30,54 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { accentOf } from "@/components/taskTags";
+import { ScheduleList } from "@/components/scheduleList";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const WEEK_HOUR = 48;
+/** Lines of items a month day shows before "+N more". */
+const MONTH_LINES = 3;
+
+/** Covers a whole grid row, so the bars in it are placed against the row rather than a cell. */
+function BarLayer({ children }: { children: ReactNode }) {
+  return <div className="pointer-events-none absolute inset-0 [&>*]:pointer-events-auto" style={{ gridColumn: "1 / -1", gridRow: "1 / -1" }}>{children}</div>;
+}
+
+/**
+ * An item over several days, drawn once across them. Square ends where it carries on past the days
+ * shown. Its left and right sit inside the day cells' padding (--pad) unless it continues.
+ */
+function SpanBar({ bar, days, className, style, onOpen, thinOnPhone }: {
+  bar: Bar; days: number; className?: string; style?: React.CSSProperties; onOpen: () => void;
+  /** On phones, a thin line in the item's color (like the week view's other all-day items). */
+  thinOnPhone?: boolean;
+}) {
+  const { settings } = useSettings();
+  const i = bar.item;
+  const time = isTimed(i) && !bar.before ? i.startTime : null;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${i.title}${time ? `, ${fmtTime(time, true)}` : ""}, ${fmtDate(bar.occ, { month: "short", day: "numeric" })} to ${fmtDate(addDays(bar.occ, lastDayOffset(i)), { month: "short", day: "numeric" })}`}
+      // Not hover-elevate: it makes the element position: relative, which would undo the placement.
+      className={cn("absolute z-[1] flex items-center gap-0.5 sm:gap-1 overflow-hidden rounded px-0.5 sm:px-1 text-left leading-none hover:brightness-125",
+        bar.before && "rounded-l-none", bar.after && "rounded-r-none", className)}
+      style={{
+        left: `calc(${(bar.from / days) * 100}% + ${bar.before ? "0px" : "var(--pad)"})`,
+        width: `calc(${((bar.to - bar.from + 1) / days) * 100}% - ${bar.before ? "0px" : "var(--pad)"} - ${bar.after ? "0px" : "var(--pad)"})`,
+        background: `color-mix(in srgb, ${colorOf(i)} 22%, hsl(var(--card)))`,
+        ...style,
+      }}
+      data-testid={`bar-${i.id}-${bar.occ}`}
+    >
+      {thinOnPhone && <span className="absolute inset-0 sm:hidden" style={{ background: accentOf(i, settings) }} aria-hidden />}
+      <span className={cn("h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0", thinOnPhone && "hidden sm:block")} style={{ background: accentOf(i, settings) }} />
+      {time && <span className="hidden sm:inline text-muted-foreground tnum shrink-0">{fmtTime(time, true)}</span>}
+      <span className={cn("block min-w-0 truncate whitespace-nowrap", thinOnPhone && "hidden sm:block")}>{i.title}</span>
+    </button>
+  );
+}
 
 type CalendarGroup = "habits" | "tasks" | "events" | "focus";
 type CalendarVisibility = Record<CalendarGroup, boolean>;
@@ -62,6 +112,9 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
   const start = startOfWeek(anchor, settings.weekStartsOn);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const list = (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; });
+  const weekBars = barsFor(list, start, 7);
+  // Items a day or longer are bars in the header instead of blocks in the hours.
+  const gridList = list.filter((i) => !(isTimed(i) && isLong(i)));
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (scroller.current) scroller.current.scrollTop = 0;
@@ -93,57 +146,85 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
         <div className="h-full card-md flex flex-col overflow-hidden">
           <div className="flex min-w-0 flex-1 flex-col min-h-0">
             <div className="min-w-0 flex flex-col flex-1 min-h-0">
-              {/* header */}
-              <div className="flex border-b">
-                <div className="w-9 sm:w-14 shrink-0" />
-                {days.map((d) => {
-                  const today = d === todayStr();
-                  const untimed = untimedForDay(list, d);
-                  return (
-                    <div key={d} className="flex-1 min-w-0 border-l px-0.5 sm:px-1.5 py-2">
-                      <button
-                        onClick={() => nav(d === todayStr() ? "/" : `/day/${d}`)}
-                        className="flex w-full flex-col sm:flex-row items-center gap-0 sm:gap-1.5 rounded sm:px-1 hover-elevate"
-                        aria-label={fmtDate(d, { weekday: "long", month: "short", day: "numeric" })}
-                        data-testid={`link-day-${d}`}
-                      >
-                        <span className="text-[11px] sm:text-xs text-muted-foreground"><span className="sm:hidden">{DAY_SHORT[parseYmd(d).getDay()].slice(0, 1)}</span><span className="hidden sm:inline">{DAY_SHORT[parseYmd(d).getDay()]}</span></span>
-                        <span
-                          className={cn(
-                            "text-[12px] sm:text-sm font-semibold tnum",
-                            today && "rounded-full bg-primary text-primary-foreground px-1 sm:px-1.5",
-                          )}
+              {/* header: the days, a bar for each item over several days, then each day's other all-day items */}
+              <div className="border-b [--lane:10px] [--pad:2px] sm:[--lane:22px] sm:[--pad:6px]">
+                <div className="flex">
+                  <div className="w-9 sm:w-14 shrink-0" />
+                  {days.map((d) => {
+                    const today = d === todayStr();
+                    return (
+                      <div key={d} className="flex-1 min-w-0 border-l px-0.5 sm:px-1.5 pt-2">
+                        <button
+                          onClick={() => nav(d === todayStr() ? "/" : `/day/${d}`)}
+                          className="flex w-full flex-col sm:flex-row items-center gap-0 sm:gap-1.5 rounded sm:px-1 hover-elevate"
+                          aria-label={fmtDate(d, { weekday: "long", month: "short", day: "numeric" })}
+                          data-testid={`link-day-${d}`}
                         >
-                          {parseYmd(d).getDate()}
-                        </span>
-                      </button>
-                      <div className="mt-1 grid gap-0.5 min-h-[20px]">
-                        {untimed.slice(0, 2).map((i) => (
-                          <button
-                            key={i.id}
-                            onClick={() => openDetails(i, d)}
-                            aria-label={i.title}
-                            className="h-2.5 sm:h-auto min-w-0 truncate rounded px-0.5 sm:px-1 text-left text-xs"
-                            style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
+                          <span className="text-[11px] sm:text-xs text-muted-foreground"><span className="sm:hidden">{DAY_SHORT[parseYmd(d).getDay()].slice(0, 1)}</span><span className="hidden sm:inline">{DAY_SHORT[parseYmd(d).getDay()]}</span></span>
+                          <span
+                            className={cn(
+                              "text-[12px] sm:text-sm font-semibold tnum",
+                              today && "rounded-full bg-primary text-primary-foreground px-1 sm:px-1.5",
+                            )}
                           >
-                            <span className="block sm:hidden h-1.5 w-full rounded-full" style={{ background: accentOf(i, settings) }} aria-hidden />
-                            <span className="hidden sm:inline">{i.title}</span>
-                          </button>
-                        ))}
-                        {untimed.length > 2 && <span className="text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{untimed.length - 2}<span className="hidden sm:inline"> more</span></span>}
+                            {parseYmd(d).getDate()}
+                          </span>
+                        </button>
                       </div>
+                    );
+                  })}
+                </div>
+                {weekBars.lanes > 0 && (
+                  <div className="flex">
+                    <div className="w-9 sm:w-14 shrink-0" />
+                    <div className="relative grid flex-1 grid-cols-7 pt-1" style={{ height: `calc(${weekBars.lanes} * var(--lane) + 4px)` }} data-testid="week-bars">
+                      {days.map((d) => <div key={d} className="border-l" aria-hidden />)}
+                      <BarLayer>
+                        {weekBars.bars.map((b) => (
+                          <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} thinOnPhone className="h-1.5 sm:h-5 text-xs"
+                            style={{ top: `calc(4px + ${b.lane} * var(--lane))` }} onOpen={() => openDetails(b.item, b.occ)} />
+                        ))}
+                      </BarLayer>
                     </div>
-                  );
-                })}
+                  </div>
+                )}
+                <div className="flex">
+                  <div className="w-9 sm:w-14 shrink-0" />
+                  {days.map((d) => {
+                    const untimed = untimedForDay(list, d).filter((i) => !isLong(i));
+                    return (
+                      <div key={d} className="flex-1 min-w-0 border-l px-0.5 sm:px-1.5 pb-2">
+                        <div className="mt-1 grid gap-0.5 min-h-[20px]">
+                          {untimed.slice(0, 2).map((i) => (
+                            <button
+                              key={i.id}
+                              onClick={() => openDetails(i, d)}
+                              aria-label={i.title}
+                              className="h-2.5 sm:h-auto min-w-0 truncate rounded px-0.5 sm:px-1 text-left text-xs"
+                              style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
+                            >
+                              <span className="block sm:hidden h-1.5 w-full rounded-full" style={{ background: accentOf(i, settings) }} aria-hidden />
+                              <span className="hidden sm:inline">{i.title}</span>
+                            </button>
+                          ))}
+                          {untimed.length > 2 && <span className="text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{untimed.length - 2}<span className="hidden sm:inline"> more</span></span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               <div ref={scroller} className="flex-1 overflow-y-auto scroll-thin">
                 <div className="flex pt-2 pb-2">
                   <HourLabels hourPx={WEEK_HOUR} narrow />
-                  {days.map((d) => (
+                  {days.map((d, n) => (
                     <div key={d} className="flex-1 min-w-0 border-l flex">
                       <DayColumn
                         day={d}
-                        items={list}
+                        items={gridList}
+                        // Across the week, an overnight item (or routine) is labelled where it starts; its
+                        // morning part carries on unlabelled, except on the first day shown.
+                        labelContinued={n === 0}
                         hourPx={WEEK_HOUR}
                         compact
                         showRoutines // routine bands always show in the week view (not in month view)
@@ -215,51 +296,74 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 grid-rows-6 flex-1">
-            {cells.map((d, idx) => {
-              const inMonth = parseYmd(d).getMonth() === first.getMonth();
-              const today = d === todayStr();
-              const timed = blocksForDay(list, d)
-                .filter((b, index, blocks) => blocks.findIndex((other) => other.item.id === b.item.id) === index)
-                .map((b) => ({ i: b.item, t: b.continues === "before" || b.continues === "through" ? null : b.item.startTime }));
-              const untimed = untimedForDay(list, d).map((i) => ({ i, t: null as string | null }));
-              const all = [...untimed, ...timed].sort(
-                (a, b) => Number(recOf(a.i).freq !== "none") - Number(recOf(b.i).freq !== "none") || Number(!a.i.allDay) - Number(!b.i.allDay) || (a.t || "").localeCompare(b.t || ""),
-              );
+          {/* Six week rows. An item over several days is one bar across them (lanes at the top of the row);
+              the rest are listed in each day. A day shows three lines at most, then "+N more". */}
+          <div className="flex flex-1 flex-col">
+            {Array.from({ length: 6 }, (_, w) => {
+              const week = cells.slice(w * 7, w * 7 + 7);
+              const { bars, lanes } = barsFor(list, week[0], 7);
+              const shownLanes = Math.min(lanes, MONTH_LINES);
               return (
-                <div
-                  key={d}
-                  className={cn("min-w-0 min-h-[66px] sm:min-h-[96px] border-t border-l p-0.5 sm:p-1.5 flex flex-col gap-0.5", idx % 7 === 0 && "border-l-0", idx < 7 && "border-t-0", !inMonth && "bg-muted/40")}
-                  data-testid={`cell-month-${d}`}
-                >
-                  <button
-                    onClick={() => nav(today ? "/" : `/day/${d}`)}
-                    className={cn(
-                      "self-center sm:self-start text-[12px] sm:text-xs font-semibold tnum rounded-full h-5 min-w-5 sm:h-6 sm:min-w-6 px-0.5 sm:px-1.5 hover-elevate",
-                      today ? "bg-primary text-primary-foreground" : inMonth ? "" : "text-muted-foreground",
-                    )}
-                    aria-label={fmtDate(d)}
-                  >
-                    {parseYmd(d).getDate()}
-                  </button>
-                  {all.slice(0, 3).map(({ i, t }) => (
-                    <button
-                      key={i.id + (t || "")}
-                      onClick={() => openDetails(i, d)}
-                      aria-label={`${i.title}${t ? `, ${fmtTime(t, true)}` : ""}`}
-                      className="flex h-3.5 sm:h-auto items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[9px] sm:text-xs leading-none sm:leading-normal hover-elevate min-w-0 overflow-hidden"
-                      style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
-                    >
-                      <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: accentOf(i, settings) }} />
-                      {t && <span className="hidden sm:inline text-muted-foreground tnum shrink-0">{fmtTime(t, true)}</span>}
-                      <span className="block min-w-0 truncate whitespace-nowrap">{i.title}</span>
-                    </button>
-                  ))}
-                  {all.length > 3 && (
-                    <button onClick={() => nav(`/day/${d}`)} className="text-center sm:text-left text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1 hover:text-foreground">
-                      +{all.length - 3}<span className="hidden sm:inline"> more</span>
-                    </button>
-                  )}
+                <div key={week[0]} className="relative grid flex-1 grid-cols-7 [--lane:16px] [--pad:2px] [--top:24px] sm:[--lane:22px] sm:[--pad:6px] sm:[--top:32px]" data-testid={`row-month-${week[0]}`}>
+                  {week.map((d, col) => {
+                    const idx = w * 7 + col;
+                    const inMonth = parseYmd(d).getMonth() === first.getMonth();
+                    const today = d === todayStr();
+                    // Overnight items show on the day they start; long ones are bars.
+                    const timed = blocksForDay(list, d)
+                      .filter((b) => !isLong(b.item) && b.continues !== "before" && b.continues !== "through")
+                      .filter((b, index, blocks) => blocks.findIndex((other) => other.item.id === b.item.id) === index)
+                      .map((b) => ({ i: b.item, t: b.item.startTime }));
+                    const untimed = untimedForDay(list, d).filter((i) => !isLong(i)).map((i) => ({ i, t: null as string | null }));
+                    const all = [...untimed, ...timed].sort(
+                      (a, b) => Number(recOf(a.i).freq !== "none") - Number(recOf(b.i).freq !== "none") || Number(!a.i.allDay) - Number(!b.i.allDay) || (a.t || "").localeCompare(b.t || ""),
+                    );
+                    const room = MONTH_LINES - shownLanes;
+                    const hidden = Math.max(0, all.length - room) + bars.filter((b) => b.lane >= MONTH_LINES && b.from <= col && col <= b.to).length;
+                    return (
+                      <div
+                        key={d}
+                        className={cn("min-w-0 min-h-[66px] sm:min-h-[96px] border-t border-l p-0.5 sm:p-1.5 flex flex-col gap-0.5", idx % 7 === 0 && "border-l-0", idx < 7 && "border-t-0", !inMonth && "bg-muted/40")}
+                        data-testid={`cell-month-${d}`}
+                      >
+                        <button
+                          onClick={() => nav(today ? "/" : `/day/${d}`)}
+                          className={cn(
+                            "self-center sm:self-start text-[12px] sm:text-xs font-semibold tnum rounded-full h-5 min-w-5 sm:h-6 sm:min-w-6 px-0.5 sm:px-1.5 hover-elevate",
+                            today ? "bg-primary text-primary-foreground" : inMonth ? "" : "text-muted-foreground",
+                          )}
+                          aria-label={fmtDate(d)}
+                        >
+                          {parseYmd(d).getDate()}
+                        </button>
+                        {shownLanes > 0 && <div className="shrink-0" style={{ height: `calc(${shownLanes} * var(--lane) - 2px)` }} aria-hidden />}
+                        {all.slice(0, room).map(({ i, t }) => (
+                          <button
+                            key={i.id + (t || "")}
+                            onClick={() => openDetails(i, d)}
+                            aria-label={`${i.title}${t ? `, ${fmtTime(t, true)}` : ""}`}
+                            className="flex h-3.5 sm:h-5 items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[9px] sm:text-xs leading-none hover-elevate min-w-0 overflow-hidden"
+                            style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
+                          >
+                            <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: accentOf(i, settings) }} />
+                            {t && <span className="hidden sm:inline text-muted-foreground tnum shrink-0">{fmtTime(t, true)}</span>}
+                            <span className="block min-w-0 truncate whitespace-nowrap">{i.title}</span>
+                          </button>
+                        ))}
+                        {hidden > 0 && (
+                          <button onClick={() => nav(`/day/${d}`)} className="text-center sm:text-left text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1 hover:text-foreground">
+                            +{hidden}<span className="hidden sm:inline"> more</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <BarLayer>
+                    {bars.filter((b) => b.lane < MONTH_LINES).map((b) => (
+                      <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} className="h-3.5 sm:h-5 text-[9px] sm:text-xs"
+                        style={{ top: `calc(var(--top) + ${b.lane} * var(--lane))` }} onOpen={() => openDetails(b.item, b.occ)} />
+                    ))}
+                  </BarLayer>
                 </div>
               );
             })}
@@ -270,12 +374,87 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
   );
 }
 
-/* ---------- Calendar tab: swaps between week and month ---------- */
-type CalView = "week" | "month";
+/**
+ * The schedule view: every day with something on, as a list (like Google Calendar's), from the first
+ * item on; it opens at today and loads further ahead as it's scrolled. The title is the month in view
+ * and opens the month picker to jump to a day; Today comes back to today.
+ */
+export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
+  const { data: items } = useItems();
+  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+  const today = todayStr();
+  const [range, setRange] = useState<{ start: string; end: string } | null>(null);
+  // Back to the earliest item (at most three years), and ahead to the last one-off item or four months.
+  useEffect(() => {
+    if (!items || range) return;
+    const floor = addDays(today, -3 * 365);
+    const earliest = items.reduce((m, i) => (i.date < m ? i.date : m), today);
+    const latest = items.reduce((m, i) => { const last = i.endDate || i.date; return recOf(i).freq === "none" && last > m ? last : m; }, addDays(today, 120));
+    setRange({ start: earliest < floor ? floor : earliest, end: latest });
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scroller = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(today);
+  const [jump, setJump] = useState<string | null>(today);
+  // Scroll to a day (the first shown on or after it), once it's in the list.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!jump || !range || !el) return;
+    const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
+    const row = rows.find((r) => (r.dataset.day ?? "") >= jump) ?? rows[rows.length - 1];
+    if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+    setInView(jump);
+    setJump(null);
+  }, [jump, range]);
+  const goTo = (day: string) => {
+    setRange((r) => r && { start: day < r.start ? day : r.start, end: day > r.end ? addDays(day, 60) : r.end });
+    setJump(day);
+  };
+  // The title follows the first day in view.
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    const row = [...el.querySelectorAll<HTMLElement>("[data-day]")].find((r) => r.getBoundingClientRect().bottom > top + 8);
+    if (row?.dataset.day && row.dataset.day !== inView) setInView(row.dataset.day);
+  };
+  // Nearing the end loads the next three months.
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !range) return;
+    const watch = new IntersectionObserver((seen) => {
+      if (seen.some((e) => e.isIntersecting)) setRange((r) => r && { ...r, end: addDays(r.end, 90) });
+    }, { root: scroller.current, rootMargin: "600px" });
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [range?.end]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <>
+      <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-schedule-day" />}>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={() => goTo(today)} data-testid="button-schedule-today">
+            Today
+          </Button>
+        </div>
+        {toggle}
+      </PageHeader>
+      {filters}
+      <div ref={scroller} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6" data-testid="schedule-scroller">
+        <div className="mx-auto grid max-w-2xl gap-4 pb-4">
+          {range && <ScheduleList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
+          <div ref={sentinel} className="h-px" aria-hidden />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------- Calendar tab: swaps between week, month and schedule ---------- */
+type CalView = "week" | "month" | "schedule";
 let lastView: CalView = "month"; // remembered while the app is open
 export function CalendarPage() {
   const [loc] = useLocation();
-  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : lastView));
+  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/schedule") ? "schedule" : lastView));
   const [visibility, setVisibility] = useState<CalendarVisibility>(() => ({ ...lastVisibility }));
   const pick = (v: CalView) => {
     lastView = v;
@@ -315,14 +494,14 @@ export function CalendarPage() {
   );
   const toggle = (
     <div className="ml-auto flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Calendar view">
-      {(["week", "month"] as CalView[]).map((v) => (
+      {(["week", "month", "schedule"] as CalView[]).map((v) => (
         <button
           key={v}
           role="tab"
           aria-selected={view === v}
           onClick={() => pick(v)}
           className={cn(
-            "h-8 px-4 rounded-full text-xs font-medium transition-colors",
+            "h-8 px-3 sm:px-4 rounded-full text-xs font-medium transition-colors",
             view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
           )}
           data-testid={`tab-view-${v}`}
@@ -334,7 +513,9 @@ export function CalendarPage() {
   );
   return view === "week"
     ? <WeekPage toggle={toggle} filters={filters} visibility={visibility} />
-    : <MonthPage toggle={toggle} filters={filters} visibility={visibility} />;
+    : view === "schedule"
+      ? <SchedulePage toggle={toggle} filters={filters} visibility={visibility} />
+      : <MonthPage toggle={toggle} filters={filters} visibility={visibility} />;
 }
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -433,6 +614,52 @@ function WeekPicker({ title, start, weekStartsOn, onPick }: {
               aria-pressed={selected} data-testid={`button-pick-week-${w}`}>
               <span>{range(w)}</span>
               {w === thisWeek && <span className={cn("text-xs", selected ? "opacity-90" : "text-primary font-medium")}>This week</span>}
+            </button>
+          );
+        })}
+      </div>
+    </PickerTitle>
+  );
+}
+
+/** A page's date title (Today, Journal) that opens a month calendar to jump to a day; `marked` days (the journal's with entries) get a small dot. */
+export function DayPicker({ day, label, marked, onPick, testId = "button-pick-journal-day" }: {
+  day: string; label: string; marked?: Set<string>; onPick: (d: string) => void; testId?: string;
+}) {
+  const { settings } = useSettings();
+  const [open, setOpen] = useState(false);
+  const firstOf = (d: string) => { const x = parseYmd(d); return new Date(x.getFullYear(), x.getMonth(), 1); };
+  const [view, setView] = useState(() => firstOf(day));
+  useEffect(() => { if (open) setView(firstOf(day)); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthStart = ymd(view);
+  const monthEnd = ymd(new Date(view.getFullYear(), view.getMonth() + 1, 0));
+  const gridStart = startOfWeek(monthStart, settings.weekStartsOn);
+  const cells: string[] = [];
+  for (let d = gridStart; d <= monthEnd || cells.length % 7; d = addDays(d, 1)) cells.push(d);
+  const today = todayStr();
+  return (
+    <PickerTitle label={label} open={open} onOpenChange={setOpen} testId={testId}>
+      <StepHeader label={fmtDate(monthStart, { month: "long", year: "numeric" })} unit="month"
+        onPrev={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
+        onNext={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} />
+      <div className="grid grid-cols-7 gap-0.5 text-center">
+        {Array.from({ length: 7 }, (_, n) => (
+          <div key={n} className="pb-1 text-xs text-muted-foreground">{DAY_SHORT[(n + settings.weekStartsOn) % 7].slice(0, 2)}</div>
+        ))}
+        {cells.map((d) => {
+          const inMonth = d >= monthStart && d <= monthEnd;
+          const selected = d === day;
+          return (
+            <button key={d} type="button" onClick={() => { onPick(d); setOpen(false); }}
+              className={cn("relative grid h-9 place-items-center rounded-md text-sm tnum transition-colors",
+                selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted",
+                !inMonth && !selected && "text-muted-foreground/50", d === today && !selected && "text-primary font-semibold")}
+              aria-pressed={selected} aria-label={`${fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}${marked?.has(d) ? ", has entries" : ""}`}
+              data-testid={`button-pick-day-${d}`}>
+              {parseYmd(d).getDate()}
+              {marked?.has(d) && (
+                <span className={cn("absolute bottom-1 h-1 w-1 rounded-full", selected ? "bg-primary-foreground" : "bg-primary")} aria-hidden />
+              )}
             </button>
           );
         })}

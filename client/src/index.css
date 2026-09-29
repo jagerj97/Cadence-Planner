@@ -480,3 +480,10 @@
 @media (max-width: 639px) {
   .wellness-stat { min-height: 88px; padding: 12px 14px 15px; }
 }
+
+/* Display mode switching on its own (sunrise, sunset, the phone's setting) cross-fades the page. */
+:root.theme-fading::view-transition-old(root),
+:root.theme-fading::view-transition-new(root) {
+  animation-duration: 1.6s;
+  animation-timing-function: ease-in-out;
+}

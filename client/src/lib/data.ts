@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "./queryClient";
 import type { Item, InsertItem, Feed, Session, Settings } from "@shared/schema";
-import { DEFAULT_SETTINGS } from "@shared/schema";
+import { DEFAULT_SETTINGS, canonicalTag } from "@shared/schema";
 import { haptic } from "./haptics";
 
 export const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
@@ -22,13 +22,15 @@ export function useSessions() {
 export function useDeleteSession() {
   return useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/sessions/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/sessions"] }),
+    // A session saved to the calendar takes its item and journal entry with it.
+    onSuccess: () => ["/api/sessions", "/api/items", "/api/journal"].forEach((key) => queryClient.invalidateQueries({ queryKey: [key] })),
   });
 }
 
 const invItems = () => queryClient.invalidateQueries({ queryKey: ["/api/items"] });
 // An item's notes are mirrored in the journal (androidApi.ts), so saving either refreshes both.
-const inv = () => Promise.all([invItems(), queryClient.invalidateQueries({ queryKey: ["/api/journal"] })]);
+// Deleting an item also deletes a focus session saved as it, so sessions refresh too.
+const inv = () => Promise.all([invItems(), ...["/api/journal", "/api/sessions"].map((key) => queryClient.invalidateQueries({ queryKey: [key] }))]);
 
 export function useItemMutations() {
   const create = useMutation({
@@ -147,11 +149,11 @@ export function useJournal() {
 }
 export function useJournalMutations() {
   const create = useMutation({
-    mutationFn: async (d: { date: string; title?: string | null; body: string; tags: string[] }) => (await apiRequest("POST", "/api/journal", d)).json() as Promise<JournalEntry>,
+    mutationFn: async (d: { date: string; title?: string | null; body: string; tags: string[]; hashtags?: boolean }) => (await apiRequest("POST", "/api/journal", d)).json() as Promise<JournalEntry>,
     onSuccess: inv,
   });
   const update = useMutation({
-    mutationFn: async ({ id, ...d }: { id: number; title?: string | null; body?: string; tags?: string[]; date?: string }) =>
+    mutationFn: async ({ id, ...d }: { id: number; title?: string | null; body?: string; tags?: string[]; date?: string; hashtags?: boolean }) =>
       (await apiRequest("PATCH", `/api/journal/${id}`, d)).json() as Promise<JournalEntry>,
     onSuccess: inv,
   });
@@ -173,4 +175,6 @@ export const tagsOf = (e: { tags: string }): string[] => {
     return [];
   }
 };
-export const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => m[2].toLowerCase());
+/** The tags a text's #hashtags make, in order (#meeting counts as #meetings). */
+export const hashtagsIn = (body: string) =>
+  [...new Set([...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => canonicalTag(m[2].toLowerCase())))];

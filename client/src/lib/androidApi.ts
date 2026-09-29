@@ -1,4 +1,4 @@
-import { COLOR_THEMES, DEFAULT_SETTINGS, IMPORT_KINDS, RENAMED_THEMES } from "@shared/schema";
+import { COLOR_THEMES, DEFAULT_SETTINGS, DISPLAY_MODES, IMPORT_KINDS, RENAMED_THEMES, canonicalTag } from "@shared/schema";
 import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, type Session, type Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
@@ -10,6 +10,10 @@ export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
   /** Switches to the plain app and notification icons ("Let Cadence outside"), or back. Older builds lack it. */
   setPlain?(plain: boolean): void;
+  /** Whether the phone is set to dark mode (Display mode: System setting). Older builds lack it. */
+  systemDark?(): boolean;
+  /** "Play a sound": whether notifications (reminders, a finished timer) make their sound. Older builds lack it. */
+  setSound?(on: boolean): void;
   /** The same from the Settings switch, then closes the app. Older builds lack it. */
   letOutside?(plain: boolean): void;
   requestLocation?(): void;
@@ -70,6 +74,11 @@ async function put<T extends object>(store: StoreName, entry: T): Promise<T & { 
   if (copy.id == null) delete copy.id;
   // Tasks aren't all-day; one saved that way (an import, a kind change) is done anytime that day.
   if (store === "items" && copy.kind === "task" && copy.allDay) copy.allDay = false;
+  // A task with a time is due at that moment: no end time (it's drawn as a half-hour block) or end date.
+  if (store === "items" && copy.kind === "task" && copy.startTime && (copy.endTime || copy.endDate)) {
+    copy.endTime = null;
+    copy.endDate = null;
+  }
   const id = await result(db.transaction(store, "readwrite").objectStore(store).put(copy));
   return { ...copy, ...(store === "settings" ? {} : { id: Number(id) }) } as T & { id: number };
 }
@@ -94,6 +103,10 @@ const pref = async (): Promise<Settings> => {
   return {
     ...merged,
     colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme,
+    // Settings from before Display mode keep the look they had.
+    displayMode: saved?.displayMode ?? (saved?.appearanceTheme === "light" ? "light" : "dark"),
+    // The default reminder became 30 minutes; settings still on the old default (10) move to it once.
+    ...(saved && !saved.reminderDefault30 ? { defaultReminder: saved.defaultReminder === 10 || saved.defaultReminder === undefined ? 30 : saved.defaultReminder, reminderDefault30: true } : {}),
     // "Joshua" was a placeholder default, not a name anyone entered.
     name: merged.name === "Joshua" ? "" : merged.name,
     routines: merged.routines.map((r) => (r.color?.toLowerCase() === "#5966ad" ? { ...r, color: "#3f51b5" } : r)),
@@ -110,20 +123,22 @@ const validTime = (s: unknown) => s == null || typeof s === "string" && /^([01]\
 function validItem(it: Item | InsertItem): boolean {
   if (!it.title?.trim() || !validDate(it.date) || it.endDate && (!validDate(it.endDate) || it.endDate < it.date) ||
       !validTime(it.startTime) || !validTime(it.endTime)) return false;
+  // A one-off task can be done from a day up to its due date (and time, if it has one).
   if (it.availableFrom && (it.kind !== "task" || !validDate(it.availableFrom) || it.availableFrom > it.date ||
-      it.startTime || it.endTime || it.allDay || JSON.parse(it.recurrence || '{"freq":"none"}').freq !== "none")) return false;
-  // Days before each due date a task can be done: a whole number of days, for untimed tasks only.
+      it.allDay || JSON.parse(it.recurrence || '{"freq":"none"}').freq !== "none")) return false;
+  // Days before each due date a (repeating) task can be done: a whole number of days.
   if (it.leadDays != null && (it.kind !== "task" || !Number.isInteger(it.leadDays) || it.leadDays < 1 || it.leadDays > 365 ||
-      it.startTime || it.availableFrom)) return false;
+      it.availableFrom)) return false;
   return true;
 }
 const entryTitle = (title: unknown) => (typeof title === "string" && title.trim() ? title.trim().slice(0, 200) : null);
-const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => m[2].toLowerCase());
-const normTags = (body: string, tags: unknown) => {
-  const found = new Set<string>();
-  for (const match of body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)) found.add(match[2].toLowerCase());
+// #meeting counts as #meetings, and so on (canonicalTag).
+const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => canonicalTag(m[2].toLowerCase()));
+/** An entry's tags: its text's #hashtags (unless it has them turned off) and the ones added to it. */
+const normTags = (body: string, tags: unknown, useHashtags = true) => {
+  const found = new Set<string>(useHashtags ? hashtagsIn(body) : []);
   if (Array.isArray(tags)) for (const tag of tags) {
-    if (typeof tag === "string" && tag.trim()) found.add(tag.trim().replace(/^#/, "").toLowerCase());
+    if (typeof tag === "string" && tag.trim()) found.add(canonicalTag(tag.trim().replace(/^#/, "").toLowerCase()));
   }
   return JSON.stringify([...found]);
 };
@@ -158,14 +173,17 @@ async function syncNotes(item: Item, notesChanged: boolean): Promise<Item> {
 /** Items saved before notes became journal entries get theirs once, and all-day tasks become anytime that day. */
 const backfillNotes = () => exclusive(async () => {
   for (const item of await list<Item>("items")) {
-    if (item.kind === "task" && item.allDay) await put("items", item);
+    if (item.kind === "task" && (item.allDay || item.startTime && (item.endTime || item.endDate))) await put("items", item);
     if (item.journalId === undefined && !item.journalOff && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
   }
 });
-/** Deletes an item; its notes stay in the journal as a plain entry. */
+/**
+ * Deletes an item along with what belongs to it: the journal entry holding its notes, and a focus
+ * session that was saved to the calendar as it.
+ */
 async function removeItem(item: Item) {
-  const entry = item.journalId ? await read<JournalEntry>("journal", item.journalId) : undefined;
-  if (entry) await put("journal", { ...entry, itemId: null });
+  if (item.journalId) await remove("journal", item.journalId);
+  for (const session of await list<Session>("sessions")) if (session.calendarItemId === item.id) await remove("sessions", session.id);
   await remove("items", item.id);
 }
 let notesBackfilled: Promise<void> | null = null;
@@ -390,7 +408,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     const next = { ...await pref(), ...data };
     if (!Array.isArray(next.routines) || !Array.isArray(next.habitOrder) || !Array.isArray(next.hiddenTodayPanels) || !Array.isArray(next.todayPanelOrder) ||
         !Array.isArray(next.taskTags) || next.taskTags.some((t: any) => typeof t?.name !== "string" || !t.name || !/^#[0-9a-f]{6}$/i.test(t.color)) ||
-        !["light", "dark"].includes(next.appearanceTheme) ||
+        !["light", "dark"].includes(next.appearanceTheme) || !(DISPLAY_MODES as readonly string[]).includes(next.displayMode) ||
         !KNOWN_THEMES.has(next.colorTheme) ||
         next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime)) {
       return fail("Check routine settings, theme and habit order");
@@ -462,7 +480,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
               const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
                 completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && (old.availableFrom || old.leadDays) ? {
-                  availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, startTime: null, endTime: null, endDate: null, allDay: false,
+                  availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, endDate: null, allDay: false,
                 } : {}) });
               await syncNotes(saved, (fresh.notes || "").trim() !== (old.notes || "").trim());
             } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);
@@ -497,10 +515,20 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/sessions" && method === "GET") return ok(await list<Session>("sessions"));
   if (path === "/api/sessions" && method === "POST") return ok(await put("sessions", data));
   const sessionRoute = /^\/api\/sessions\/(\d+)$/.exec(path);
-  if (sessionRoute && method === "DELETE") {
+  // A session saved to the calendar is deleted with its calendar item (and that item's journal entry).
+  if (sessionRoute && method === "DELETE") return exclusive(async () => {
+    const session = await read<Session>("sessions", Number(sessionRoute[1]));
+    const item = session?.calendarItemId ? await read<Item>("items", session.calendarItemId) : undefined;
+    if (item) await removeItem(item);
     await remove("sessions", Number(sessionRoute[1]));
     return ok({ ok: true });
-  }
+  });
+  if (sessionRoute && method === "PATCH") return exclusive(async () => {
+    const session = await read<Session>("sessions", Number(sessionRoute[1]));
+    if (!session) return fail("Not found", 404);
+    const calendarItemId = Number.isSafeInteger(data.calendarItemId) ? data.calendarItemId : null;
+    return ok(await put("sessions", { ...session, calendarItemId }));
+  });
   if (path === "/api/journal" && method === "GET") {
     await (notesBackfilled ??= backfillNotes().catch(() => {}));
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
@@ -514,9 +542,11 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     for (const entry of await list<JournalEntry>("journal")) {
       const tags = listOf(entry.tags);
       if (!tags.includes(from)) continue;
-      const body = entry.body.replace(hashtag, to ? `$1#${to}` : `$1${from}`);
-      const kept = tags.filter((t) => t !== from && !hashtagsIn(entry.body).includes(t));
-      await put("journal", { ...entry, body, tags: normTags(body, to ? [...kept, to] : kept), updatedAt: new Date().toISOString() });
+      // With tags from the text turned off, its #words aren't this tag, so the text stays as it is.
+      const useHashtags = entry.hashtags !== false;
+      const body = useHashtags ? entry.body.replace(hashtag, to ? `$1#${to}` : `$1${from}`) : entry.body;
+      const kept = tags.filter((t) => t !== from && !(useHashtags && hashtagsIn(entry.body).includes(t)));
+      await put("journal", { ...entry, body, tags: normTags(body, to ? [...kept, to] : kept, useHashtags), updatedAt: new Date().toISOString() });
       const item = entry.itemId ? await read<Item>("items", entry.itemId) : undefined;
       if (item && body !== entry.body) await put("items", { ...item, notes: body });
     }
@@ -526,7 +556,8 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     if (!validDate(data.date) || !data.body?.trim()) return fail("Date and body required");
     const now = new Date().toISOString();
     return ok(await put("journal", {
-      date: data.date, title: entryTitle(data.title), body: data.body.trim(), tags: normTags(data.body, data.tags),
+      date: data.date, title: entryTitle(data.title), body: data.body.trim(), hashtags: data.hashtags !== false,
+      tags: normTags(data.body, data.tags, data.hashtags !== false),
       createdAt: now, updatedAt: now,
     }));
   }
@@ -545,7 +576,9 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         ...entry, ...data, itemId: entry.itemId,
         title: data.title !== undefined ? entryTitle(data.title) : entry.title ?? null,
         body: typeof data.body === "string" ? data.body.trim() : entry.body,
-        tags: data.body !== undefined || data.tags ? normTags(data.body ?? "", data.tags ?? JSON.parse(entry.tags)) : entry.tags,
+        hashtags: data.hashtags !== undefined ? data.hashtags !== false : entry.hashtags !== false,
+        tags: data.body !== undefined || data.tags || data.hashtags !== undefined
+          ? normTags(data.body ?? entry.body, data.tags ?? JSON.parse(entry.tags), (data.hashtags ?? entry.hashtags) !== false) : entry.tags,
         updatedAt: new Date().toISOString(),
       });
       // Editing the entry edits the item's notes.

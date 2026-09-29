@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { Item, InsertItem, Kind, Recurrence } from "@shared/schema";
+import type { DisplayMode, Item, InsertItem, Kind, Recurrence, Session } from "@shared/schema";
 import { DEFAULT_SETTINGS, KINDS } from "@shared/schema";
 import { useForm } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -18,7 +18,6 @@ import {
   KIND_META,
   DAY_SHORT,
   addDays,
-  availableFromFor,
   dueDateFor,
   isDeadlineTask,
   blocksForDay,
@@ -42,15 +41,23 @@ import {
   todayStr,
   ymd,
   isTimed,
+  shiftedToToday,
+  sunTimes,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { WhatsNew } from "@/components/whatsNew";
 import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
-import { Check, Plus, Trash2, Timer, X, Link2 } from "lucide-react";
+import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
+/**
+ * The soft chime for reminders and a finished timer, in a browser. In the Android app the phone's
+ * notification plays the sound instead (on the notification volume: the jingle, or this chime with
+ * Cadence outside), so this does nothing there.
+ */
 export function chime(kind: "soft" | "done" = "soft") {
+  if (window.CadenceAndroid) return;
   try {
     audioCtx = audioCtx || new (window.AudioContext || (window as any).webkitAudioContext)();
     const notes = kind === "done" ? [660, 880, 1100] : [880, 660];
@@ -75,6 +82,37 @@ export function chime(kind: "soft" | "done" = "soft") {
 /* ============ theme ============ */
 type Theme = "light" | "dark";
 
+/** Whether the phone is in dark mode (the app asks Android; a browser, its own setting). */
+function readSystemDark() {
+  const bridge = window.CadenceAndroid;
+  if (bridge?.systemDark) {
+    try { return bridge.systemDark(); } catch { /* fall back below */ }
+  }
+  return !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+}
+
+/** Sunrise/sunset: dark before sunrise and from sunset, at the location in Settings. */
+function sunIsDown(now: Date, lat: number, lng: number) {
+  const sun = sunTimes(ymd(now), lat, lng);
+  if (sun.polar) return sun.polar === "night";
+  const m = now.getHours() * 60 + now.getMinutes();
+  return m < sun.sunrise || m >= sun.sunset;
+}
+
+/** Switches the page to light or dark, cross-fading the whole page when `fade` (and the WebView can). */
+function applyTheme(theme: Theme, fade: boolean) {
+  const root = document.documentElement;
+  const set = () => root.classList.toggle("dark", theme === "dark");
+  const doc = document as Document & { startViewTransition?: (update: () => void) => { finished: Promise<void> } };
+  if (!fade || root.classList.contains("dark") === (theme === "dark") || !doc.startViewTransition ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    set();
+    return;
+  }
+  root.classList.add("theme-fading");
+  doc.startViewTransition(set).finished.finally(() => root.classList.remove("theme-fading"));
+}
+
 /* ============ focus timer ============ */
 export type FocusState = {
   itemId: number | null;
@@ -88,7 +126,8 @@ export type FocusState = {
 
 type Ctx = {
   theme: Theme;
-  setTheme: (t: Theme) => void;
+  /** Applies a Display mode straight away (Settings saves it too). */
+  setDisplayMode: (mode: DisplayMode) => void;
   /** onCreated runs after a new item is saved (not when the window is closed without saving). */
   openEditor: (target: Item | Partial<InsertItem>, occDate?: string, onCreated?: (item: Item) => void) => void;
   openDetails: (target: Item, occDate?: string) => void;
@@ -147,25 +186,60 @@ export function useSaveItem() {
 }
 
 export function PlannerProvider({ children }: { children: ReactNode }) {
-  // Dark is the default until saved settings say otherwise.
-  const [theme, setTheme] = useState<Theme>("dark");
-  const [themeLoaded, setThemeLoaded] = useState(false);
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    if (themeLoaded) window.CadenceAndroid?.setAppearance?.(theme);
-  }, [theme, themeLoaded]);
-
   const { toast } = useToast();
   const { settings, data: savedSettings } = useSettings();
+  // Display mode: dark (the default until saved settings say otherwise), light, the phone's setting,
+  // or light between sunrise and sunset. Settings changes it straight away with setDisplayMode.
+  const [mode, setDisplayMode] = useState<DisplayMode>("dark");
+  const [themeLoaded, setThemeLoaded] = useState(false);
   useEffect(() => {
-    if (savedSettings) {
-      setTheme(savedSettings.appearanceTheme);
-      setThemeLoaded(true);
-    }
-  }, [savedSettings?.appearanceTheme]);
+    if (!savedSettings) return;
+    setDisplayMode(savedSettings.displayMode ?? savedSettings.appearanceTheme ?? "dark");
+    setThemeLoaded(true);
+  }, [savedSettings?.displayMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [systemDark, setSystemDark] = useState(readSystemDark);
+  useEffect(() => {
+    if (mode !== "system") return;
+    const sync = () => setSystemDark(readSystemDark());
+    const query = window.matchMedia?.("(prefers-color-scheme: dark)");
+    sync();
+    query?.addEventListener?.("change", sync);
+    window.addEventListener("cadence-ui-mode", sync); // the phone's dark mode changed (AppActivity)
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      query?.removeEventListener?.("change", sync);
+      window.removeEventListener("cadence-ui-mode", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [mode]);
+  // Sunrise/sunset looks at the clock every half minute, and when the app comes back.
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    if (mode !== "sun") return;
+    const tick = () => setClock(new Date());
+    const t = setInterval(tick, 30000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); };
+  }, [mode]);
+  const theme: Theme = mode === "light" ? "light" : mode === "dark" ? "dark"
+    : mode === "system" ? (systemDark ? "dark" : "light")
+    : sunIsDown(clock, settings.lat, settings.lng) ? "dark" : "light";
+  // Changes the app makes on its own (sunrise, sunset, the phone switching) fade across; picking a
+  // mode in Settings switches at once.
+  const lastLook = useRef<{ theme: Theme; mode: DisplayMode } | null>(null);
+  useEffect(() => {
+    const last = lastLook.current;
+    lastLook.current = { theme, mode };
+    applyTheme(theme, themeLoaded && !!last && last.mode === mode && last.theme !== theme);
+    if (themeLoaded) window.CadenceAndroid?.setAppearance?.(theme);
+  }, [theme, mode, themeLoaded]);
   useEffect(() => {
     document.documentElement.dataset.colorTheme = settings.colorTheme || DEFAULT_SETTINGS.colorTheme;
   }, [settings.colorTheme]);
+  // "Play a sound" decides whether the phone's notifications (which make the sounds) are silent.
+  useEffect(() => {
+    if (savedSettings) window.CadenceAndroid?.setSound?.(savedSettings.sound !== false);
+  }, [savedSettings?.sound]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Let Cadence outside" also swaps the app and notification icons. Flipping it in Settings does that
   // (and closes the app); this keeps them matched to the saved setting on start, e.g. after a restore.
   const iconsSynced = useRef(false);
@@ -211,10 +285,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const elapsed = focus ? focus.accSec + (focus.runStart ? (Date.now() - focus.runStart) / 1000 : 0) : 0;
   void tick;
 
-  const logSession = useCallback(async (f: FocusState, sec: number, completed: boolean) => {
-    if (sec < 30) return;
+  const logSession = useCallback(async (f: FocusState, sec: number, completed: boolean): Promise<Session | null> => {
+    if (sec < 30) return null;
     try {
-      await apiRequest("POST", "/api/sessions", {
+      const saved = await apiRequest("POST", "/api/sessions", {
         itemId: f.itemId,
         title: f.title,
         date: todayStr(),
@@ -224,26 +298,33 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         completed,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      return (await saved.json()) as Session;
     } catch {
-      /* ignore */
+      return null;
     }
   }, []);
 
   // After a session of more than 5 minutes, offer to put it on the calendar as a focus item. Not for
   // one started from something already on the calendar at a set time.
-  const [calendarOffer, setCalendarOffer] = useState<{ title: string; start: Date; end: Date } | null>(null);
-  const offerCalendar = useCallback((f: FocusState, sec: number, endMs: number) => {
+  const [calendarOffer, setCalendarOffer] = useState<{ title: string; start: Date; end: Date; session: Promise<Session | null> } | null>(null);
+  const offerCalendar = useCallback((f: FocusState, sec: number, endMs: number, session: Promise<Session | null>) => {
     if (sec <= 300) return;
     const from = f.itemId != null ? queryClient.getQueryData<Item[]>(["/api/items"])?.find((i) => i.id === f.itemId) : undefined;
     if (from && isTimed(from)) return;
-    setCalendarOffer({ title: f.title === "Focus session" ? "" : f.title, start: new Date(f.startedAt), end: new Date(endMs) });
+    setCalendarOffer({ title: f.title === "Focus session" ? "" : f.title, start: new Date(f.startedAt), end: new Date(endMs), session });
   }, []);
   const saveOfferToCalendar = () => {
     if (!calendarOffer) return;
-    const { title, start, end } = calendarOffer;
+    const { title, start, end, session } = calendarOffer;
     const hm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     setCalendarOffer(null);
-    openEditor({ kind: "focus", title, date: ymd(start), endDate: ymd(end), startTime: hm(start), endTime: hm(end), reminder: null });
+    // The session and its calendar item are linked, so deleting either deletes both.
+    openEditor({ kind: "focus", title, date: ymd(start), endDate: ymd(end), startTime: hm(start), endTime: hm(end), reminder: null },
+      undefined, async (item) => {
+        const saved = await session;
+        if (saved) await apiRequest("PATCH", `/api/sessions/${saved.id}`, { calendarItemId: item.id }).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      });
   };
 
   const startFocus: Ctx["startFocus"] = useCallback(
@@ -271,8 +352,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   const resumeFocus = () => setFocus((f) => (f && !f.runStart ? { ...f, runStart: Date.now() } : f));
   const stopFocus = (completed = false) => {
     if (focus) {
-      logSession(focus, elapsed, completed);
-      if (completed) offerCalendar(focus, elapsed, Date.now());
+      const saved = logSession(focus, elapsed, completed);
+      if (completed) offerCalendar(focus, elapsed, Date.now(), saved);
     }
     setFocus(null);
   };
@@ -300,10 +381,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
         const stopped: (FocusState & { stoppedAt?: number }) | null = JSON.parse(bridge.takeFocusStop?.() || "null");
         // The notification's Finish logs the session like the app's Finish button.
         if (stopped) {
-          logSession(stopped, stopped.accSec, true);
+          const saved = logSession(stopped, stopped.accSec, true);
           // The notification's Finish opens the app and says when it stopped (older builds didn't: then it
           // ended about its focused time after it began).
-          offerCalendar(stopped, stopped.accSec, stopped.stoppedAt ?? Date.parse(stopped.startedAt) + stopped.accSec * 1000);
+          offerCalendar(stopped, stopped.accSec, stopped.stoppedAt ?? Date.parse(stopped.startedAt) + stopped.accSec * 1000, saved);
         }
       } catch { /* ignore */ }
       try {
@@ -328,11 +409,11 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     if (elapsed >= focus.plannedSec && doneRef.current !== focus.startedAt) {
       doneRef.current = focus.startedAt;
       const f = focus;
-      logSession(f, f.plannedSec, true);
+      const saved = logSession(f, f.plannedSec, true);
       setFocus(null);
       if (settings.sound) chime("done");
       window.CadenceAndroid?.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
-      if (f.plannedSec > 300) offerCalendar(f, f.plannedSec, Date.now());
+      if (f.plannedSec > 300) offerCalendar(f, f.plannedSec, Date.now(), saved);
       else toast({ title: "Nice work — session complete", description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused` });
     }
   }, [elapsed, focus, logSession, offerCalendar, settings, startFocus, toast]);
@@ -407,7 +488,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     theme,
-    setTheme,
+    setDisplayMode,
     openEditor,
     openDetails,
     focus,
@@ -576,6 +657,23 @@ function ItemDetails({ details, onClose, onEdit }: {
 }
 
 /* ============ focus dock ============ */
+/**
+ * A habit's streak: a flame and the days in a row it's been done, or, greyed, a count below zero of
+ * the days in a row it's been missed. Nothing at zero unless `zero`.
+ */
+export function StreakBadge({ streak, className, zero = false }: { streak: number; className?: string; zero?: boolean }) {
+  if (!streak && !zero) return null;
+  return (
+    <span className={cn("inline-flex items-center gap-0.5 font-medium tnum",
+      streak > 0 ? "text-[hsl(var(--k-task))]" : "text-muted-foreground", className)}
+      title={streak > 0 ? `${streak}-day streak` : streak < 0 ? `Missed ${-streak} ${streak === -1 ? "day" : "days"} in a row` : "No streak yet"}
+      data-testid="text-streak">
+      <Flame className="h-3.5 w-3.5" />
+      {streak < 0 ? `−${-streak}` : streak}
+    </span>
+  );
+}
+
 export function Ring({ pct, size = 44, stroke = 4, color }: { pct: number; size?: number; stroke?: number; color?: string }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -605,7 +703,6 @@ export const clock = (sec: number) => {
 };
 
 /* ============ item editor ============ */
-type TimeMode = "timed" | "anytime" | "allday" | "deadline";
 /** "Save for tomorrow" and the like: where a habit's repeating count starts instead of today. */
 const NEXT_PERIOD: Partial<Record<Recurrence["freq"], { label: string; date: (today: string) => string }>> = {
   daily: { label: "tomorrow", date: (d) => addDays(d, 1) },
@@ -625,13 +722,15 @@ type FormVals = {
   title: string;
   tags: string[];
   kind: Kind;
+  /** The day it's on (a task's due date; a habit keeps this out of sight as its pattern's anchor). */
   date: string;
+  /** No time: all day (a task: any time that day). */
+  allDay: boolean;
+  /** When a task can be done: only on its due date, any day before it, or from a set date. */
+  avail: "day" | "before" | "from";
+  /** "From a date": the first day; a repeating task opens as many days before each due date. */
   availableFrom: string;
-  /** For "a time before due date": anytime up to it (one-off), or a number of days or weeks before each due date. */
-  leadMode: "today" | "days" | "weeks";
-  leadCount: number;
   endDate: string;
-  timeMode: TimeMode;
   startTime: string;
   endTime: string;
   freq: Recurrence["freq"];
@@ -645,6 +744,9 @@ type FormVals = {
   location: string;
   notes: string;
 };
+
+/** "Any day before" is stored as a year's window: a year before a one-off's due date, or 365 days' lead. */
+const ANY_DAY_BEFORE = 365;
 
 const REMINDERS = [
   { v: "none", l: "No reminder" },
@@ -677,75 +779,78 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
   }, [editing]); // eslint-disable-line
 
   const v = watch();
-  // Repeat options show except for a deadline task available "anytime", which is one-off.
-  const repeats = v.timeMode !== "deadline" || v.leadMode !== "today";
   const rec = recOf((existing as any) || { recurrence: '{"freq":"none"}' });
   const isRecurring = existing && rec.freq !== "none";
   const isFeed = existing?.source.startsWith("feed:");
 
   const onSubmit = handleSubmit(async (f) => {
     if (!f.title.trim()) return;
-    // A habit has no end date and never stops repeating.
-    if (f.kind === "habit") f = { ...f, endDate: f.date, until: "", freq: f.freq === "none" ? "daily" : f.freq };
-    // Meetings happen within a day (a late one can still run past midnight, set by its times).
-    if (f.kind === "meeting") f = { ...f, endDate: f.date };
-    if (f.kind === "task") {
-      f = { ...f, endDate: f.date };
-      if (f.timeMode === "deadline" && f.leadMode === "today") f.availableFrom = availableFromFor(f.date, f.availableFrom || todayStr());
-    }
-    if (!f.date || (f.timeMode !== "deadline" && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366))) {
+    const task = f.kind === "task", habit = f.kind === "habit";
+    const timed = !f.allDay || f.kind === "sleep";
+    // A habit has no dates and never stops repeating.
+    if (habit) f = { ...f, endDate: f.date, until: "", freq: f.freq === "none" ? "daily" : f.freq };
+    if (task) f = { ...f, endDate: f.date };
+    if (!f.date || !task && !habit && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366)) {
       toast({ title: "Check the end date", description: "Choose an end date on or after the start, within one year.", variant: "destructive" });
       return;
     }
-    const lead = f.kind === "task" && f.timeMode === "deadline" && f.leadMode !== "today"
-      ? Math.max(1, Math.min(365, Math.round(Number(f.leadCount) || 1) * (f.leadMode === "weeks" ? 7 : 1))) : null;
-    if (f.timeMode === "deadline" && !lead && (!f.availableFrom || f.availableFrom > f.date)) {
+    // When a task can be done. A one-off one opens on a day; a repeating one the same number of days
+    // before each due date.
+    let avail = task ? f.avail : "day";
+    if (avail === "from" && (!f.availableFrom || f.availableFrom > f.date)) {
       toast({ title: "Check the dates", description: "Available from must be on or before the due date.", variant: "destructive" });
       return;
     }
-    // A task available "anytime" is one-off; one open some days before each due date can repeat.
-    const r: Recurrence = { freq: f.timeMode === "deadline" && !lead ? "none" : f.freq };
+    const before = avail === "from" ? Math.min(ANY_DAY_BEFORE, dayDiff(f.availableFrom, f.date)) : ANY_DAY_BEFORE;
+    if (avail === "from" && before === 0) avail = "day";
+    const oneOff = f.freq === "none";
+    const r: Recurrence = { freq: f.freq };
     if (r.freq !== "none") {
       if (f.interval > 1) r.interval = Number(f.interval);
       if (f.freq === "weekly") r.days = f.days.length ? [...f.days].sort() : [dow(f.date)];
       if (f.until) r.until = f.until;
     }
+    const start = f.startTime || "09:00";
     const payload: Partial<InsertItem> = {
       title: f.title.trim(),
       kind: f.kind,
       date: f.date,
-      availableFrom: f.kind === "task" && f.timeMode === "deadline" && !lead ? f.availableFrom : null,
-      leadDays: lead,
+      availableFrom: avail !== "day" && oneOff ? addDays(f.date, -before) : null,
+      leadDays: avail !== "day" && !oneOff ? before : null,
       color: existing?.source.startsWith("feed:") && f.kind !== existing.kind ? null : existing?.color ?? null,
-      endDate: f.timeMode === "deadline" ? null : f.timeMode === "timed" && f.endDate === f.date && toMin(f.endTime) <= toMin(f.startTime)
-        ? addDays(f.date, 1)
-        : f.endDate,
-      allDay: f.timeMode === "allday" && f.kind !== "task",
-      startTime: f.timeMode === "timed" ? f.startTime || "09:00" : null,
-      endTime: f.timeMode === "timed" ? f.endTime || fromMin(toMin(f.startTime) + 30) : null,
+      // A task is due at its time (no end); others end at their end time, the next day if that's earlier.
+      endDate: task ? null : timed && f.endDate === f.date && toMin(f.endTime) <= toMin(start) ? addDays(f.date, 1) : f.endDate,
+      allDay: !task && !timed,
+      startTime: timed ? start : null,
+      endTime: timed && !task ? f.endTime || fromMin(toMin(start) + 30) : null,
       recurrence: JSON.stringify(r),
-      reminder: f.timeMode === "deadline" || f.reminder === "none" ? null : Number(f.reminder),
-      extraReminders: JSON.stringify(f.timeMode === "deadline" || f.reminder === "none" ? []
+      reminder: !timed || f.reminder === "none" ? null : Number(f.reminder),
+      extraReminders: JSON.stringify(!timed || f.reminder === "none" ? []
         : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
-      tags: JSON.stringify(f.kind === "task" ? f.tags : []),
-      autoTimer: f.timeMode === "timed" && f.kind !== "sleep" && f.autoTimer,
+      tags: JSON.stringify(task ? f.tags : []),
+      autoTimer: timed && !task && f.kind !== "sleep" && f.autoTimer,
       location: f.location,
       notes: f.notes,
     };
     if (existing) {
       const scope = await saveItem(existing, payload, editing?.occDate);
       if (!scope) return;
-      toast({ title: scope === "one" ? "Saved this one" : "Saved", description: payload.title });
     } else {
       const created = await create.mutateAsync(blankItem(payload));
-      toast({ title: "Added to your plan", description: payload.title });
       await editing?.onCreated?.(created);
     }
     onClose();
   });
 
-  const durMin = v.timeMode === "timed"
+  // Moving the start keeps the length.
+  const setStart = (t: string) => {
+    const length = (toMin(v.endTime) - toMin(v.startTime) + 1440) % 1440 || 30;
+    setValue("startTime", t);
+    setValue("endTime", fromMin(toMin(t) + length));
+  };
+  const timed = !v.allDay || v.kind === "sleep";
+  const durMin = timed
     ? Math.max(1, dayDiff(v.date, v.endDate || v.date) * 1440 + toMin(v.endTime) - toMin(v.startTime) || 30)
     : settings.focusMinutes;
 
@@ -770,7 +875,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
             data-testid="input-title"
           />
 
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5" role="radiogroup" aria-label="Type">
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Type">
             {KINDS.filter((k) => k !== "sleep" || existing?.kind === "sleep").map((k) => {
               const M = KIND_META[k];
               const on = v.kind === k;
@@ -782,26 +887,22 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   aria-checked={on}
                   onClick={() => {
                     setValue("kind", k);
-                    if (k !== "task" && v.timeMode === "deadline") setValue("timeMode", "anytime");
-                    // Tasks aren't all-day; they can be done anytime that day.
-                    if (k === "task" && v.timeMode === "allday") setValue("timeMode", "anytime");
-                    if (k === "task" && v.timeMode === "anytime" && v.freq === "none") {
-                      setValue("timeMode", "deadline");
-                      setValue("availableFrom", availableFromFor(v.date));
-                    }
+                    // A new item takes the kind's usual timing: tasks and habits without a time, the rest timed.
+                    if (!existing) setValue("allDay", k === "task" || k === "habit");
+                    // ...and leaving Habit drops the daily repeat it came with.
+                    if (!existing && v.kind === "habit" && k !== "habit") setValue("freq", "none");
                     if (k === "habit" && v.freq === "none") setValue("freq", "daily");
-                    // Habits are at a set time or all day.
-                    if (k === "habit" && (v.timeMode === "anytime" || v.timeMode === "deadline")) setValue("timeMode", "allday");
                     if (k === "sleep") {
-                      setValue("timeMode", "timed");
+                      setValue("allDay", false);
                       setValue("startTime", settings.bedTime);
                       setValue("endTime", settings.wakeTime);
                       setValue("endDate", addDays(v.date, 1));
                       if (v.freq === "none") setValue("freq", "daily");
                     }
                   }}
+                  // Round pills like the rest of the window; the chosen kind is tinted and ringed in its color.
                   className={cn(
-                    "flex flex-col items-center gap-1 rounded-md border px-1 py-2 text-xs font-medium transition-colors",
+                    "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
                     on ? "border-transparent text-foreground" : "text-muted-foreground hover-elevate",
                   )}
                   style={on ? { background: `hsl(var(${M.cssVar}) / .16)`, boxShadow: `inset 0 0 0 1.5px hsl(var(${M.cssVar}))` } : undefined}
@@ -814,120 +915,91 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
             })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Habits repeat forever with no start or end; only a monthly or yearly one needs a day to fall on. */}
-            {(v.kind !== "habit" || v.freq === "monthly" || v.freq === "yearly") && <div className="grid gap-1.5">
-              <Label htmlFor="f-date">{v.timeMode === "deadline" ? "Due date" : v.kind === "habit" ? "Repeats on" : v.freq !== "none" ? "Starts" : "Date"}</Label>
-              <Input id="f-date" type="date" {...register("date", {
-                onChange: (e) => {
-                  if (v.timeMode !== "deadline" && e.target.value && v.date && v.endDate) setValue("endDate", addDays(e.target.value, dayDiff(v.date, v.endDate)));
-                },
-              })} data-testid="input-date" />
-            </div>}
-            <div className="grid gap-1.5">
-              <Label>When</Label>
-              <Select value={v.timeMode} onValueChange={(x) => {
-                // Radix reports "" when the value briefly has no matching option (a new task gets its kind and
-                // "before due date" together); ignore it rather than clearing the choice.
-                if (!x) return;
-                setValue("timeMode", x as TimeMode);
-                if (x === "deadline") {
-                  if (v.leadMode === "today") setValue("freq", "none");
-                  setValue("availableFrom", v.availableFrom && v.availableFrom <= v.date ? v.availableFrom : availableFromFor(v.date));
-                }
-              }}>
-                <SelectTrigger data-testid="select-timemode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="timed">At a set time</SelectItem>
-                  {v.kind !== "habit" && <SelectItem value="anytime">Anytime that day</SelectItem>}
-                  {v.kind !== "task" && <SelectItem value="allday">All day</SelectItem>}
-                  {v.kind === "task" && <SelectItem value="deadline">A time before due date</SelectItem>}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Tasks only have a due date, and habits and meetings have no end date; a deadline task's first day is set for you. */}
-          {v.kind === "habit" || v.kind === "meeting" ? null : v.kind === "task" ? (
-            v.timeMode === "deadline" && (
-              <div className="grid gap-1.5">
-                <Label htmlFor="f-lead">Available</Label>
-                <div className="flex gap-2">
-                  {v.leadMode !== "today" && (
-                    <Input id="f-lead" type="number" className="w-20 shrink-0" min={1} max={v.leadMode === "weeks" ? 52 : 365} {...register("leadCount", { valueAsNumber: true })} data-testid="input-lead-count" />
-                  )}
-                  <Select value={v.leadMode} onValueChange={(x) => {
-                    if (!x) return;
-                    setValue("leadMode", x as FormVals["leadMode"]);
-                    // "Anytime" (up to the due date) is for one-off tasks.
-                    if (x === "today") setValue("freq", "none");
-                  }}>
-                    <SelectTrigger className="flex-1" data-testid="select-lead-mode">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="today">Anytime</SelectItem>
-                      <SelectItem value="days">Days before</SelectItem>
-                      <SelectItem value="weeks">Weeks before</SelectItem>
-                    </SelectContent>
-                  </Select>
+          {/* Laid out like Google Calendar's: a row per part, its icon on the left, dates and times as pills. */}
+          <div className="grid gap-3">
+            <EditorRow icon={Clock}>
+              <label className="flex min-h-9 cursor-pointer items-center justify-between gap-3">
+                <span className="text-sm">{v.kind === "task" ? "Any time" : "All-day"}</span>
+                <Switch checked={v.allDay && v.kind !== "sleep"} disabled={v.kind === "sleep"} onCheckedChange={(x) => setValue("allDay", x)} data-testid="switch-allday" />
+              </label>
+              {v.kind === "task" ? (
+                // A task is due on a day, at a time unless it's any time that day.
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-10 text-sm text-muted-foreground">Due</span>
+                  <DatePill value={v.date} onChange={(d) => setValue("date", d)} testId="input-date" label="Due date" />
+                  {!v.allDay && <TimePill value={v.startTime} onChange={(t) => setValue("startTime", t)} testId="input-start" label="Due time" />}
                 </div>
-              </div>
-            )
-          ) : (
-            <div className="grid gap-1.5">
-              <Label htmlFor="f-end-date">End date</Label>
-              <Input id="f-end-date" type="date" min={v.date} {...register("endDate")} data-testid="input-end-date" />
-              <span className="text-xs text-muted-foreground">
-                {v.timeMode === "allday" ? "Includes this entire day." : "Choose a later day for an item that lasts across days."}
-              </span>
-            </div>
-          )}
+              ) : v.kind === "habit" ? (
+                // Habits have no dates: just a time, if they have one.
+                !v.allDay && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TimePill value={v.startTime} onChange={(t) => setStart(t)} testId="input-start" label="Start time" />
+                    <span className="text-muted-foreground">–</span>
+                    <TimePill value={v.endTime} onChange={(t) => setValue("endTime", t)} testId="input-end" label="End time" />
+                  </div>
+                )
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <DatePill value={v.date} onChange={(d) => {
+                      if (v.date && v.endDate) setValue("endDate", addDays(d, dayDiff(v.date, v.endDate)));
+                      setValue("date", d);
+                    }} testId="input-date" label={v.freq !== "none" ? "Starts" : "Start date"} />
+                    {timed && <TimePill value={v.startTime} onChange={(t) => setStart(t)} testId="input-start" label="Start time" />}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <DatePill value={v.endDate} min={v.date} onChange={(d) => setValue("endDate", d)} testId="input-end-date" label="End date" />
+                    {timed && (
+                      <span className="flex items-center gap-2">
+                        <TimePill value={v.endTime} onChange={(t) => {
+                          setValue("endTime", t);
+                          if (v.endDate === v.date && toMin(t) <= toMin(v.startTime)) setValue("endDate", addDays(v.date, 1));
+                        }} testId="input-end" label="End time" />
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+            </EditorRow>
 
-          {v.timeMode === "timed" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="f-start">Start</Label>
-                <Input
-                  id="f-start"
-                  type="time"
-                  step={60}
-                  {...register("startTime", {
-                    onChange: (e) => {
-                      // keep duration when moving the start
-                      const oldDur = (toMin(v.endTime) - toMin(v.startTime) + 1440) % 1440 || 30;
-                      setValue("endTime", fromMin(toMin(e.target.value) + oldDur));
-                    },
-                  })}
-                  data-testid="input-start"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="f-end">
-                  End <span className="text-muted-foreground font-normal">· {fmtDur(durMin)}</span>
-                </Label>
-                <Input id="f-end" type="time" step={60} {...register("endTime", {
-                  onChange: (e) => {
-                    if (v.endDate === v.date && toMin(e.target.value) <= toMin(v.startTime)) {
-                      setValue("endDate", addDays(v.date, 1));
-                    }
-                  },
-                })} data-testid="input-end" />
-              </div>
-            </div>
-          )}
+            {v.kind === "task" && (
+              <EditorRow icon={CalendarClock}>
+                <Select value={v.avail} onValueChange={(x) => {
+                  if (!x) return;
+                  const mode = x as FormVals["avail"];
+                  setValue("avail", mode);
+                  if (mode === "from" && (!v.availableFrom || v.availableFrom > v.date)) setValue("availableFrom", addDays(v.date, -1));
+                }}>
+                  <SelectTrigger className="h-9 w-fit gap-2 rounded-full px-3.5" aria-label="Available" data-testid="select-available">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="day">On the day</SelectItem>
+                    <SelectItem value="before">Any day before</SelectItem>
+                    <SelectItem value="from">From a date</SelectItem>
+                  </SelectContent>
+                </Select>
+                {v.avail === "from" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">From</span>
+                    <DatePill value={v.availableFrom} max={v.date} onChange={(d) => setValue("availableFrom", d)} testId="input-available-from" label="Available from" />
+                    {v.freq !== "none" && v.availableFrom && v.availableFrom < v.date && (
+                      <span className="text-xs text-muted-foreground">
+                        {(() => { const n = dayDiff(v.availableFrom, v.date); return `${n} ${n === 1 ? "day" : "days"} before each one`; })()}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </EditorRow>
+            )}
 
-          {repeats && <div className={cn("grid gap-3", v.timeMode !== "deadline" && "grid-cols-2")}>
-            <div className="grid gap-1.5">
-              <Label>Repeat</Label>
+            <EditorRow icon={Repeat}>
               <Select value={v.freq} onValueChange={(x) => setValue("freq", x as Recurrence["freq"])}>
-                <SelectTrigger data-testid="select-repeat">
+                <SelectTrigger className="h-9 w-fit gap-2 rounded-full px-3.5" data-testid="select-repeat">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {v.kind !== "habit" && <SelectItem value="none">Doesn't repeat</SelectItem>}
+                  {v.kind !== "habit" && <SelectItem value="none">Does not repeat</SelectItem>}
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekdays">Weekdays (Mon–Fri)</SelectItem>
                   <SelectItem value="weekly">Weekly on…</SelectItem>
@@ -935,151 +1007,142 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   <SelectItem value="yearly">Yearly</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            {v.timeMode !== "deadline" && (
-            <div className="grid gap-1.5">
-              <Label>Reminder</Label>
-              <Select value={v.reminder} onValueChange={(x) => {
-                setValue("reminder", x);
-                if (x === "none") setValue("extraReminders", []);
-              }}>
-                <SelectTrigger data-testid="select-reminder">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REMINDERS.map((r) => (
-                    <SelectItem key={r.v} value={r.v}>
-                      {r.l}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            )}
-          </div>}
-
-          {v.timeMode !== "deadline" && v.reminder !== "none" && (
-            <div className="grid gap-2">
-              {v.extraReminders.length > 0 && <Label>Also remind me</Label>}
-              {v.extraReminders.map((extra, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <Select value={extra} onValueChange={(x) => setValue("extraReminders", v.extraReminders.map((e, k) => (k === index ? x : e)))}>
-                    <SelectTrigger className="flex-1" aria-label={`Reminder ${index + 2}`} data-testid={`select-extra-reminder-${index}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {REMINDERS.filter((r) => r.v !== "none").map((r) => (
-                        <SelectItem key={r.v} value={r.v}>
-                          {r.l}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
-                    onClick={() => setValue("extraReminders", v.extraReminders.filter((_, k) => k !== index))}
-                    aria-label={`Remove reminder ${index + 2}`} data-testid={`button-remove-reminder-${index}`}>
-                    <X className="h-4 w-4" />
-                  </Button>
+              {v.freq === "weekly" && (
+                <div className="flex gap-1.5" aria-label="Days of week">
+                  {DAY_SHORT.map((d, i) => {
+                    const on = v.days.includes(i);
+                    return (
+                      <button type="button" key={d} aria-pressed={on}
+                        onClick={() => setValue("days", on ? v.days.filter((x) => x !== i) : [...v.days, i])}
+                        className={cn("h-9 flex-1 rounded-full border text-xs font-medium",
+                          on ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground hover-elevate")}
+                        data-testid={`button-day-${i}`}>
+                        {d.slice(0, 2)}
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
-              <button type="button" className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary hover:underline"
-                onClick={() => {
-                  const used = new Set([v.reminder, ...v.extraReminders]);
-                  const next = REMINDERS.find((r) => r.v !== "none" && !used.has(r.v))?.v ?? "0";
-                  setValue("extraReminders", [...v.extraReminders, next]);
-                }}
-                data-testid="button-add-reminder">
-                <Plus className="h-3.5 w-3.5" /> Add another reminder
-              </button>
-            </div>
-          )}
-
-          {repeats && v.freq === "weekly" && (
-            <div className="flex gap-1.5" aria-label="Days of week">
-              {DAY_SHORT.map((d, i) => {
-                const on = v.days.includes(i);
-                return (
-                  <button
-                    type="button"
-                    key={d}
-                    aria-pressed={on}
-                    onClick={() => setValue("days", on ? v.days.filter((x) => x !== i) : [...v.days, i])}
-                    className={cn(
-                      "h-9 flex-1 rounded-md border text-xs font-medium",
-                      on ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground hover-elevate",
-                    )}
-                    data-testid={`button-day-${i}`}
-                  >
-                    {d.slice(0, 2)}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {repeats && v.freq !== "none" && (
-            <div className={cn("grid gap-3", v.kind !== "habit" && "grid-cols-2")}>
-              <div className="grid gap-1.5">
-                <Label htmlFor="f-interval">Every</Label>
-                <div className="flex items-center gap-2">
-                  <Input id="f-interval" type="number" min={1} max={30} className="w-20" {...register("interval", { valueAsNumber: true })} data-testid="input-interval" />
-                  <span className="text-sm text-muted-foreground">
+              )}
+              {v.freq !== "none" && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Every</span>
+                  <Input id="f-interval" type="number" min={1} max={30} className="h-9 w-16 rounded-full text-center" {...register("interval", { valueAsNumber: true })} data-testid="input-interval" />
+                  <span className="text-muted-foreground">
                     {{ daily: "day(s)", weekdays: "week", weekly: "week(s)", monthly: "month(s)", yearly: "year(s)", none: "" }[v.freq]}
                   </span>
+                  {v.kind !== "habit" && (
+                    <>
+                      <span className="ml-1 text-muted-foreground">until</span>
+                      <DatePill value={v.until} min={v.date} onChange={(d) => setValue("until", d)} testId="input-until" label="Repeat until" empty="Forever" clearable />
+                    </>
+                  )}
                 </div>
-              </div>
-              {v.kind !== "habit" && <div className="grid gap-1.5">
-                <Label htmlFor="f-until">Repeat until (optional)</Label>
-                <Input id="f-until" type="date" {...register("until")} data-testid="input-until" />
-              </div>}
-            </div>
-          )}
+              )}
+              {/* A saved habit that isn't on today can have its schedule moved so its next day is today. */}
+              {existing && v.kind === "habit" && (() => {
+                const shift = shiftedToToday({
+                  kind: "habit", uid: existing.uid, exceptions: existing.exceptions, date: v.date,
+                  recurrence: JSON.stringify({ freq: v.freq, interval: v.interval > 1 ? Number(v.interval) : undefined, days: v.days.length ? v.days : undefined }),
+                }, todayStr());
+                if (!shift) return null;
+                return (
+                  <Button type="button" variant="outline" size="sm" className="w-fit rounded-full" data-testid="button-shift-today" onClick={() => {
+                    setValue("date", shift.date);
+                    setValue("freq", shift.recurrence.freq);
+                    setValue("days", shift.recurrence.days ?? []);
+                  }}>
+                    Shift to today
+                  </Button>
+                );
+              })()}
+            </EditorRow>
 
-          {v.timeMode === "timed" && v.kind !== "sleep" && (
-            <label className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5 cursor-pointer" data-testid="row-autotimer">
-              <span className="flex items-center gap-2.5">
-                <Timer className="h-4 w-4 text-primary" />
-                <span>
-                  <span className="block text-sm font-medium">Start a timer when it begins</span>
-                  <span className="block text-xs text-muted-foreground">Counts down {fmtDur(durMin)} automatically at {fmtTime(v.startTime, true)}</span>
-                </span>
-              </span>
-              <Switch checked={v.autoTimer} onCheckedChange={(x) => setValue("autoTimer", x)} data-testid="switch-autotimer" />
-            </label>
-          )}
-
-          {v.kind === "task" && (
-            <div className="grid gap-1.5">
-              <Label>Task Tags</Label>
-              <TaskTagField value={v.tags} onChange={(t) => setValue("tags", t)} />
-            </div>
-          )}
-
-          {v.kind === "task" && (
-            <div className="grid gap-1.5">
-              <Label>Priority</Label>
-              <div className="flex gap-1.5">
-                {["low", "normal", "high"].map((p) => (
-                  <button
-                    type="button"
-                    key={p}
-                    aria-pressed={v.priority === p}
-                    onClick={() => setValue("priority", p)}
-                    className={cn(
-                      "h-9 flex-1 rounded-md border text-sm capitalize",
-                      v.priority === p ? "bg-secondary text-foreground font-medium border-foreground/20" : "text-muted-foreground hover-elevate",
+            {timed && v.kind !== "sleep" && (
+              <EditorRow icon={Bell}>
+                {[v.reminder, ...(v.reminder === "none" ? [] : v.extraReminders)].map((value, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Select value={value} onValueChange={(x) => {
+                      if (index === 0) {
+                        setValue("reminder", x);
+                        if (x === "none") setValue("extraReminders", []);
+                      } else setValue("extraReminders", v.extraReminders.map((e, k) => (k === index - 1 ? x : e)));
+                    }}>
+                      <SelectTrigger className="h-9 w-fit gap-2 rounded-full px-3.5" aria-label={index ? `Reminder ${index + 1}` : "Reminder"}
+                        data-testid={index ? `select-extra-reminder-${index - 1}` : "select-reminder"}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REMINDERS.filter((r) => index === 0 || r.v !== "none").map((r) => (
+                          <SelectItem key={r.v} value={r.v}>{v.kind === "task" && r.v === "0" ? "At due time" : r.l}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {index > 0 && (
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0"
+                        onClick={() => setValue("extraReminders", v.extraReminders.filter((_, k) => k !== index - 1))}
+                        aria-label={`Remove reminder ${index + 1}`} data-testid={`button-remove-reminder-${index - 1}`}>
+                        <X className="h-4 w-4" />
+                      </Button>
                     )}
-                    data-testid={`button-priority-${p}`}
-                  >
-                    {p}
-                  </button>
+                  </div>
                 ))}
-              </div>
-            </div>
-          )}
+                {v.reminder !== "none" && (
+                  <button type="button" className="inline-flex h-7 w-fit items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                    onClick={() => {
+                      const used = new Set([v.reminder, ...v.extraReminders]);
+                      const next = REMINDERS.find((r) => r.v !== "none" && !used.has(r.v))?.v ?? "0";
+                      setValue("extraReminders", [...v.extraReminders, next]);
+                    }}
+                    data-testid="button-add-reminder">
+                    <Plus className="h-3.5 w-3.5" /> add reminder
+                  </button>
+                )}
+              </EditorRow>
+            )}
 
-          <Input placeholder="Location or link" {...register("location")} data-testid="input-location" />
-          <Textarea placeholder="Notes" rows={3} {...register("notes")} data-testid="input-notes" />
+            {timed && v.kind !== "sleep" && v.kind !== "task" && (
+              <EditorRow icon={Timer}>
+                <label className="flex min-h-9 cursor-pointer items-center justify-between gap-3" data-testid="row-autotimer">
+                  <span className="min-w-0">
+                    <span className="block text-sm">Start a timer when it begins</span>
+                    <span className="block text-xs text-muted-foreground">Counts down {fmtDur(durMin)} at {fmtTime(v.startTime, true)}</span>
+                  </span>
+                  <Switch checked={v.autoTimer} onCheckedChange={(x) => setValue("autoTimer", x)} data-testid="switch-autotimer" />
+                </label>
+              </EditorRow>
+            )}
+
+            {v.kind === "task" && (
+              <EditorRow icon={Hash}>
+                <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-sm">Task Tags</span>
+                  <TaskTagField value={v.tags} onChange={(t) => setValue("tags", t)} />
+                </div>
+              </EditorRow>
+            )}
+
+            {v.kind === "task" && (
+              <EditorRow icon={Flag}>
+                <div className="flex gap-1.5" role="radiogroup" aria-label="Priority">
+                  {["low", "normal", "high"].map((p) => (
+                    <button type="button" key={p} role="radio" aria-checked={v.priority === p} onClick={() => setValue("priority", p)}
+                      className={cn("h-9 flex-1 rounded-full border text-sm capitalize",
+                        v.priority === p ? "bg-secondary text-foreground font-medium border-foreground/20" : "text-muted-foreground hover-elevate")}
+                      data-testid={`button-priority-${p}`}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </EditorRow>
+            )}
+
+            <EditorRow icon={MapPin}>
+              <Input placeholder="Location or link" className="h-9" {...register("location")} data-testid="input-location" />
+            </EditorRow>
+            <EditorRow icon={AlignLeft}>
+              <Textarea placeholder="Notes" rows={3} {...register("notes")} data-testid="input-notes" />
+            </EditorRow>
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {existing && (
@@ -1090,7 +1153,6 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   className="text-destructive"
                   onClick={async () => {
                     await remove.mutateAsync(existing.id);
-                    toast({ title: "Deleted", description: existing.title });
                     onClose();
                   }}
                   data-testid="button-delete"
@@ -1104,7 +1166,6 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                     variant="ghost"
                     onClick={async () => {
                       await skip.mutateAsync({ id: existing.id, date: editing.occDate! });
-                      toast({ title: "Skipped this one", description: `${existing.title} · ${editing.occDate}` });
                       onClose();
                     }}
                     data-testid="button-skip"
@@ -1140,20 +1201,23 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
 function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const r = recOf(i as Item);
   const isNew = !("id" in i && typeof (i as Item).id === "number");
-  const lead = i.kind === "task" ? i.leadDays ?? 0 : 0;
-  const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || lead > 0 || (isNew && !i.startTime && !i.allDay && r.freq === "none"))
-    ? "deadline" : i.allDay && i.kind !== "task" ? "allday" : i.startTime ? "timed" : i.kind === "habit" ? "allday" : "anytime";
+  const task = i.kind === "task";
+  const lead = task ? i.leadDays ?? 0 : 0;
+  const fromDays = task && i.availableFrom ? dayDiff(i.availableFrom, i.date) : 0;
+  // A new task is doable any day before it's due, as they were before tasks had these choices.
+  const avail: FormVals["avail"] = lead >= ANY_DAY_BEFORE || fromDays >= ANY_DAY_BEFORE ? "before"
+    : lead > 0 || fromDays > 0 ? "from" : task && !isNew ? "day" : "before";
+  const date = i.date || todayStr();
   return {
     title: i.title || "",
     kind: ((KINDS as readonly string[]).includes(i.kind as string) ? i.kind : "event") as Kind,
-    date: i.date || todayStr(),
-    availableFrom: i.availableFrom || availableFromFor(i.date),
-    leadMode: lead <= 0 ? "today" : lead % 7 === 0 ? "weeks" : "days",
-    leadCount: lead <= 0 ? 1 : lead % 7 === 0 ? lead / 7 : lead,
-    endDate: i.endDate || (i.startTime && i.endTime && toMin(i.endTime) <= toMin(i.startTime) ? addDays(i.date, 1) : i.date),
-    timeMode,
+    date,
+    allDay: !i.startTime,
+    avail,
+    availableFrom: lead > 0 ? addDays(date, -Math.min(lead, ANY_DAY_BEFORE)) : i.availableFrom || addDays(date, -1),
+    endDate: i.endDate || (i.startTime && i.endTime && toMin(i.endTime) <= toMin(i.startTime) ? addDays(date, 1) : date),
     startTime: i.startTime || "09:00",
-    endTime: i.endTime || (i.startTime ? fromMin(toMin(i.startTime) + 60) : "10:00"),
+    endTime: i.endTime || fromMin(toMin(i.startTime || "09:00") + 60),
     freq: r.freq,
     interval: r.interval || 1,
     days: r.days || [],
@@ -1166,6 +1230,57 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     location: i.location || "",
     notes: i.notes || "",
   };
+}
+
+/** A part of the item window: its icon in the left column, its controls beside it. */
+function EditorRow({ icon: Icon, children }: { icon: typeof Clock; children: ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <Icon className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+      <div className="grid min-w-0 flex-1 gap-2">{children}</div>
+    </div>
+  );
+}
+
+const PILL = "relative inline-flex h-9 shrink-0 items-center rounded-full border px-3.5 text-sm tnum hover-elevate focus-within:ring-2 focus-within:ring-ring";
+
+/**
+ * A date as a pill ("Tue, Sep 29"; the year when it isn't this one). The phone's date picker opens from
+ * an invisible date input laid over it. `clearable` adds an x (an empty value shows `empty`).
+ */
+function DatePill({ value, onChange, min, max, testId, label, empty = "Pick a date", clearable = false }: {
+  value: string; onChange: (d: string) => void; min?: string; max?: string; testId: string; label: string; empty?: string; clearable?: boolean;
+}) {
+  const shown = value ? fmtDate(value, { weekday: "short", month: "short", day: "numeric", ...(value.slice(0, 4) !== todayStr().slice(0, 4) ? { year: "numeric" } : {}) }) : empty;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={cn(PILL, !value && "text-muted-foreground")}>
+        {shown}
+        <input type="date" value={value} min={min} max={max} aria-label={label} data-testid={testId}
+          onChange={(e) => (e.target.value || clearable) && onChange(e.target.value)}
+          onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* opens on its own */ } }}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+      </span>
+      {clearable && value && (
+        <button type="button" onClick={() => onChange("")} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted" aria-label={`Clear ${label.toLowerCase()}`}>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/** A time as a pill ("7:30 PM"), opening the phone's time picker the same way. */
+function TimePill({ value, onChange, testId, label }: { value: string; onChange: (t: string) => void; testId: string; label: string }) {
+  return (
+    <span className={PILL}>
+      {fmtTime(value, true)}
+      <input type="time" step={60} value={value} aria-label={label} data-testid={testId}
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+        onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* opens on its own */ } }}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+    </span>
+  );
 }
 
 export function useNow(intervalMs = 30000) {
