@@ -875,7 +875,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
             data-testid="input-title"
           />
 
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5" role="radiogroup" aria-label="Type">
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Type">
             {KINDS.filter((k) => k !== "sleep" || existing?.kind === "sleep").map((k) => {
               const M = KIND_META[k];
               const on = v.kind === k;
@@ -900,8 +900,9 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                       if (v.freq === "none") setValue("freq", "daily");
                     }
                   }}
+                  // Round pills like the rest of the window; the chosen kind is tinted and ringed in its color.
                   className={cn(
-                    "flex flex-col items-center gap-1 rounded-md border px-1 py-2 text-xs font-medium transition-colors",
+                    "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
                     on ? "border-transparent text-foreground" : "text-muted-foreground hover-elevate",
                   )}
                   style={on ? { background: `hsl(var(${M.cssVar}) / .16)`, boxShadow: `inset 0 0 0 1.5px hsl(var(${M.cssVar}))` } : undefined}
