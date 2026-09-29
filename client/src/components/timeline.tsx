@@ -171,7 +171,7 @@ export function DayColumn({
     if (d.mode === "move") {
       const s = toMin(i.startTime) + d.delta;
       const e = toMin(i.endTime || fromMin(toMin(i.startTime) + 30)) + d.delta;
-      changes = { startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: fromMin(e) };
+      changes = { startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: kindOf(i) === "task" ? null : fromMin(e) };
     } else {
       const e = Math.max(b.start + 15, d.e0 + d.delta);
       changes = { endTime: fromMin(Math.min(e, 1440 - 1)) };
@@ -358,7 +358,8 @@ export function DayColumn({
                 </button>
               )}
             </div>
-            {b.continues !== "before" && b.continues !== "through" && !b.item.source.startsWith("feed:") && (
+            {/* The resize handle; tasks have no end to drag (they're due at their time). */}
+            {b.continues !== "before" && b.continues !== "through" && !b.item.source.startsWith("feed:") && k !== "task" && (
               <div
                 className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"
                 onPointerDown={(ev) => beginDrag(ev, b, "resize")}

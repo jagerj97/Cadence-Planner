@@ -82,7 +82,8 @@ export function dayBreakdown(items: Item[], settings: Settings, day: string) {
   for (const block of blocksForDay(routineSchedules(settings), day)) {
     for (let m = Math.max(0, block.start); m < Math.min(1440, block.end); m++) minutes[m] = 1;
   }
-  for (const block of blocksForDay(items, day)) {
+  // Tasks are due at a time rather than taking up the half hour they're drawn as.
+  for (const block of blocksForDay(items, day).filter((b) => kindOf(b.item) !== "task")) {
     for (let m = Math.max(0, block.start); m < Math.min(1440, block.end); m++) minutes[m] = 2;
   }
   const totals = [0, 0, 0];

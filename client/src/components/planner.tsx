@@ -18,7 +18,6 @@ import {
   KIND_META,
   DAY_SHORT,
   addDays,
-  availableFromFor,
   dueDateFor,
   isDeadlineTask,
   blocksForDay,
@@ -48,7 +47,7 @@ import {
 import { cn } from "@/lib/utils";
 import { WhatsNew } from "@/components/whatsNew";
 import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
-import { Check, Flame, Plus, Trash2, Timer, X, Link2 } from "lucide-react";
+import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
@@ -704,7 +703,6 @@ export const clock = (sec: number) => {
 };
 
 /* ============ item editor ============ */
-type TimeMode = "timed" | "anytime" | "allday" | "deadline";
 /** "Save for tomorrow" and the like: where a habit's repeating count starts instead of today. */
 const NEXT_PERIOD: Partial<Record<Recurrence["freq"], { label: string; date: (today: string) => string }>> = {
   daily: { label: "tomorrow", date: (d) => addDays(d, 1) },
@@ -724,13 +722,15 @@ type FormVals = {
   title: string;
   tags: string[];
   kind: Kind;
+  /** The day it's on (a task's due date; a habit keeps this out of sight as its pattern's anchor). */
   date: string;
+  /** No time: all day (a task: any time that day). */
+  allDay: boolean;
+  /** When a task can be done: only on its due date, any day before it, or from a set date. */
+  avail: "day" | "before" | "from";
+  /** "From a date": the first day; a repeating task opens as many days before each due date. */
   availableFrom: string;
-  /** For "a time before due date": anytime up to it (one-off), or a number of days or weeks before each due date. */
-  leadMode: "today" | "days" | "weeks";
-  leadCount: number;
   endDate: string;
-  timeMode: TimeMode;
   startTime: string;
   endTime: string;
   freq: Recurrence["freq"];
@@ -744,6 +744,9 @@ type FormVals = {
   location: string;
   notes: string;
 };
+
+/** "Any day before" is stored as a year's window: a year before a one-off's due date, or 365 days' lead. */
+const ANY_DAY_BEFORE = 365;
 
 const REMINDERS = [
   { v: "none", l: "No reminder" },
@@ -779,59 +782,59 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
   }, [editing]); // eslint-disable-line
 
   const v = watch();
-  // Repeat options show except for a deadline task available "anytime", which is one-off.
-  const repeats = v.timeMode !== "deadline" || v.leadMode !== "today";
   const rec = recOf((existing as any) || { recurrence: '{"freq":"none"}' });
   const isRecurring = existing && rec.freq !== "none";
   const isFeed = existing?.source.startsWith("feed:");
 
   const onSubmit = handleSubmit(async (f) => {
     if (!f.title.trim()) return;
-    // A habit has no end date and never stops repeating.
-    if (f.kind === "habit") f = { ...f, endDate: f.date, until: "", freq: f.freq === "none" ? "daily" : f.freq };
+    const task = f.kind === "task", habit = f.kind === "habit";
+    const timed = !f.allDay || f.kind === "sleep";
+    // A habit has no dates and never stops repeating.
+    if (habit) f = { ...f, endDate: f.date, until: "", freq: f.freq === "none" ? "daily" : f.freq };
     // Meetings happen within a day (a late one can still run past midnight, set by its times).
     if (f.kind === "meeting") f = { ...f, endDate: f.date };
-    if (f.kind === "task") {
-      f = { ...f, endDate: f.date };
-      if (f.timeMode === "deadline" && f.leadMode === "today") f.availableFrom = availableFromFor(f.date, f.availableFrom || todayStr());
-    }
-    if (!f.date || (f.timeMode !== "deadline" && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366))) {
+    if (task) f = { ...f, endDate: f.date };
+    if (!f.date || !task && !habit && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366)) {
       toast({ title: "Check the end date", description: "Choose an end date on or after the start, within one year.", variant: "destructive" });
       return;
     }
-    const lead = f.kind === "task" && f.timeMode === "deadline" && f.leadMode !== "today"
-      ? Math.max(1, Math.min(365, Math.round(Number(f.leadCount) || 1) * (f.leadMode === "weeks" ? 7 : 1))) : null;
-    if (f.timeMode === "deadline" && !lead && (!f.availableFrom || f.availableFrom > f.date)) {
+    // When a task can be done. A one-off one opens on a day; a repeating one the same number of days
+    // before each due date.
+    let avail = task ? f.avail : "day";
+    if (avail === "from" && (!f.availableFrom || f.availableFrom > f.date)) {
       toast({ title: "Check the dates", description: "Available from must be on or before the due date.", variant: "destructive" });
       return;
     }
-    // A task available "anytime" is one-off; one open some days before each due date can repeat.
-    const r: Recurrence = { freq: f.timeMode === "deadline" && !lead ? "none" : f.freq };
+    const before = avail === "from" ? Math.min(ANY_DAY_BEFORE, dayDiff(f.availableFrom, f.date)) : ANY_DAY_BEFORE;
+    if (avail === "from" && before === 0) avail = "day";
+    const oneOff = f.freq === "none";
+    const r: Recurrence = { freq: f.freq };
     if (r.freq !== "none") {
       if (f.interval > 1) r.interval = Number(f.interval);
       if (f.freq === "weekly") r.days = f.days.length ? [...f.days].sort() : [dow(f.date)];
       if (f.until) r.until = f.until;
     }
+    const start = f.startTime || "09:00";
     const payload: Partial<InsertItem> = {
       title: f.title.trim(),
       kind: f.kind,
       date: f.date,
-      availableFrom: f.kind === "task" && f.timeMode === "deadline" && !lead ? f.availableFrom : null,
-      leadDays: lead,
+      availableFrom: avail !== "day" && oneOff ? addDays(f.date, -before) : null,
+      leadDays: avail !== "day" && !oneOff ? before : null,
       color: existing?.source.startsWith("feed:") && f.kind !== existing.kind ? null : existing?.color ?? null,
-      endDate: f.timeMode === "deadline" ? null : f.timeMode === "timed" && f.endDate === f.date && toMin(f.endTime) <= toMin(f.startTime)
-        ? addDays(f.date, 1)
-        : f.endDate,
-      allDay: f.timeMode === "allday" && f.kind !== "task",
-      startTime: f.timeMode === "timed" ? f.startTime || "09:00" : null,
-      endTime: f.timeMode === "timed" ? f.endTime || fromMin(toMin(f.startTime) + 30) : null,
+      // A task is due at its time (no end); others end at their end time, the next day if that's earlier.
+      endDate: task ? null : timed && f.endDate === f.date && toMin(f.endTime) <= toMin(start) ? addDays(f.date, 1) : f.endDate,
+      allDay: !task && !timed,
+      startTime: timed ? start : null,
+      endTime: timed && !task ? f.endTime || fromMin(toMin(start) + 30) : null,
       recurrence: JSON.stringify(r),
-      reminder: f.timeMode === "deadline" || f.reminder === "none" ? null : Number(f.reminder),
-      extraReminders: JSON.stringify(f.timeMode === "deadline" || f.reminder === "none" ? []
+      reminder: !timed || f.reminder === "none" ? null : Number(f.reminder),
+      extraReminders: JSON.stringify(!timed || f.reminder === "none" ? []
         : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
-      tags: JSON.stringify(f.kind === "task" ? f.tags : []),
-      autoTimer: f.timeMode === "timed" && f.kind !== "sleep" && f.autoTimer,
+      tags: JSON.stringify(task ? f.tags : []),
+      autoTimer: timed && !task && f.kind !== "sleep" && f.autoTimer,
       location: f.location,
       notes: f.notes,
     };
@@ -845,7 +848,14 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
     onClose();
   });
 
-  const durMin = v.timeMode === "timed"
+  // Moving the start keeps the length.
+  const setStart = (t: string) => {
+    const length = (toMin(v.endTime) - toMin(v.startTime) + 1440) % 1440 || 30;
+    setValue("startTime", t);
+    setValue("endTime", fromMin(toMin(t) + length));
+  };
+  const timed = !v.allDay || v.kind === "sleep";
+  const durMin = timed
     ? Math.max(1, dayDiff(v.date, v.endDate || v.date) * 1440 + toMin(v.endTime) - toMin(v.startTime) || 30)
     : settings.focusMinutes;
 
@@ -882,18 +892,9 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   aria-checked={on}
                   onClick={() => {
                     setValue("kind", k);
-                    if (k !== "task" && v.timeMode === "deadline") setValue("timeMode", "anytime");
-                    // Tasks aren't all-day; they can be done anytime that day.
-                    if (k === "task" && v.timeMode === "allday") setValue("timeMode", "anytime");
-                    if (k === "task" && v.timeMode === "anytime" && v.freq === "none") {
-                      setValue("timeMode", "deadline");
-                      setValue("availableFrom", availableFromFor(v.date));
-                    }
                     if (k === "habit" && v.freq === "none") setValue("freq", "daily");
-                    // Habits are at a set time or all day.
-                    if (k === "habit" && (v.timeMode === "anytime" || v.timeMode === "deadline")) setValue("timeMode", "allday");
                     if (k === "sleep") {
-                      setValue("timeMode", "timed");
+                      setValue("allDay", false);
                       setValue("startTime", settings.bedTime);
                       setValue("endTime", settings.wakeTime);
                       setValue("endDate", addDays(v.date, 1));
@@ -914,120 +915,94 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
             })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Habits repeat forever with no start or end; only a monthly or yearly one needs a day to fall on. */}
-            {(v.kind !== "habit" || v.freq === "monthly" || v.freq === "yearly") && <div className="grid gap-1.5">
-              <Label htmlFor="f-date">{v.timeMode === "deadline" ? "Due date" : v.kind === "habit" ? "Repeats on" : v.freq !== "none" ? "Starts" : "Date"}</Label>
-              <Input id="f-date" type="date" {...register("date", {
-                onChange: (e) => {
-                  if (v.timeMode !== "deadline" && e.target.value && v.date && v.endDate) setValue("endDate", addDays(e.target.value, dayDiff(v.date, v.endDate)));
-                },
-              })} data-testid="input-date" />
-            </div>}
-            <div className="grid gap-1.5">
-              <Label>When</Label>
-              <Select value={v.timeMode} onValueChange={(x) => {
-                // Radix reports "" when the value briefly has no matching option (a new task gets its kind and
-                // "before due date" together); ignore it rather than clearing the choice.
-                if (!x) return;
-                setValue("timeMode", x as TimeMode);
-                if (x === "deadline") {
-                  if (v.leadMode === "today") setValue("freq", "none");
-                  setValue("availableFrom", v.availableFrom && v.availableFrom <= v.date ? v.availableFrom : availableFromFor(v.date));
-                }
-              }}>
-                <SelectTrigger data-testid="select-timemode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="timed">At a set time</SelectItem>
-                  {v.kind !== "habit" && <SelectItem value="anytime">Anytime that day</SelectItem>}
-                  {v.kind !== "task" && <SelectItem value="allday">All day</SelectItem>}
-                  {v.kind === "task" && <SelectItem value="deadline">A time before due date</SelectItem>}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Tasks only have a due date, and habits and meetings have no end date; a deadline task's first day is set for you. */}
-          {v.kind === "habit" || v.kind === "meeting" ? null : v.kind === "task" ? (
-            v.timeMode === "deadline" && (
-              <div className="grid gap-1.5">
-                <Label htmlFor="f-lead">Available</Label>
-                <div className="flex gap-2">
-                  {v.leadMode !== "today" && (
-                    <Input id="f-lead" type="number" className="w-20 shrink-0" min={1} max={v.leadMode === "weeks" ? 52 : 365} {...register("leadCount", { valueAsNumber: true })} data-testid="input-lead-count" />
-                  )}
-                  <Select value={v.leadMode} onValueChange={(x) => {
-                    if (!x) return;
-                    setValue("leadMode", x as FormVals["leadMode"]);
-                    // "Anytime" (up to the due date) is for one-off tasks.
-                    if (x === "today") setValue("freq", "none");
-                  }}>
-                    <SelectTrigger className="flex-1" data-testid="select-lead-mode">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="today">Anytime</SelectItem>
-                      <SelectItem value="days">Days before</SelectItem>
-                      <SelectItem value="weeks">Weeks before</SelectItem>
-                    </SelectContent>
-                  </Select>
+          {/* Laid out like Google Calendar's: a row per part, its icon on the left, dates and times as pills. */}
+          <div className="grid gap-3">
+            <EditorRow icon={Clock}>
+              <label className="flex min-h-9 cursor-pointer items-center justify-between gap-3">
+                <span className="text-sm">{v.kind === "task" ? "Any time" : "All-day"}</span>
+                <Switch checked={v.allDay && v.kind !== "sleep"} disabled={v.kind === "sleep"} onCheckedChange={(x) => setValue("allDay", x)} data-testid="switch-allday" />
+              </label>
+              {v.kind === "task" ? (
+                // A task is due on a day, at a time unless it's any time that day.
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-10 text-sm text-muted-foreground">Due</span>
+                  <DatePill value={v.date} onChange={(d) => setValue("date", d)} testId="input-date" label="Due date" />
+                  {!v.allDay && <TimePill value={v.startTime} onChange={(t) => setValue("startTime", t)} testId="input-start" label="Due time" />}
                 </div>
-              </div>
-            )
-          ) : (
-            <div className="grid gap-1.5">
-              <Label htmlFor="f-end-date">End date</Label>
-              <Input id="f-end-date" type="date" min={v.date} {...register("endDate")} data-testid="input-end-date" />
-              <span className="text-xs text-muted-foreground">
-                {v.timeMode === "allday" ? "Includes this entire day." : "Choose a later day for an item that lasts across days."}
-              </span>
-            </div>
-          )}
+              ) : v.kind === "habit" ? (
+                // Habits have no dates: just a time, if they have one.
+                !v.allDay && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TimePill value={v.startTime} onChange={(t) => setStart(t)} testId="input-start" label="Start time" />
+                    <span className="text-muted-foreground">–</span>
+                    <TimePill value={v.endTime} onChange={(t) => setValue("endTime", t)} testId="input-end" label="End time" />
+                  </div>
+                )
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <DatePill value={v.date} onChange={(d) => {
+                      if (v.date && v.endDate) setValue("endDate", addDays(d, dayDiff(v.date, v.endDate)));
+                      setValue("date", d);
+                    }} testId="input-date" label={v.freq !== "none" ? "Starts" : "Start date"} />
+                    {timed && <TimePill value={v.startTime} onChange={(t) => setStart(t)} testId="input-start" label="Start time" />}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    {/* Meetings end the day they start (a late one's end time can still be after midnight). */}
+                    {v.kind === "meeting"
+                      ? <span className="px-3.5 text-sm text-muted-foreground">Ends</span>
+                      : <DatePill value={v.endDate} min={v.date} onChange={(d) => setValue("endDate", d)} testId="input-end-date" label="End date" />}
+                    {timed && (
+                      <span className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground tnum">{fmtDur(durMin)}</span>
+                        <TimePill value={v.endTime} onChange={(t) => {
+                          setValue("endTime", t);
+                          if (v.endDate === v.date && toMin(t) <= toMin(v.startTime)) setValue("endDate", addDays(v.date, 1));
+                        }} testId="input-end" label="End time" />
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+            </EditorRow>
 
-          {v.timeMode === "timed" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="f-start">Start</Label>
-                <Input
-                  id="f-start"
-                  type="time"
-                  step={60}
-                  {...register("startTime", {
-                    onChange: (e) => {
-                      // keep duration when moving the start
-                      const oldDur = (toMin(v.endTime) - toMin(v.startTime) + 1440) % 1440 || 30;
-                      setValue("endTime", fromMin(toMin(e.target.value) + oldDur));
-                    },
-                  })}
-                  data-testid="input-start"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="f-end">
-                  End <span className="text-muted-foreground font-normal">· {fmtDur(durMin)}</span>
-                </Label>
-                <Input id="f-end" type="time" step={60} {...register("endTime", {
-                  onChange: (e) => {
-                    if (v.endDate === v.date && toMin(e.target.value) <= toMin(v.startTime)) {
-                      setValue("endDate", addDays(v.date, 1));
-                    }
-                  },
-                })} data-testid="input-end" />
-              </div>
-            </div>
-          )}
+            {v.kind === "task" && (
+              <EditorRow icon={CalendarClock}>
+                <div className="flex min-h-9 flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Available">
+                  {([["day", "On the day"], ["before", "Any day before"], ["from", "From a date"]] as const).map(([mode, label]) => (
+                    <button key={mode} type="button" role="radio" aria-checked={v.avail === mode}
+                      onClick={() => {
+                        setValue("avail", mode);
+                        if (mode === "from" && (!v.availableFrom || v.availableFrom > v.date)) setValue("availableFrom", addDays(v.date, -1));
+                      }}
+                      className={cn("h-8 rounded-full border px-3 text-xs font-medium transition-colors",
+                        v.avail === mode ? "border-transparent bg-primary text-primary-foreground" : "text-muted-foreground hover-elevate")}
+                      data-testid={`button-avail-${mode}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {v.avail === "from" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">From</span>
+                    <DatePill value={v.availableFrom} max={v.date} onChange={(d) => setValue("availableFrom", d)} testId="input-available-from" label="Available from" />
+                    {v.freq !== "none" && v.availableFrom && v.availableFrom < v.date && (
+                      <span className="text-xs text-muted-foreground">
+                        {(() => { const n = dayDiff(v.availableFrom, v.date); return `${n} ${n === 1 ? "day" : "days"} before each one`; })()}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </EditorRow>
+            )}
 
-          {repeats && <div className={cn("grid gap-3", v.timeMode !== "deadline" && "grid-cols-2")}>
-            <div className="grid gap-1.5">
-              <Label>Repeat</Label>
+            <EditorRow icon={Repeat}>
               <Select value={v.freq} onValueChange={(x) => setValue("freq", x as Recurrence["freq"])}>
-                <SelectTrigger data-testid="select-repeat">
+                <SelectTrigger className="h-9 w-fit gap-2 rounded-full px-3.5" data-testid="select-repeat">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {v.kind !== "habit" && <SelectItem value="none">Doesn't repeat</SelectItem>}
+                  {v.kind !== "habit" && <SelectItem value="none">Does not repeat</SelectItem>}
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekdays">Weekdays (Mon–Fri)</SelectItem>
                   <SelectItem value="weekly">Weekly on…</SelectItem>
@@ -1035,177 +1010,150 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   <SelectItem value="yearly">Yearly</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            {v.timeMode !== "deadline" && (
-            <div className="grid gap-1.5">
-              <Label>Reminder</Label>
-              <Select value={v.reminder} onValueChange={(x) => {
-                setValue("reminder", x);
-                if (x === "none") setValue("extraReminders", []);
-              }}>
-                <SelectTrigger data-testid="select-reminder">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REMINDERS.map((r) => (
-                    <SelectItem key={r.v} value={r.v}>
-                      {r.l}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            )}
-          </div>}
-
-          {v.timeMode !== "deadline" && v.reminder !== "none" && (
-            <div className="grid gap-2">
-              {v.extraReminders.length > 0 && <Label>Also remind me</Label>}
-              {v.extraReminders.map((extra, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <Select value={extra} onValueChange={(x) => setValue("extraReminders", v.extraReminders.map((e, k) => (k === index ? x : e)))}>
-                    <SelectTrigger className="flex-1" aria-label={`Reminder ${index + 2}`} data-testid={`select-extra-reminder-${index}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {REMINDERS.filter((r) => r.v !== "none").map((r) => (
-                        <SelectItem key={r.v} value={r.v}>
-                          {r.l}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
-                    onClick={() => setValue("extraReminders", v.extraReminders.filter((_, k) => k !== index))}
-                    aria-label={`Remove reminder ${index + 2}`} data-testid={`button-remove-reminder-${index}`}>
-                    <X className="h-4 w-4" />
-                  </Button>
+              {v.freq === "weekly" && (
+                <div className="flex gap-1.5" aria-label="Days of week">
+                  {DAY_SHORT.map((d, i) => {
+                    const on = v.days.includes(i);
+                    return (
+                      <button type="button" key={d} aria-pressed={on}
+                        onClick={() => setValue("days", on ? v.days.filter((x) => x !== i) : [...v.days, i])}
+                        className={cn("h-9 flex-1 rounded-full border text-xs font-medium",
+                          on ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground hover-elevate")}
+                        data-testid={`button-day-${i}`}>
+                        {d.slice(0, 2)}
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
-              <button type="button" className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary hover:underline"
-                onClick={() => {
-                  const used = new Set([v.reminder, ...v.extraReminders]);
-                  const next = REMINDERS.find((r) => r.v !== "none" && !used.has(r.v))?.v ?? "0";
-                  setValue("extraReminders", [...v.extraReminders, next]);
-                }}
-                data-testid="button-add-reminder">
-                <Plus className="h-3.5 w-3.5" /> Add another reminder
-              </button>
-            </div>
-          )}
-
-          {repeats && v.freq === "weekly" && (
-            <div className="flex gap-1.5" aria-label="Days of week">
-              {DAY_SHORT.map((d, i) => {
-                const on = v.days.includes(i);
-                return (
-                  <button
-                    type="button"
-                    key={d}
-                    aria-pressed={on}
-                    onClick={() => setValue("days", on ? v.days.filter((x) => x !== i) : [...v.days, i])}
-                    className={cn(
-                      "h-9 flex-1 rounded-md border text-xs font-medium",
-                      on ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground hover-elevate",
-                    )}
-                    data-testid={`button-day-${i}`}
-                  >
-                    {d.slice(0, 2)}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {repeats && v.freq !== "none" && (
-            <div className={cn("grid gap-3", v.kind !== "habit" && "grid-cols-2")}>
-              <div className="grid gap-1.5">
-                <Label htmlFor="f-interval">Every</Label>
-                <div className="flex items-center gap-2">
-                  <Input id="f-interval" type="number" min={1} max={30} className="w-20" {...register("interval", { valueAsNumber: true })} data-testid="input-interval" />
-                  <span className="text-sm text-muted-foreground">
+              )}
+              {v.freq !== "none" && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Every</span>
+                  <Input id="f-interval" type="number" min={1} max={30} className="h-9 w-16 rounded-full text-center" {...register("interval", { valueAsNumber: true })} data-testid="input-interval" />
+                  <span className="text-muted-foreground">
                     {{ daily: "day(s)", weekdays: "week", weekly: "week(s)", monthly: "month(s)", yearly: "year(s)", none: "" }[v.freq]}
                   </span>
+                  {v.kind !== "habit" && (
+                    <>
+                      <span className="ml-1 text-muted-foreground">until</span>
+                      <DatePill value={v.until} min={v.date} onChange={(d) => setValue("until", d)} testId="input-until" label="Repeat until" empty="Forever" clearable />
+                    </>
+                  )}
                 </div>
-              </div>
-              {v.kind !== "habit" && <div className="grid gap-1.5">
-                <Label htmlFor="f-until">Repeat until (optional)</Label>
-                <Input id="f-until" type="date" {...register("until")} data-testid="input-until" />
-              </div>}
-            </div>
-          )}
-
-          {/* A habit that isn't on today can have its schedule moved so its next day is today. */}
-          {existing && v.kind === "habit" && (() => {
-            const shift = shiftedToToday({
-              kind: "habit", uid: existing.uid, exceptions: existing.exceptions, date: v.date,
-              recurrence: JSON.stringify({ freq: v.freq, interval: v.interval > 1 ? Number(v.interval) : undefined, days: v.days.length ? v.days : undefined }),
-            }, todayStr());
-            if (!shift && !shifted) return null;
-            return (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                {shift && (
-                  <Button type="button" variant="outline" size="sm" data-testid="button-shift-today" onClick={() => {
-                    setValue("date", shift.date);
-                    setValue("freq", shift.recurrence.freq);
-                    setValue("days", shift.recurrence.days ?? []);
-                    setShifted(true);
-                  }}>
-                    Shift to today
-                  </Button>
-                )}
-                <span className="text-xs text-muted-foreground" data-testid="text-shift-today">
-                  {shift ? "It isn't on today. This moves its schedule so it is." : "Shifted to today. Save to keep it."}
-                </span>
-              </div>
-            );
-          })()}
-
-          {v.timeMode === "timed" && v.kind !== "sleep" && (
-            <label className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5 cursor-pointer" data-testid="row-autotimer">
-              <span className="flex items-center gap-2.5">
-                <Timer className="h-4 w-4 text-primary" />
-                <span>
-                  <span className="block text-sm font-medium">Start a timer when it begins</span>
-                  <span className="block text-xs text-muted-foreground">Counts down {fmtDur(durMin)} automatically at {fmtTime(v.startTime, true)}</span>
-                </span>
-              </span>
-              <Switch checked={v.autoTimer} onCheckedChange={(x) => setValue("autoTimer", x)} data-testid="switch-autotimer" />
-            </label>
-          )}
-
-          {v.kind === "task" && (
-            <div className="grid gap-1.5">
-              <Label>Task Tags</Label>
-              <TaskTagField value={v.tags} onChange={(t) => setValue("tags", t)} />
-            </div>
-          )}
-
-          {v.kind === "task" && (
-            <div className="grid gap-1.5">
-              <Label>Priority</Label>
-              <div className="flex gap-1.5">
-                {["low", "normal", "high"].map((p) => (
-                  <button
-                    type="button"
-                    key={p}
-                    aria-pressed={v.priority === p}
-                    onClick={() => setValue("priority", p)}
-                    className={cn(
-                      "h-9 flex-1 rounded-md border text-sm capitalize",
-                      v.priority === p ? "bg-secondary text-foreground font-medium border-foreground/20" : "text-muted-foreground hover-elevate",
+              )}
+              {/* A habit that isn't on today can have its schedule moved so its next day is today. */}
+              {existing && v.kind === "habit" && (() => {
+                const shift = shiftedToToday({
+                  kind: "habit", uid: existing.uid, exceptions: existing.exceptions, date: v.date,
+                  recurrence: JSON.stringify({ freq: v.freq, interval: v.interval > 1 ? Number(v.interval) : undefined, days: v.days.length ? v.days : undefined }),
+                }, todayStr());
+                if (!shift && !shifted) return null;
+                return (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {shift && (
+                      <Button type="button" variant="outline" size="sm" className="rounded-full" data-testid="button-shift-today" onClick={() => {
+                        setValue("date", shift.date);
+                        setValue("freq", shift.recurrence.freq);
+                        setValue("days", shift.recurrence.days ?? []);
+                        setShifted(true);
+                      }}>
+                        Shift to today
+                      </Button>
                     )}
-                    data-testid={`button-priority-${p}`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+                    <span className="text-xs text-muted-foreground" data-testid="text-shift-today">
+                      {shift ? "It isn't on today. This moves its schedule so it is." : "Shifted to today. Save to keep it."}
+                    </span>
+                  </div>
+                );
+              })()}
+            </EditorRow>
 
-          <Input placeholder="Location or link" {...register("location")} data-testid="input-location" />
-          <Textarea placeholder="Notes" rows={3} {...register("notes")} data-testid="input-notes" />
+            {timed && v.kind !== "sleep" && (
+              <EditorRow icon={Bell}>
+                {[v.reminder, ...(v.reminder === "none" ? [] : v.extraReminders)].map((value, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Select value={value} onValueChange={(x) => {
+                      if (index === 0) {
+                        setValue("reminder", x);
+                        if (x === "none") setValue("extraReminders", []);
+                      } else setValue("extraReminders", v.extraReminders.map((e, k) => (k === index - 1 ? x : e)));
+                    }}>
+                      <SelectTrigger className="h-9 w-fit gap-2 rounded-full px-3.5" aria-label={index ? `Reminder ${index + 1}` : "Reminder"}
+                        data-testid={index ? `select-extra-reminder-${index - 1}` : "select-reminder"}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REMINDERS.filter((r) => index === 0 || r.v !== "none").map((r) => (
+                          <SelectItem key={r.v} value={r.v}>{v.kind === "task" && r.v === "0" ? "At due time" : r.l}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {index > 0 && (
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0"
+                        onClick={() => setValue("extraReminders", v.extraReminders.filter((_, k) => k !== index - 1))}
+                        aria-label={`Remove reminder ${index + 1}`} data-testid={`button-remove-reminder-${index - 1}`}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                {v.reminder !== "none" && (
+                  <button type="button" className="inline-flex h-7 w-fit items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                    onClick={() => {
+                      const used = new Set([v.reminder, ...v.extraReminders]);
+                      const next = REMINDERS.find((r) => r.v !== "none" && !used.has(r.v))?.v ?? "0";
+                      setValue("extraReminders", [...v.extraReminders, next]);
+                    }}
+                    data-testid="button-add-reminder">
+                    <Plus className="h-3.5 w-3.5" /> add reminder
+                  </button>
+                )}
+              </EditorRow>
+            )}
+
+            {timed && v.kind !== "sleep" && v.kind !== "task" && (
+              <EditorRow icon={Timer}>
+                <label className="flex min-h-9 cursor-pointer items-center justify-between gap-3" data-testid="row-autotimer">
+                  <span className="min-w-0">
+                    <span className="block text-sm">Start a timer when it begins</span>
+                    <span className="block text-xs text-muted-foreground">Counts down {fmtDur(durMin)} at {fmtTime(v.startTime, true)}</span>
+                  </span>
+                  <Switch checked={v.autoTimer} onCheckedChange={(x) => setValue("autoTimer", x)} data-testid="switch-autotimer" />
+                </label>
+              </EditorRow>
+            )}
+
+            {v.kind === "task" && (
+              <EditorRow icon={Hash}>
+                <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-sm">Task Tags</span>
+                  <TaskTagField value={v.tags} onChange={(t) => setValue("tags", t)} />
+                </div>
+              </EditorRow>
+            )}
+
+            {v.kind === "task" && (
+              <EditorRow icon={Flag}>
+                <div className="flex gap-1.5" role="radiogroup" aria-label="Priority">
+                  {["low", "normal", "high"].map((p) => (
+                    <button type="button" key={p} role="radio" aria-checked={v.priority === p} onClick={() => setValue("priority", p)}
+                      className={cn("h-9 flex-1 rounded-full border text-sm capitalize",
+                        v.priority === p ? "bg-secondary text-foreground font-medium border-foreground/20" : "text-muted-foreground hover-elevate")}
+                      data-testid={`button-priority-${p}`}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </EditorRow>
+            )}
+
+            <EditorRow icon={MapPin}>
+              <Input placeholder="Location or link" className="h-9" {...register("location")} data-testid="input-location" />
+            </EditorRow>
+            <EditorRow icon={AlignLeft}>
+              <Textarea placeholder="Notes" rows={3} {...register("notes")} data-testid="input-notes" />
+            </EditorRow>
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {existing && (
@@ -1264,20 +1212,23 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
 function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const r = recOf(i as Item);
   const isNew = !("id" in i && typeof (i as Item).id === "number");
-  const lead = i.kind === "task" ? i.leadDays ?? 0 : 0;
-  const timeMode: TimeMode = i.kind === "task" && (i.availableFrom || lead > 0 || (isNew && !i.startTime && !i.allDay && r.freq === "none"))
-    ? "deadline" : i.allDay && i.kind !== "task" ? "allday" : i.startTime ? "timed" : i.kind === "habit" ? "allday" : "anytime";
+  const task = i.kind === "task";
+  const lead = task ? i.leadDays ?? 0 : 0;
+  const fromDays = task && i.availableFrom ? dayDiff(i.availableFrom, i.date) : 0;
+  // A new task is doable any day before it's due, as they were before tasks had these choices.
+  const avail: FormVals["avail"] = lead >= ANY_DAY_BEFORE || fromDays >= ANY_DAY_BEFORE ? "before"
+    : lead > 0 || fromDays > 0 ? "from" : task && isNew && !i.availableFrom && !i.leadDays ? "before" : "day";
+  const date = i.date || todayStr();
   return {
     title: i.title || "",
     kind: ((KINDS as readonly string[]).includes(i.kind as string) ? i.kind : "event") as Kind,
-    date: i.date || todayStr(),
-    availableFrom: i.availableFrom || availableFromFor(i.date),
-    leadMode: lead <= 0 ? "today" : lead % 7 === 0 ? "weeks" : "days",
-    leadCount: lead <= 0 ? 1 : lead % 7 === 0 ? lead / 7 : lead,
-    endDate: i.endDate || (i.startTime && i.endTime && toMin(i.endTime) <= toMin(i.startTime) ? addDays(i.date, 1) : i.date),
-    timeMode,
+    date,
+    allDay: !i.startTime,
+    avail,
+    availableFrom: lead > 0 ? addDays(date, -Math.min(lead, ANY_DAY_BEFORE)) : i.availableFrom || addDays(date, -1),
+    endDate: i.endDate || (i.startTime && i.endTime && toMin(i.endTime) <= toMin(i.startTime) ? addDays(date, 1) : date),
     startTime: i.startTime || "09:00",
-    endTime: i.endTime || (i.startTime ? fromMin(toMin(i.startTime) + 60) : "10:00"),
+    endTime: i.endTime || fromMin(toMin(i.startTime || "09:00") + 60),
     freq: r.freq,
     interval: r.interval || 1,
     days: r.days || [],
@@ -1290,6 +1241,57 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     location: i.location || "",
     notes: i.notes || "",
   };
+}
+
+/** A part of the item window: its icon in the left column, its controls beside it. */
+function EditorRow({ icon: Icon, children }: { icon: typeof Clock; children: ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <Icon className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+      <div className="grid min-w-0 flex-1 gap-2">{children}</div>
+    </div>
+  );
+}
+
+const PILL = "relative inline-flex h-9 shrink-0 items-center rounded-full border px-3.5 text-sm tnum hover-elevate focus-within:ring-2 focus-within:ring-ring";
+
+/**
+ * A date as a pill ("Tue, Sep 29"; the year when it isn't this one). The phone's date picker opens from
+ * an invisible date input laid over it. `clearable` adds an x (an empty value shows `empty`).
+ */
+function DatePill({ value, onChange, min, max, testId, label, empty = "Pick a date", clearable = false }: {
+  value: string; onChange: (d: string) => void; min?: string; max?: string; testId: string; label: string; empty?: string; clearable?: boolean;
+}) {
+  const shown = value ? fmtDate(value, { weekday: "short", month: "short", day: "numeric", ...(value.slice(0, 4) !== todayStr().slice(0, 4) ? { year: "numeric" } : {}) }) : empty;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={cn(PILL, !value && "text-muted-foreground")}>
+        {shown}
+        <input type="date" value={value} min={min} max={max} aria-label={label} data-testid={testId}
+          onChange={(e) => (e.target.value || clearable) && onChange(e.target.value)}
+          onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* opens on its own */ } }}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+      </span>
+      {clearable && value && (
+        <button type="button" onClick={() => onChange("")} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted" aria-label={`Clear ${label.toLowerCase()}`}>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/** A time as a pill ("7:30 PM"), opening the phone's time picker the same way. */
+function TimePill({ value, onChange, testId, label }: { value: string; onChange: (t: string) => void; testId: string; label: string }) {
+  return (
+    <span className={PILL}>
+      {fmtTime(value, true)}
+      <input type="time" step={60} value={value} aria-label={label} data-testid={testId}
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+        onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* opens on its own */ } }}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+    </span>
+  );
 }
 
 export function useNow(intervalMs = 30000) {

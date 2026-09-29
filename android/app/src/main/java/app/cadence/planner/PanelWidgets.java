@@ -166,7 +166,8 @@ final class PanelWidgets {
             JSONObject b = blocks.optJSONObject(i);
             // Tasks that are already checked off don't need doing now.
             if (b == null || b.optBoolean("done") && "task".equals(b.optString("kind"))) continue;
-            if (current == null && now >= b.optInt("start") && now < b.optInt("end")) current = b;
+            // A task is due at its time, so it can be next but isn't "right now".
+            if (current == null && now >= b.optInt("start") && now < b.optInt("end") && !"task".equals(b.optString("kind"))) current = b;
             String continues = b.optString("continues");
             if (next == null && b.optInt("start") > now && !"before".equals(continues)) next = b;
         }

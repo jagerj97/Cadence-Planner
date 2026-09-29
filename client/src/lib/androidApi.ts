@@ -74,6 +74,11 @@ async function put<T extends object>(store: StoreName, entry: T): Promise<T & { 
   if (copy.id == null) delete copy.id;
   // Tasks aren't all-day; one saved that way (an import, a kind change) is done anytime that day.
   if (store === "items" && copy.kind === "task" && copy.allDay) copy.allDay = false;
+  // A task with a time is due at that moment: no end time (it's drawn as a half-hour block) or end date.
+  if (store === "items" && copy.kind === "task" && copy.startTime && (copy.endTime || copy.endDate)) {
+    copy.endTime = null;
+    copy.endDate = null;
+  }
   const id = await result(db.transaction(store, "readwrite").objectStore(store).put(copy));
   return { ...copy, ...(store === "settings" ? {} : { id: Number(id) }) } as T & { id: number };
 }
@@ -116,11 +121,12 @@ const validTime = (s: unknown) => s == null || typeof s === "string" && /^([01]\
 function validItem(it: Item | InsertItem): boolean {
   if (!it.title?.trim() || !validDate(it.date) || it.endDate && (!validDate(it.endDate) || it.endDate < it.date) ||
       !validTime(it.startTime) || !validTime(it.endTime)) return false;
+  // A one-off task can be done from a day up to its due date (and time, if it has one).
   if (it.availableFrom && (it.kind !== "task" || !validDate(it.availableFrom) || it.availableFrom > it.date ||
-      it.startTime || it.endTime || it.allDay || JSON.parse(it.recurrence || '{"freq":"none"}').freq !== "none")) return false;
-  // Days before each due date a task can be done: a whole number of days, for untimed tasks only.
+      it.allDay || JSON.parse(it.recurrence || '{"freq":"none"}').freq !== "none")) return false;
+  // Days before each due date a (repeating) task can be done: a whole number of days.
   if (it.leadDays != null && (it.kind !== "task" || !Number.isInteger(it.leadDays) || it.leadDays < 1 || it.leadDays > 365 ||
-      it.startTime || it.availableFrom)) return false;
+      it.availableFrom)) return false;
   return true;
 }
 const entryTitle = (title: unknown) => (typeof title === "string" && title.trim() ? title.trim().slice(0, 200) : null);
@@ -165,7 +171,7 @@ async function syncNotes(item: Item, notesChanged: boolean): Promise<Item> {
 /** Items saved before notes became journal entries get theirs once, and all-day tasks become anytime that day. */
 const backfillNotes = () => exclusive(async () => {
   for (const item of await list<Item>("items")) {
-    if (item.kind === "task" && item.allDay) await put("items", item);
+    if (item.kind === "task" && (item.allDay || item.startTime && (item.endTime || item.endDate))) await put("items", item);
     if (item.journalId === undefined && !item.journalOff && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
   }
 });
@@ -472,7 +478,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
               const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
                 completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && (old.availableFrom || old.leadDays) ? {
-                  availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, startTime: null, endTime: null, endDate: null, allDay: false,
+                  availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, endDate: null, allDay: false,
                 } : {}) });
               await syncNotes(saved, (fresh.notes || "").trim() !== (old.notes || "").trim());
             } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);

@@ -330,7 +330,8 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
   const today = todayStr();
   // Tasks that are already checked off don't need doing now.
   const blocks = blocksForDay(items, today).filter((b) => !(b.done && kindOf(b.item) === "task"));
-  const current = blocks.find((b) => nm >= b.start && nm < b.end);
+  // A task is due at its time rather than taking up the half hour it's drawn as: it can be next, not current.
+  const current = blocks.find((b) => nm >= b.start && nm < b.end && kindOf(b.item) !== "task");
   const next = blocks.find((b) => b.start > nm && b.continues !== "before");
   return (
     <div className="card-md wellness-now p-4 md:p-5 grid gap-3" data-testid="card-now">
