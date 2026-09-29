@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/components/shell";
 import { DayColumn, HourLabels } from "@/components/timeline";
@@ -9,6 +9,7 @@ import {
   DAY_SHORT,
   addDays,
   barsFor,
+  dayDiff,
   isLong,
   isTimed,
   lastDayOffset,
@@ -373,24 +374,75 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
   );
 }
 
-/** The schedule view: upcoming days as a list (like Google Calendar's), from today; more on request. */
+/**
+ * The schedule view: every day with something on, as a list (like Google Calendar's), from the first
+ * item on; it opens at today and loads further ahead as it's scrolled. The title is the month in view
+ * and opens the month picker to jump to a day; Today comes back to today.
+ */
 export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
   const { data: items } = useItems();
-  const [days, setDays] = useState(60);
-  const list = (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; });
+  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
   const today = todayStr();
+  const [range, setRange] = useState<{ start: string; end: string } | null>(null);
+  // Back to the earliest item (at most three years), and ahead to the last one-off item or four months.
+  useEffect(() => {
+    if (!items || range) return;
+    const floor = addDays(today, -3 * 365);
+    const earliest = items.reduce((m, i) => (i.date < m ? i.date : m), today);
+    const latest = items.reduce((m, i) => { const last = i.endDate || i.date; return recOf(i).freq === "none" && last > m ? last : m; }, addDays(today, 120));
+    setRange({ start: earliest < floor ? floor : earliest, end: latest });
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scroller = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(today);
+  const [jump, setJump] = useState<string | null>(today);
+  // Scroll to a day (the first shown on or after it), once it's in the list.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!jump || !range || !el) return;
+    const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
+    const row = rows.find((r) => (r.dataset.day ?? "") >= jump) ?? rows[rows.length - 1];
+    if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+    setInView(jump);
+    setJump(null);
+  }, [jump, range]);
+  const goTo = (day: string) => {
+    setRange((r) => r && { start: day < r.start ? day : r.start, end: day > r.end ? addDays(day, 60) : r.end });
+    setJump(day);
+  };
+  // The title follows the first day in view.
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    const row = [...el.querySelectorAll<HTMLElement>("[data-day]")].find((r) => r.getBoundingClientRect().bottom > top + 8);
+    if (row?.dataset.day && row.dataset.day !== inView) setInView(row.dataset.day);
+  };
+  // Nearing the end loads the next three months.
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !range) return;
+    const watch = new IntersectionObserver((seen) => {
+      if (seen.some((e) => e.isIntersecting)) setRange((r) => r && { ...r, end: addDays(r.end, 90) });
+    }, { root: scroller.current, rootMargin: "600px" });
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [range?.end]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <PageHeader title="Schedule" sub={`From ${fmtDate(today, { weekday: "long", month: "long", day: "numeric" })}`}>
+      <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-schedule-day" />}>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={() => goTo(today)} data-testid="button-schedule-today">
+            Today
+          </Button>
+        </div>
         {toggle}
       </PageHeader>
       {filters}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
+      <div ref={scroller} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6" data-testid="schedule-scroller">
         <div className="mx-auto grid max-w-2xl gap-4 pb-4">
-          <ScheduleList list={list} from={today} days={days} />
-          <Button variant="ghost" size="sm" className="justify-self-center text-muted-foreground" onClick={() => setDays((n) => n + 60)} data-testid="button-schedule-more">
-            Show more
-          </Button>
+          {range && <ScheduleList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
+          <div ref={sentinel} className="h-px" aria-hidden />
         </div>
       </div>
     </>
