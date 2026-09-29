@@ -324,12 +324,7 @@ export function FocusPage() {
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
           <section className="card-md focus-hero min-w-0 p-4 md:p-6 grid gap-5" aria-label="Timer">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold tracking-tight">Timer</h2>
-              <span className="rounded-full bg-white/70 dark:bg-white/10 px-2.5 py-1 text-xs text-muted-foreground" data-testid="text-timer-state">
-                {!focus ? "Ready" : focus.runStart ? "Focusing" : "Paused"}
-              </span>
-            </div>
+            <h2 className="text-sm font-semibold tracking-tight">Timer</h2>
             <div className="relative justify-self-center">
               <Ring pct={pct} size={236} stroke={12} color={ringColor} track="hsl(var(--k-focus) / .14)" />
               <div className="absolute inset-0 grid place-items-center text-center">

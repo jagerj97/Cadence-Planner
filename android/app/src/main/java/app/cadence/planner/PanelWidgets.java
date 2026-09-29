@@ -248,8 +248,14 @@ final class PanelWidgets {
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         v.setPendingIntentTemplate(R.id.schedule_list, PendingIntent.getActivity(context, 800003 + id, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
-        // Open at the current hour, like the app. Ticks leave the scroll where the user put it.
-        if (full) v.setScrollPosition(R.id.schedule_list, Math.max(0, LocalTime.now().getHour()));
+        // Open at the current hour, like the app: once when it's placed and once a day. Changes saved
+        // from the app and ticks leave the scroll where the user put it, so it never jumps mid-scroll.
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String today = LocalDate.now().toString(), key = "scrolledDay" + id;
+        if (!today.equals(prefs.getString(key, ""))) {
+            v.setScrollPosition(R.id.schedule_list, Math.max(0, LocalTime.now().getHour()));
+            prefs.edit().putString(key, today).apply();
+        }
         return v;
     }
 
