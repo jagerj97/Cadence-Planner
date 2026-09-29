@@ -892,6 +892,10 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   aria-checked={on}
                   onClick={() => {
                     setValue("kind", k);
+                    // A new item takes the kind's usual timing: tasks and habits without a time, the rest timed.
+                    if (!existing) setValue("allDay", k === "task" || k === "habit");
+                    // ...and leaving Habit drops the daily repeat it came with.
+                    if (!existing && v.kind === "habit" && k !== "habit") setValue("freq", "none");
                     if (k === "habit" && v.freq === "none") setValue("freq", "daily");
                     if (k === "sleep") {
                       setValue("allDay", false);
@@ -947,7 +951,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                     }} testId="input-date" label={v.freq !== "none" ? "Starts" : "Start date"} />
                     {timed && <TimePill value={v.startTime} onChange={(t) => setStart(t)} testId="input-start" label="Start time" />}
                   </div>
-                  <div className="flex items-center justify-between gap-2">
+                  {!(v.kind === "meeting" && !timed) && <div className="flex items-center justify-between gap-2">
                     {/* Meetings end the day they start (a late one's end time can still be after midnight). */}
                     {v.kind === "meeting"
                       ? <span className="px-3.5 text-sm text-muted-foreground">Ends</span>
@@ -961,7 +965,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                         }} testId="input-end" label="End time" />
                       </span>
                     )}
-                  </div>
+                  </div>}
                 </>
               )}
             </EditorRow>
