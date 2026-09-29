@@ -140,6 +140,8 @@ export type Settings = {
   showSun: boolean;
   /** "Let Cadence outside": no cat picture, cat-themed hints or theme names, and a plain app icon. */
   plain: boolean;
+  /** Set once settings from before the 30-minute default reminder were moved to it. */
+  reminderDefault30?: boolean;
   /** The version whose "What's new" window was last dismissed. */
   seenVersion?: string;
 };
@@ -149,7 +151,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wakeTime: "07:00",
   bedTime: "23:00",
   dayStartHour: 6,
-  defaultReminder: 10,
+  defaultReminder: 30,
   focusMinutes: 30,
   sound: true,
   inAppPopups: true,

@@ -64,7 +64,7 @@ function row(component: ICAL.Component, start: ICAL.Time, end: ICAL.Time, tz: st
     recurrence: '{"freq":"none"}',
     exceptions: "[]",
     completions: "[]",
-    reminder: allDay ? null : alarmMinutes ?? 10,
+    reminder: allDay ? null : alarmMinutes ?? 30,
     extraReminders: JSON.stringify(allDay ? [] : alarms.slice(1)),
     priority: "normal",
     autoTimer: false,

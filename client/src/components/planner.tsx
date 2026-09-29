@@ -770,9 +770,6 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
 
   const form = useForm<FormVals>({ defaultValues: toForm(blankItem({}), settings.defaultReminder) });
   const { register, watch, setValue, handleSubmit, reset } = form;
-  // "Shift to today" was used: the new schedule is in the form, waiting for Save.
-  const [shifted, setShifted] = useState(false);
-  useEffect(() => setShifted(false), [editing]);
 
   useEffect(() => {
     if (!editing) return;
@@ -792,8 +789,6 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
     const timed = !f.allDay || f.kind === "sleep";
     // A habit has no dates and never stops repeating.
     if (habit) f = { ...f, endDate: f.date, until: "", freq: f.freq === "none" ? "daily" : f.freq };
-    // Meetings happen within a day (a late one can still run past midnight, set by its times).
-    if (f.kind === "meeting") f = { ...f, endDate: f.date };
     if (task) f = { ...f, endDate: f.date };
     if (!f.date || !task && !habit && (!f.endDate || f.endDate < f.date || dayDiff(f.date, f.endDate) > 366)) {
       toast({ title: "Check the end date", description: "Choose an end date on or after the start, within one year.", variant: "destructive" });
@@ -951,41 +946,38 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                     }} testId="input-date" label={v.freq !== "none" ? "Starts" : "Start date"} />
                     {timed && <TimePill value={v.startTime} onChange={(t) => setStart(t)} testId="input-start" label="Start time" />}
                   </div>
-                  {!(v.kind === "meeting" && !timed) && <div className="flex items-center justify-between gap-2">
-                    {/* Meetings end the day they start (a late one's end time can still be after midnight). */}
-                    {v.kind === "meeting"
-                      ? <span className="px-3.5 text-sm text-muted-foreground">Ends</span>
-                      : <DatePill value={v.endDate} min={v.date} onChange={(d) => setValue("endDate", d)} testId="input-end-date" label="End date" />}
+                  <div className="flex items-center justify-between gap-2">
+                    <DatePill value={v.endDate} min={v.date} onChange={(d) => setValue("endDate", d)} testId="input-end-date" label="End date" />
                     {timed && (
                       <span className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground tnum">{fmtDur(durMin)}</span>
                         <TimePill value={v.endTime} onChange={(t) => {
                           setValue("endTime", t);
                           if (v.endDate === v.date && toMin(t) <= toMin(v.startTime)) setValue("endDate", addDays(v.date, 1));
                         }} testId="input-end" label="End time" />
                       </span>
                     )}
-                  </div>}
+                  </div>
                 </>
               )}
             </EditorRow>
 
             {v.kind === "task" && (
               <EditorRow icon={CalendarClock}>
-                <div className="flex min-h-9 flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Available">
-                  {([["day", "On the day"], ["before", "Any day before"], ["from", "From a date"]] as const).map(([mode, label]) => (
-                    <button key={mode} type="button" role="radio" aria-checked={v.avail === mode}
-                      onClick={() => {
-                        setValue("avail", mode);
-                        if (mode === "from" && (!v.availableFrom || v.availableFrom > v.date)) setValue("availableFrom", addDays(v.date, -1));
-                      }}
-                      className={cn("h-8 rounded-full border px-3 text-xs font-medium transition-colors",
-                        v.avail === mode ? "border-transparent bg-primary text-primary-foreground" : "text-muted-foreground hover-elevate")}
-                      data-testid={`button-avail-${mode}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <Select value={v.avail} onValueChange={(x) => {
+                  if (!x) return;
+                  const mode = x as FormVals["avail"];
+                  setValue("avail", mode);
+                  if (mode === "from" && (!v.availableFrom || v.availableFrom > v.date)) setValue("availableFrom", addDays(v.date, -1));
+                }}>
+                  <SelectTrigger className="h-9 w-fit gap-2 rounded-full px-3.5" aria-label="Available" data-testid="select-available">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="day">On the day</SelectItem>
+                    <SelectItem value="before">Any day before</SelectItem>
+                    <SelectItem value="from">From a date</SelectItem>
+                  </SelectContent>
+                </Select>
                 {v.avail === "from" && (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm text-muted-foreground">From</span>
@@ -1045,29 +1037,21 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   )}
                 </div>
               )}
-              {/* A habit that isn't on today can have its schedule moved so its next day is today. */}
+              {/* A saved habit that isn't on today can have its schedule moved so its next day is today. */}
               {existing && v.kind === "habit" && (() => {
                 const shift = shiftedToToday({
                   kind: "habit", uid: existing.uid, exceptions: existing.exceptions, date: v.date,
                   recurrence: JSON.stringify({ freq: v.freq, interval: v.interval > 1 ? Number(v.interval) : undefined, days: v.days.length ? v.days : undefined }),
                 }, todayStr());
-                if (!shift && !shifted) return null;
+                if (!shift) return null;
                 return (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {shift && (
-                      <Button type="button" variant="outline" size="sm" className="rounded-full" data-testid="button-shift-today" onClick={() => {
-                        setValue("date", shift.date);
-                        setValue("freq", shift.recurrence.freq);
-                        setValue("days", shift.recurrence.days ?? []);
-                        setShifted(true);
-                      }}>
-                        Shift to today
-                      </Button>
-                    )}
-                    <span className="text-xs text-muted-foreground" data-testid="text-shift-today">
-                      {shift ? "It isn't on today. This moves its schedule so it is." : "Shifted to today. Save to keep it."}
-                    </span>
-                  </div>
+                  <Button type="button" variant="outline" size="sm" className="w-fit rounded-full" data-testid="button-shift-today" onClick={() => {
+                    setValue("date", shift.date);
+                    setValue("freq", shift.recurrence.freq);
+                    setValue("days", shift.recurrence.days ?? []);
+                  }}>
+                    Shift to today
+                  </Button>
                 );
               })()}
             </EditorRow>
@@ -1221,7 +1205,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
   const fromDays = task && i.availableFrom ? dayDiff(i.availableFrom, i.date) : 0;
   // A new task is doable any day before it's due, as they were before tasks had these choices.
   const avail: FormVals["avail"] = lead >= ANY_DAY_BEFORE || fromDays >= ANY_DAY_BEFORE ? "before"
-    : lead > 0 || fromDays > 0 ? "from" : task && isNew && !i.availableFrom && !i.leadDays ? "before" : "day";
+    : lead > 0 || fromDays > 0 ? "from" : task && !isNew ? "day" : "before";
   const date = i.date || todayStr();
   return {
     title: i.title || "",

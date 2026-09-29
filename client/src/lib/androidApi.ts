@@ -105,6 +105,8 @@ const pref = async (): Promise<Settings> => {
     colorTheme: RENAMED_THEMES[merged.colorTheme] ?? merged.colorTheme,
     // Settings from before Display mode keep the look they had.
     displayMode: saved?.displayMode ?? (saved?.appearanceTheme === "light" ? "light" : "dark"),
+    // The default reminder became 30 minutes; settings still on the old default (10) move to it once.
+    ...(saved && !saved.reminderDefault30 ? { defaultReminder: saved.defaultReminder === 10 || saved.defaultReminder === undefined ? 30 : saved.defaultReminder, reminderDefault30: true } : {}),
     // "Joshua" was a placeholder default, not a name anyone entered.
     name: merged.name === "Joshua" ? "" : merged.name,
     routines: merged.routines.map((r) => (r.color?.toLowerCase() === "#5966ad" ? { ...r, color: "#3f51b5" } : r)),
