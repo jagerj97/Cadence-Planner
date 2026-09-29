@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Home,
@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Today", icon: Home, match: (l: string) => l === "/" || l.startsWith("/day") },
-  { href: "/calendar", label: "Calendar", icon: CalendarRange, match: (l: string) => /^\/(calendar|week|month|schedule)/.test(l) },
+  { href: "/calendar", label: "Calendar", icon: CalendarRange, match: (l: string) => /^\/(calendar|week|month|agenda|schedule)/.test(l) },
   { href: "/tasks", label: "Tasks", icon: CheckSquare, match: (l: string) => l.startsWith("/tasks") },
   { href: "/habits", label: "Habits", icon: Repeat, match: (l: string) => l.startsWith("/habits") },
   { href: "/journal", label: "Journal", icon: NotebookPen, match: (l: string) => l.startsWith("/journal") },
@@ -176,8 +176,69 @@ function AddIcon({ open = false }: { open?: boolean }) {
 
 let lastPage = "/"; // where the gear returns to when leaving Settings
 
+/** Whether a touch began on something that scrolls sideways itself, or takes sideways drags. */
+function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
+  for (let el = target as HTMLElement | null; el && el !== root; el = el.parentElement) {
+    if (el.matches("input, textarea, [contenteditable=true], [data-no-swipe]")) return true;
+    const x = getComputedStyle(el).overflowX;
+    if ((x === "auto" || x === "scroll") && el.scrollWidth > el.clientWidth + 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Swiping left or right across a page goes to the next or previous page in the bar; the end pages
+ * go no further. Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
+ */
+function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, go: (href: string, dir: 1 | -1) => void) {
+  const locRef = useRef(loc);
+  locRef.current = loc;
+  useEffect(() => {
+    const el = main.current;
+    if (!el) return;
+    let start: { x: number; y: number; t: number } | null = null;
+    const down = (e: TouchEvent) => {
+      start = e.touches.length === 1 && !sidewaysOwner(e.target, el) ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null;
+    };
+    const move = (e: TouchEvent) => { if (e.touches.length > 1 || e.defaultPrevented) start = null; };
+    const up = (e: TouchEvent) => {
+      const s = start;
+      start = null;
+      const t = e.changedTouches[0];
+      if (!s || !t || Date.now() - s.t > 700) return;
+      const dx = t.clientX - s.x, dy = t.clientY - s.y;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
+      const at = NAV.findIndex((n) => n.match(locRef.current));
+      if (at < 0) return;
+      const dir = dx < 0 ? 1 : -1;
+      const next = NAV[at + dir];
+      if (next) go(next.href, dir);
+    };
+    el.addEventListener("touchstart", down, { passive: true });
+    el.addEventListener("touchmove", move, { passive: true });
+    el.addEventListener("touchend", up, { passive: true });
+    el.addEventListener("touchcancel", () => { start = null; }, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", down);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", up);
+    };
+  }, [main, go]);
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const [loc, nav] = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+  const page = NAV.findIndex((n) => n.match(loc));
+  // The page a swipe brings in slides in from that side.
+  const [slide, setSlide] = useState<{ dir: 1 | -1; to: string } | null>(null);
+  const go = useCallback((href: string, dir: 1 | -1) => {
+    setSlide({ dir, to: href });
+    nav(href);
+    setTimeout(() => setSlide(null), 300);
+  }, [nav]);
+  usePageSwipe(mainRef, loc, go);
+  const slid = slide && NAV[page]?.href === slide.to ? slide.dir : 0;
   const { focus, elapsed } = usePlanner();
   const { settings } = useSettings();
   const inSettings = SETTINGS_NAV.match(loc);
@@ -212,7 +273,12 @@ export function Shell({ children }: { children: ReactNode }) {
         <aside className="wellness-rail hidden md:flex w-56 shrink-0 flex-col overflow-y-auto bg-sidebar border-r z-20">
           <DrawerLinks />
         </aside>
-        <main className="flex-1 min-w-0 flex flex-col overflow-hidden pb-14 md:pb-0">{children}</main>
+        <main ref={mainRef} className="flex-1 min-w-0 flex flex-col overflow-hidden pb-14 md:pb-0">
+          <div key={page}
+            className={cn("flex flex-1 min-h-0 flex-col", slid !== 0 && "animate-in fade-in duration-200", slid > 0 ? "slide-in-from-right-8" : slid < 0 && "slide-in-from-left-8")}>
+            {children}
+          </div>
+        </main>
       </div>
 
       {/* bottom bar (phones) */}

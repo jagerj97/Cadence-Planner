@@ -85,6 +85,15 @@ export function DayColumn({
   const suppressClickRef = useRef(false);
   const colRef = useRef<HTMLDivElement>(null);
   useEffect(() => () => { if (pendingRef.current?.timer) clearTimeout(pendingRef.current.timer); }, []);
+  // Dragging on the timeline, items included, scrolls it; only once a hold has picked an item up does
+  // moving drag the item instead. (Scrolling first cancels the hold, through pointercancel.)
+  useEffect(() => {
+    const el = colRef.current;
+    if (!el) return;
+    const hold = (e: TouchEvent) => { if (dragRef.current && e.cancelable) e.preventDefault(); };
+    el.addEventListener("touchmove", hold, { passive: false });
+    return () => el.removeEventListener("touchmove", hold);
+  }, []);
 
   const pxToMin = (px: number) => (px / hourPx) * 60;
 
@@ -276,7 +285,7 @@ export function DayColumn({
             }}
             onKeyDown={(ev) => ev.key === "Enter" && openDetails(b.item, b.occDate)}
             className={cn(
-              "group absolute overflow-hidden rounded-md text-left select-none touch-none",
+              "group absolute overflow-hidden rounded-md text-left select-none",
               lifted ? "z-20 shadow-lg cursor-grabbing" : "cursor-pointer hover:z-10",
               b.done && "opacity-55",
               (b.continues === "after" || b.continues === "through") && "rounded-b-none",

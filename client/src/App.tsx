@@ -17,6 +17,7 @@ export function AppRouter() {
         <Route path="/calendar" component={CalendarPage} />
         <Route path="/week" component={CalendarPage} />
         <Route path="/month" component={CalendarPage} />
+        <Route path="/agenda" component={CalendarPage} />
         <Route path="/schedule" component={CalendarPage} />
         <Route path="/journal" component={JournalPage} />
         <Route path="/journal/:date" component={JournalPage} />

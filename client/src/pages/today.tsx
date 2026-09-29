@@ -3,7 +3,7 @@ import { useLocation, useRoute } from "wouter";
 import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { DayPicker } from "@/pages/calendar";
-import { ScheduleList } from "@/components/scheduleList";
+import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
 import { usePlanner, useNow, Ring, StreakBadge } from "@/components/planner";
 import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
@@ -51,6 +51,10 @@ export default function Today() {
   const list = items ?? [];
 
   const shows = (panel: TodayPanel) => panelShown(settings, panel);
+  const saveSettings = useSaveSettings();
+  const view = settings.todayView ?? "timeline";
+  const agenda = view === "agenda";
+  const pickView = (v: "timeline" | "agenda") => v !== view && saveSettings.mutate({ todayView: v });
   const panelOrder = todayPanelOrder(settings.todayPanelOrder);
   // On phones the two columns below dissolve (display: contents) into one list in this order;
   // on wide screens each column keeps the same relative order.
@@ -67,7 +71,7 @@ export default function Today() {
     // that). 8px is the column's top padding.
     const now = new Date();
     el.scrollTop = Math.max(0, 8 + ((now.getHours() * 60 + now.getMinutes() - 90) / 60) * HOUR_PX);
-  }, [day, isLoading, shows("schedule")]); // eslint-disable-line
+  }, [day, isLoading, shows("schedule"), agenda]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
 
@@ -99,10 +103,19 @@ export default function Today() {
           <section className="contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3" aria-label="Day timeline">
             {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
             {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
-            {shows("schedule") && <div className="flex flex-1 min-h-[420px] flex-col card-md overflow-hidden" style={at("schedule")}>
+            {shows("schedule") && (agenda ? (
+              <div className="card-md" style={at("schedule")} data-testid="card-day">
+                <DayViewToggle view={view} onPick={pickView} />
+                <div className="px-4 pb-4">
+                  <AgendaList list={list.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep")} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
+                </div>
+              </div>
+            ) : (
+            <div className="flex flex-1 min-h-[420px] flex-col card-md overflow-hidden" style={at("schedule")} data-testid="card-day">
+              <DayViewToggle view={view} onPick={pickView} />
               {/* All-day items and ones for anytime that day, inside the card above the timeline. */}
               {allDay.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 border-b p-2" aria-label="All-day">
+                <div className="flex flex-wrap gap-1.5 border-b px-2 pb-2" aria-label="All-day">
                   {allDay.map((i) => (
                     <button
                       key={i.id}
@@ -137,8 +150,8 @@ export default function Today() {
                 </div>
               )}
               </div>
-            </div>}
-            {shows("schedule") && <p className="text-xs text-muted-foreground hidden md:block" style={at("schedule")}>
+            </div>))}
+            {shows("schedule") && !agenda && <p className="text-xs text-muted-foreground hidden md:block" style={at("schedule")}>
               Click an empty slot to add · hold a block briefly, then drag to move or resize
             </p>}
           </section>
@@ -147,7 +160,6 @@ export default function Today() {
           <aside className="contents lg:grid lg:grid-cols-1 lg:content-start lg:gap-4 lg:overflow-y-auto scroll-thin lg:pr-1 lg:pb-4" aria-label="Day details">
             {shows("tasks") && <div style={at("tasks")}><TasksCard items={list} day={day} /></div>}
             {shows("habits") && <div style={at("habits")}><HabitsCard items={list} day={day} /></div>}
-            {shows("agenda") && <div style={at("agenda")}><AgendaCard items={list} day={day} /></div>}
             {TODAY_PANELS.every((p) => !shows(p.id)) && (
               <p className="text-sm text-muted-foreground text-center" style={{ order: 98 }}>All cards are hidden.</p>
             )}
@@ -458,15 +470,19 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
   );
 }
 
-/** The page's day as the calendar's schedule view lists it; the header opens that view. */
-function AgendaCard({ items, day }: { items: Item[]; day: string }) {
-  // As the calendar shows by default: no habits, and no sleep.
-  const list = items.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep");
+/** Switches the day card between the timeline and the agenda list, like the calendar's view switch. */
+function DayViewToggle({ view, onPick }: { view: "timeline" | "agenda"; onPick: (v: "timeline" | "agenda") => void }) {
   return (
-    <div className="card-md" data-testid="card-agenda">
-      <CardHeaderLink to="/schedule" title="Schedule" testId="link-schedule-page">{null}</CardHeaderLink>
-      <div className="px-4 pb-4">
-        <ScheduleList list={list} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
+    <div className="px-2 pt-2 pb-2">
+      <div className="inline-flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Show the day as">
+        {(["timeline", "agenda"] as const).map((v) => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => onPick(v)}
+            className={cn("h-7 px-3 rounded-full text-xs font-medium transition-colors",
+              view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+            data-testid={`tab-day-${v}`}>
+            {v === "timeline" ? "Timeline" : "Agenda"}
+          </button>
+        ))}
       </div>
     </div>
   );

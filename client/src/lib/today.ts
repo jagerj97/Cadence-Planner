@@ -1,7 +1,7 @@
 import type { Item, Settings } from "@shared/schema";
 import {
-  appearsOn, blocksForDay, canDoTaskOn, dueDateFor, completionsOf, kindOf, markOf, occursOn, orderHabits, recOf, routineSchedules,
-  streakOf, untimedForDay,
+  addDays, appearsOn, blocksForDay, canDoTaskOn, dueDateFor, completionsOf, fmtDate, fmtTime, kindOf, markOf, occursOn, orderHabits, recOf,
+  routineSchedules, streakOf, untimedForDay,
 } from "./cal";
 
 /** What the Today page (and the home screen widget) show for a day. */
@@ -10,15 +10,14 @@ import {
 export const TODAY_PANELS = [
   { id: "now", label: "Right now", hint: "What's happening now and next" },
   { id: "day", label: "Your day", hint: "How your day splits between routines, plans, and free time" },
-  { id: "schedule", label: "Timeline", hint: "All-day items and the timeline" },
+  { id: "schedule", label: "Timeline & agenda", hint: "The day as a timeline or a list" },
   { id: "tasks", label: "Tasks", hint: "Today's tasks" },
   { id: "habits", label: "Habits", hint: "Today's habits" },
-  { id: "agenda", label: "Schedule", hint: "The day's items as a list, like the calendar's schedule view" },
 ] as const;
 export type TodayPanel = (typeof TODAY_PANELS)[number]["id"];
 
 /** Cards that start off hidden: they show once turned on in Edit cards (Settings.shownTodayPanels). */
-const OFF_BY_DEFAULT = new Set<string>(["agenda"]);
+const OFF_BY_DEFAULT = new Set<string>([]);
 
 /** Whether a card is on: the usual ones unless turned off, the off-by-default ones once turned on. */
 export function panelShown(settings: Settings, panel: TodayPanel) {
@@ -95,4 +94,27 @@ export function dayBreakdown(items: Item[], settings: Settings, day: string) {
     else spans.push({ category, length: 1 });
   }
   return { totals, spans };
+}
+
+/* ---------- agenda ---------- */
+
+export type AgendaEntry = { i: Item; occ: string; time: string; key: string; start: number; done: boolean };
+
+/** One day's entries: all-day (and anytime) items, then timed ones, each piece of a multi-day item. */
+export function agendaFor(list: Item[], day: string): AgendaEntry[] {
+  const untimed = untimedForDay(list, day).map((i) => {
+    const occ = kindOf(i) === "task" && recOf(i).freq === "none" ? i.date : day;
+    return { i, occ, key: `${i.id}:${day}`, start: -1, time: kindOf(i) === "task" ? "" : "All day", done: kindOf(i) === "task" && completionsOf(i).has(occ) };
+  });
+  const timed = blocksForDay(list, day).map((b) => ({
+    i: b.item,
+    occ: b.occDate,
+    key: b.key,
+    start: b.continues === "before" || b.continues === "through" ? -1 : b.start,
+    time: b.continues === "through" ? "All day"
+      : b.continues === "before" ? `Until ${fmtTime(b.item.endTime, true)}`
+      : `${fmtTime(b.start, true)} – ${b.continues === "after" ? fmtDate(addDays(day, 1), { month: "short", day: "numeric" }) + ", " + fmtTime(b.item.endTime, true) : fmtTime(b.end, true)}`,
+    done: b.done && kindOf(b.item) === "task",
+  }));
+  return [...untimed, ...timed].sort((a, b) => a.start - b.start || a.i.title.localeCompare(b.i.title));
 }

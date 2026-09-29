@@ -428,6 +428,15 @@
   background: linear-gradient(145deg, hsl(var(--primary) / .16), transparent 70%), hsl(var(--card));
   border-color: hsl(var(--primary) / .24);
 }
+/* The focus timer's card: tinted from the corner in the focus color, like Right now in the theme's. */
+.focus-hero {
+  background: linear-gradient(145deg, hsl(var(--k-focus) / .18), transparent 60%), hsl(var(--card));
+  border-color: hsl(var(--k-focus) / .32);
+}
+.dark .focus-hero {
+  background: linear-gradient(145deg, hsl(var(--k-focus) / .14), transparent 70%), hsl(var(--card));
+  border-color: hsl(var(--k-focus) / .24);
+}
 .wellness-stat {
   position: relative;
   overflow: hidden;

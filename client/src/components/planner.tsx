@@ -359,12 +359,14 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   };
   const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
 
-  // A widget's + button opens the app to add a task or habit.
+  // A widget's + button opens the app to add a task, habit or event; the agenda widget opens the agenda.
   useEffect(() => {
     const run = () => {
       const action = window.CadenceAndroid?.takeLaunchAction?.() || "";
       if (action === "add-task") openEditor({ date: todayStr(), kind: "task" });
       if (action === "add-habit") openEditor({ date: todayStr(), kind: "habit", recurrence: '{"freq":"daily"}' });
+      if (action === "add-event") openEditor({ date: todayStr(), kind: "event" });
+      if (action === "open-agenda") window.location.hash = "#/agenda";
     };
     run();
     window.addEventListener("cadence-launch-action", run);
@@ -674,12 +676,12 @@ export function StreakBadge({ streak, className, zero = false }: { streak: numbe
   );
 }
 
-export function Ring({ pct, size = 44, stroke = 4, color }: { pct: number; size?: number; stroke?: number; color?: string }) {
+export function Ring({ pct, size = 44, stroke = 4, color, track = "hsl(var(--border))" }: { pct: number; size?: number; stroke?: number; color?: string; track?: string }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   return (
     <svg width={size} height={size} className="-rotate-90" aria-hidden>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
       <circle
         cx={size / 2}
         cy={size / 2}

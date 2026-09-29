@@ -1,0 +1,25 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/card_border" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card_border" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+        <LinearLayout android:id="@+id/agenda_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical"
+            android:paddingStart="16dp" android:paddingEnd="10dp" android:paddingTop="10dp" android:paddingBottom="6dp">
+            <TextView android:id="@+id/agenda_heading" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:text="Agenda" android:textSize="15sp" android:textStyle="bold" />
+            <ImageView android:id="@+id/agenda_add" android:layout_width="30dp" android:layout_height="30dp" android:padding="6dp"
+                android:src="@drawable/ic_plus" android:contentDescription="Add" />
+        </LinearLayout>
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+            <ListView android:id="@+id/agenda_list" android:layout_width="match_parent" android:layout_height="match_parent"
+                android:paddingBottom="10dp" android:clipToPadding="false"
+                android:divider="@null" android:dividerHeight="0dp" android:scrollbars="none" />
+            <TextView android:id="@+id/agenda_empty" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingBottom="16dp" android:textSize="15sp"
+                android:text="Open Cadence to load your agenda" />
+        </FrameLayout>
+    </LinearLayout>
+</FrameLayout>

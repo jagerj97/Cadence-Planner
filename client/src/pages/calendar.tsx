@@ -30,7 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { accentOf } from "@/components/taskTags";
-import { ScheduleList } from "@/components/scheduleList";
+import { AgendaList } from "@/components/agendaList";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -374,15 +374,15 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
   );
 }
 
-/**
- * The schedule view: every day with something on, as a list (like Google Calendar's), from the first
- * item on; it opens at today and loads further ahead as it's scrolled. The title is the month in view
- * and opens the month picker to jump to a day; Today comes back to today.
- */
 /** Days drawn before and after today on opening, and how many more load at a time. */
 const BEFORE = 14, AHEAD = 45, STEP = 60;
 
-export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
+/**
+ * The agenda view: every day with something on, as a list (like Google Calendar's). It opens on a
+ * few weeks around today and loads more either way as it's scrolled, back as far as the first item. The title is the month in view
+ * and opens the month picker to jump to a day; Today comes back to today.
+ */
+export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
   const { data: items } = useItems();
   const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
   const today = todayStr();
@@ -447,19 +447,19 @@ export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
   }), [range.start, floor, jump, items]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-schedule-day" />}>
+      <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-agenda-day" />}>
         <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" onClick={() => goTo(today)} data-testid="button-schedule-today">
+          <Button variant="outline" size="sm" onClick={() => goTo(today)} data-testid="button-agenda-today">
             Today
           </Button>
         </div>
         {toggle}
       </PageHeader>
       {filters}
-      <div ref={scroller} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 [overflow-anchor:none]" data-testid="schedule-scroller">
+      <div ref={scroller} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 [overflow-anchor:none]" data-testid="agenda-scroller">
         <div className="mx-auto grid max-w-2xl gap-4 pb-4">
           <div ref={topEdge} className="h-px" aria-hidden />
-          {items && <ScheduleList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
+          {items && <AgendaList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
           <div ref={bottomEdge} className="h-px" aria-hidden />
         </div>
       </div>
@@ -467,12 +467,13 @@ export function SchedulePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
   );
 }
 
-/* ---------- Calendar tab: swaps between week, month and schedule ---------- */
-type CalView = "week" | "month" | "schedule";
+/* ---------- Calendar tab: swaps between agenda, week and month ---------- */
+type CalView = "agenda" | "week" | "month";
+const VIEW_LABEL: Record<CalView, string> = { agenda: "Agenda", week: "Week", month: "Month" };
 let lastView: CalView = "month"; // remembered while the app is open
 export function CalendarPage() {
   const [loc] = useLocation();
-  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/schedule") ? "schedule" : lastView));
+  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/agenda") || loc.startsWith("/schedule") ? "agenda" : lastView));
   const [visibility, setVisibility] = useState<CalendarVisibility>(() => ({ ...lastVisibility }));
   const pick = (v: CalView) => {
     lastView = v;
@@ -512,7 +513,7 @@ export function CalendarPage() {
   );
   const toggle = (
     <div className="ml-auto flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Calendar view">
-      {(["week", "month", "schedule"] as CalView[]).map((v) => (
+      {(["agenda", "week", "month"] as CalView[]).map((v) => (
         <button
           key={v}
           role="tab"
@@ -524,15 +525,15 @@ export function CalendarPage() {
           )}
           data-testid={`tab-view-${v}`}
         >
-          {v}
+          {VIEW_LABEL[v]}
         </button>
       ))}
     </div>
   );
   return view === "week"
     ? <WeekPage toggle={toggle} filters={filters} visibility={visibility} />
-    : view === "schedule"
-      ? <SchedulePage toggle={toggle} filters={filters} visibility={visibility} />
+    : view === "agenda"
+      ? <AgendaPage toggle={toggle} filters={filters} visibility={visibility} />
       : <MonthPage toggle={toggle} filters={filters} visibility={visibility} />;
 }
 
