@@ -148,7 +148,7 @@ const touchedOf = (i: Item) => new Set([...completionsOf(i), ...partialsOf(i)]);
 export const exceptionsOf = (i: Item) => new Set(listOf(i.exceptions));
 
 
-/** Background routines are virtual daily overlays, not stored calendar events. */
+/** Background routines are virtual overlays (daily, or on their days), not stored calendar events. */
 export function routineSchedules(settings: Settings): Item[] {
   return settings.routines.map((routine, index) => ({
     id: -1000 - index,
@@ -165,7 +165,7 @@ export function routineSchedules(settings: Settings): Item[] {
     notes: "",
     location: "",
     color: routine.color,
-    recurrence: '{"freq":"daily"}',
+    recurrence: routine.days && routine.days.length < 7 ? JSON.stringify({ freq: "weekly", days: routine.days }) : '{"freq":"daily"}',
     exceptions: "[]",
     completions: "[]",
     reminder: null,

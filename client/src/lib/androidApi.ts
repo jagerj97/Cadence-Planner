@@ -192,6 +192,10 @@ async function removeItem(item: Item) {
 }
 let notesBackfilled: Promise<void> | null = null;
 
+/** A routine's days: missing (every day), or some of 0–6 (Sunday first). */
+const validDays = (days: unknown) => days === undefined ||
+  (Array.isArray(days) && days.length > 0 && days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6));
+
 const normalizedUrl = (raw: string) => {
   const url = new URL(raw.trim().replace(/^webcal:\/\//i, "https://"));
   if (url.protocol !== "https:" || !url.hostname.includes(".") || url.port ||
@@ -330,7 +334,7 @@ function validateBackup(value: unknown): Backup {
           typeof routine.name !== "string" || !routine.name.trim() ||
           typeof routine.startTime !== "string" || typeof routine.endTime !== "string" ||
           !validTime(routine.startTime) || !validTime(routine.endTime) ||
-          routine.startTime === routine.endTime)
+          routine.startTime === routine.endTime || !validDays(routine.days))
       )) throw new Error("Invalid settings in backup");
     }
   }
@@ -446,7 +450,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         !Array.isArray(next.taskTags) || next.taskTags.some((t: any) => typeof t?.name !== "string" || !t.name || !/^#[0-9a-f]{6}$/i.test(t.color)) ||
         !["light", "dark"].includes(next.appearanceTheme) || !(DISPLAY_MODES as readonly string[]).includes(next.displayMode) ||
         !KNOWN_THEMES.has(next.colorTheme) ||
-        next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime)) {
+        next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime || !validDays(r.days))) {
       return fail("Check routine settings, theme and habit order");
     }
     await put("settings", { key: "prefs", value: next });

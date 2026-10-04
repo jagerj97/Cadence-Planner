@@ -997,7 +997,7 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routines" hint={`Background things for every day. Sleeping, eating, ${draft.plain ? "etc" : "grooming"}...`}>
+          <Section title="Routines" hint={`Background things for your days. Sleeping, eating, ${draft.plain ? "etc" : "grooming"}...`}>
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
@@ -1021,7 +1021,8 @@ export function SettingsPage() {
                         onChange={(e) => updateRoutine(r.id, { endTime: e.target.value })} data-testid={`input-routine-end-${r.id}`} />
                     </Field>
                   </div>
-                  <p className="text-xs text-muted-foreground">{fmtDur((toM(r.endTime) - toM(r.startTime) + 1440) % 1440)} daily{r.endTime < r.startTime ? " · crosses midnight" : ""}</p>
+                  <RoutineDays routine={r} weekStartsOn={draft.weekStartsOn} onChange={(days) => updateRoutine(r.id, { days })} />
+                  <p className="text-xs text-muted-foreground">{fmtDur((toM(r.endTime) - toM(r.startTime) + 1440) % 1440)} · {routineDaysLabel(r.days)}{r.endTime < r.startTime ? " · crosses midnight" : ""}</p>
                 </div>
               ))}
               <Button variant="outline" className="justify-self-start" onClick={() => setDraft((d) => ({
@@ -1361,6 +1362,42 @@ function CoordInput({ value, limit, label, onChange, testId }: {
         onChange={(e) => commit(e.target.value)}
         onBlur={() => setText(String(value))}
         data-testid={testId} />
+    </div>
+  );
+}
+
+/** "every day", "weekdays", "weekends", or "Mon, Wed, Fri". */
+function routineDaysLabel(days?: number[]) {
+  const set = [...new Set(days ?? [0, 1, 2, 3, 4, 5, 6])].sort();
+  const key = set.join("");
+  if (key === "0123456") return "every day";
+  if (key === "12345") return "weekdays";
+  if (key === "06") return "weekends";
+  return set.map((d) => DAY_SHORT[d]).join(", ");
+}
+
+/** A routine's days as pills, from the first day of the week. At least one stays on. */
+function RoutineDays({ routine, weekStartsOn, onChange }: { routine: Routine; weekStartsOn: number; onChange: (days: number[] | undefined) => void }) {
+  const days = routine.days ?? [0, 1, 2, 3, 4, 5, 6];
+  const order = Array.from({ length: 7 }, (_, i) => (weekStartsOn + i) % 7);
+  return (
+    <div className="flex gap-1.5" role="group" aria-label={`${routine.name} days`}>
+      {order.map((d) => {
+        const on = days.includes(d);
+        return (
+          <button type="button" key={d} aria-pressed={on} aria-label={DAY_SHORT[d]}
+            onClick={() => {
+              if (on && days.length === 1) return;
+              const next = on ? days.filter((x) => x !== d) : [...days, d].sort();
+              onChange(next.length === 7 ? undefined : next);
+            }}
+            className={cn("h-8 flex-1 rounded-full border text-xs font-medium",
+              on ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground hover-elevate")}
+            data-testid={`button-routine-day-${routine.id}-${d}`}>
+            {DAY_SHORT[d].slice(0, 2)}
+          </button>
+        );
+      })}
     </div>
   );
 }

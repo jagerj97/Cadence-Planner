@@ -104,7 +104,11 @@ export type JournalEntry = {
 /** 0 = Sunday … 6 = Saturday. */
 export type WeekDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskTag = { name: string; color: string };
-export type Routine = { id: string; name: string; startTime: string; endTime: string; color: string };
+export type Routine = {
+  id: string; name: string; startTime: string; endTime: string; color: string;
+  /** The days it starts on (0 is Sunday); missing means every day. One crossing midnight ends the next morning. */
+  days?: number[];
+};
 // Red, orange, yellow, green, blue, violet and grey.
 export const COLOR_THEMES = ["ribbon", "carrot", "butter", "grass", "denim", "plum", "mouse"] as const;
 /** What the color themes are called with the cat stuff hidden (Settings.plain). */
