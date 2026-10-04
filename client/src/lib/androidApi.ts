@@ -4,7 +4,7 @@ import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
 import { APP_VERSION } from "./changelog";
-import { addDays, blocksForDay, fmtDur, listOf, parseYmd, remindersOf, todayStr } from "./cal";
+import { addDays, blocksForDay, completionsOf, fmtDur, listOf, parseYmd, recOf, remindersOf, toMin, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -12,6 +12,8 @@ export interface AndroidBridge {
   setPlain?(plain: boolean): void;
   /** Whether the phone is set to dark mode (Display mode: System setting). Older builds lack it. */
   systemDark?(): boolean;
+  /** The status bar's height in dp: the page draws behind it (older builds lack it). */
+  insetTop?(): number;
   /** "Play a sound": whether notifications (reminders, a finished timer) make their sound. Older builds lack it. */
   setSound?(on: boolean): void;
   /** The same from the Settings switch, then closes the app. Older builds lack it. */
@@ -228,6 +230,38 @@ async function refreshNotifications() {
   }
   reminders.sort((a, b) => a.at - b.at);
   bridge.scheduleReminders(JSON.stringify(reminders.slice(0, 128)));
+}
+
+/**
+ * Whether an item is finished, so its journal entry moves to the Archive: a task once it's checked off,
+ * an event, meeting or focus time once it's over. Repeating ones finish only after their last repeat
+ * (a repeating task never does).
+ */
+function itemFinished(item: Item, now: Date): boolean {
+  const r = recOf(item);
+  if (item.kind === "task") return r.freq === "none" && completionsOf(item).has(item.date);
+  if (item.kind !== "event" && item.kind !== "meeting" && item.kind !== "focus") return false;
+  const lastDay = r.freq === "none" ? item.endDate || item.date : r.until;
+  if (!lastDay) return false;
+  const day = parseYmd(lastDay);
+  if (item.allDay || !item.startTime) return now >= new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+  const end = toMin(item.endTime || item.startTime);
+  // A timed item with no end date that ends at or before its start runs past midnight.
+  const overnight = !item.endDate && end <= toMin(item.startTime) && !!item.endTime;
+  return now >= new Date(day.getFullYear(), day.getMonth(), day.getDate() + (overnight ? 1 : 0), 0, end);
+}
+
+/** Archives the entries of items that have finished, and brings back ones whose item is no longer finished. */
+async function archiveFinished() {
+  const now = new Date();
+  const items = new Map((await list<Item>("items")).map((item) => [item.id, item]));
+  for (const entry of await list<JournalEntry>("journal")) {
+    const item = entry.itemId ? items.get(entry.itemId) : undefined;
+    if (!item) continue;
+    const finished = itemFinished(item, now);
+    if (finished && !entry.archivedAuto) await put("journal", { ...entry, archived: true, archivedAuto: true });
+    else if (!finished && entry.archivedAuto) await put("journal", { ...entry, archived: false, archivedAuto: false });
+  }
 }
 
 const backupStores: StoreName[] = ["items", "feeds", "journal", "sessions", "settings"];
@@ -466,19 +500,22 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       try {
         const fetched = JSON.parse(window.CadenceAndroid!.fetchCalendar(feed.url));
         if (fetched.error) throw new Error(fetched.error);
-        const imported = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`, "expand")
+        const imported = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`).items
           .map((item) => ({ ...item, kind: feed.importKind ?? item.kind, color: feed.useColor ? feed.color : null }));
+        // A repeating event and a changed date of it can share a start date, so repeats are matched apart.
+        const keyOf = (item: InsertItem | Item) => `${item.uid || item.title}\0${item.date}\0${item.recurrence === '{"freq":"none"}' ? "" : "r"}`;
         return exclusive(async () => {
           const prior = (await list<Item>("items")).filter((item) => item.source === `feed:${id}`);
-          const byUid = new Map(prior.map((item) => [`${item.uid || item.title}\0${item.date}`, item]));
+          const byUid = new Map(prior.map((item) => [keyOf(item), item]));
           const seen = new Set<number>();
           for (const fresh of imported) {
-            const old = byUid.get(`${fresh.uid || fresh.title}\0${fresh.date}`);
+            const old = byUid.get(keyOf(fresh));
             if (old) {
               seen.add(old.id);
               // Kinds changed on the item stay unless "Import items as" was changed since.
               const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
-                completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
+                // Dates the calendar skips, plus any taken off in Cadence.
+                completions: old.completions, exceptions: JSON.stringify([...new Set([...listOf(old.exceptions), ...listOf(fresh.exceptions)])]), reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && (old.availableFrom || old.leadDays) ? {
                   availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, endDate: null, allDay: false,
                 } : {}) });
@@ -498,11 +535,11 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/import" && method === "POST") {
     try {
       if (data.importKind && !IMPORT_KINDS.includes(data.importKind)) return fail("Choose a valid import type");
-      const rows = parseAndroidIcs(data.ics, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, "import", "map");
+      const { items: rows, skipped } = parseAndroidIcs(data.ics, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, "import");
       await exclusive(async () => { for (const item of rows) await syncNotes(await put("items", {
         ...item, kind: data.importKind || item.kind, journalOff: !data.journalNotes,
       }) as Item, true); });
-      return ok({ imported: rows.length });
+      return ok({ imported: rows.length, skipped });
     } catch (cause) { return fail("Couldn't read calendar: " + String(cause instanceof Error ? cause.message : cause)); }
   }
   if (path === "/api/export.ics" && method === "GET") {
@@ -531,6 +568,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   });
   if (path === "/api/journal" && method === "GET") {
     await (notesBackfilled ??= backfillNotes().catch(() => {}));
+    await exclusive(archiveFinished).catch(() => {});
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   }
   // Renames a journal tag (to) or removes it (to: null) on every entry, in its tags and its #hashtags.
@@ -572,15 +610,19 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       return ok({ ok: true });
     }
     if (method === "PATCH") {
-      const saved = await put("journal", {
-        ...entry, ...data, itemId: entry.itemId,
+      const next = {
+        ...entry, ...data, itemId: entry.itemId, archivedAuto: entry.archivedAuto,
+        archived: data.archived !== undefined ? !!data.archived : !!entry.archived,
         title: data.title !== undefined ? entryTitle(data.title) : entry.title ?? null,
         body: typeof data.body === "string" ? data.body.trim() : entry.body,
         hashtags: data.hashtags !== undefined ? data.hashtags !== false : entry.hashtags !== false,
         tags: data.body !== undefined || data.tags || data.hashtags !== undefined
           ? normTags(data.body ?? entry.body, data.tags ?? JSON.parse(entry.tags), (data.hashtags ?? entry.hashtags) !== false) : entry.tags,
-        updatedAt: new Date().toISOString(),
-      });
+      };
+      // Only a change to what it says marks it edited (saving it unchanged, or archiving it, doesn't).
+      const changed = next.title !== (entry.title ?? null) || next.body !== entry.body || next.tags !== entry.tags ||
+        next.hashtags !== (entry.hashtags !== false) || next.date !== entry.date;
+      const saved = await put("journal", { ...next, updatedAt: changed ? new Date().toISOString() : entry.updatedAt });
       // Editing the entry edits the item's notes.
       if (item && saved.body && saved.body !== item.notes) await put("items", { ...item, notes: saved.body });
       return ok(saved);

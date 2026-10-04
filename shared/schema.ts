@@ -91,6 +91,11 @@ export type JournalEntry = {
   /** false: #words in the text are just text, not tags ("Use tags in entry" unchecked). */
   hashtags?: boolean;
   itemId?: number | null; // the planner item whose notes this entry mirrors
+  /** In the journal's Archive: left out of tag counts and (unless asked for) searches. */
+  archived?: boolean;
+  /** Set once the entry's item finished (a task done, an event over) and archived it, so taking it out of
+   *  the Archive by hand keeps it out; cleared if the item stops being finished. */
+  archivedAuto?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -137,6 +142,10 @@ export type Settings = {
   todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
   /** Which way the Today page's day card shows the day. */
   todayView?: "timeline" | "agenda";
+  /** The pages in the bottom bar (and side menu), in the user's order, by path; Today still opens first. */
+  navOrder?: string[];
+  /** The Today timeline shows the whole day at once instead of scrolling inside its card. */
+  timelineWholeDay?: boolean;
   taskTags: TaskTag[];
   /** Tint timelines with the sky and mark sunrise and sunset. */
   showSun: boolean;

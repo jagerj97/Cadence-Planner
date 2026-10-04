@@ -648,9 +648,11 @@ export function CalendarLinks() {
     setImporting(true);
     try {
       const ics = await file.text();
-      await apiRequest("POST", "/api/import", {
+      const result = await (await apiRequest("POST", "/api/import", {
         ics, tz: TZ, importKind: fileKind === "auto" ? null : fileKind, journalNotes: fileJournal,
-      });
+      })).json() as { imported: number; skipped?: number };
+      // A calendar too big to keep whole leaves out its oldest one-off events; say so.
+      if (result.skipped) toast({ title: `Imported ${result.imported.toLocaleString()} items`, description: `${result.skipped.toLocaleString()} older events were left out to keep Cadence quick.` });
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/journal"] });
     } catch (e: any) {

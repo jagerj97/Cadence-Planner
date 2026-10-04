@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import type { Item } from "@shared/schema";
-import { PageHeader } from "@/components/shell";
+import { PageHeader, orderNav } from "@/components/shell";
 import { DayPicker } from "@/pages/calendar";
 import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
@@ -37,7 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, panelShown, panelToggle, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Check, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -55,6 +55,8 @@ export default function Today() {
   const view = settings.todayView ?? "timeline";
   const agenda = view === "agenda";
   const pickView = (v: "timeline" | "agenda") => v !== view && saveSettings.mutate({ todayView: v });
+  const wholeDay = !!settings.timelineWholeDay;
+  const toggleWholeDay = () => saveSettings.mutate({ timelineWholeDay: !wholeDay });
   const panelOrder = todayPanelOrder(settings.todayPanelOrder);
   // On phones the two columns below dissolve (display: contents) into one list in this order;
   // on wide screens each column keeps the same relative order.
@@ -71,7 +73,7 @@ export default function Today() {
     // that). 8px is the column's top padding.
     const now = new Date();
     el.scrollTop = Math.max(0, 8 + ((now.getHours() * 60 + now.getMinutes() - 90) / 60) * HOUR_PX);
-  }, [day, isLoading, shows("schedule"), agenda]); // eslint-disable-line
+  }, [day, isLoading, shows("schedule"), agenda, wholeDay]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
 
@@ -100,7 +102,7 @@ export default function Today() {
       <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
-          <section className="contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3" aria-label="Day timeline">
+          <section className={cn("contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3", wholeDay && "lg:overflow-y-auto scroll-thin lg:pr-1")} aria-label="Day timeline">
             {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
             {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
             {shows("schedule") && (agenda ? (
@@ -111,8 +113,8 @@ export default function Today() {
                 </div>
               </div>
             ) : (
-            <div className="flex flex-1 min-h-[420px] flex-col card-md overflow-hidden" style={at("schedule")} data-testid="card-day">
-              <DayViewToggle view={view} onPick={pickView} />
+            <div className={cn("flex flex-col card-md overflow-hidden", wholeDay ? "shrink-0" : "flex-1 min-h-[420px]")} style={at("schedule")} data-testid="card-day">
+              <DayViewToggle view={view} onPick={pickView} wholeDay={wholeDay} onWholeDay={toggleWholeDay} />
               {/* All-day items and ones for anytime that day, inside the card above the timeline. */}
               {allDay.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 border-b px-2 pb-2" aria-label="All-day">
@@ -129,7 +131,8 @@ export default function Today() {
                   ))}
                 </div>
               )}
-              <div className="relative flex-1">
+              {/* Scrolls inside the card, or (opened with the chevron) is as tall as the day. */}
+              <div className={cn("relative", !wholeDay && "flex-1")}>
               {isLoading ? (
                 <div className="p-4 grid gap-3">
                   {[0, 1, 2, 3].map((k) => (
@@ -137,7 +140,7 @@ export default function Today() {
                   ))}
                 </div>
               ) : (
-                <div ref={scroller} className="absolute inset-0 overflow-y-auto scroll-thin">
+                <div ref={scroller} className={cn(!wholeDay && "absolute inset-0 overflow-y-auto scroll-thin")}>
                   <div className="flex pt-2 pb-4 pr-2">
                     <HourLabels />
                     <DayColumn
@@ -172,39 +175,65 @@ export default function Today() {
 }
 
 
+/** "Customize": which Today cards show and in what order, and the order of the pages in the bottom bar. */
 function CustomizeToday({ order }: { order: TodayPanel[] }) {
   const [open, setOpen] = useState(false);
   const save = useSaveSettings();
   const { settings } = useSettings();
   const toggle = (panel: TodayPanel, shown: boolean) => save.mutate(panelToggle(settings, panel, shown));
+  const pages = orderNav(settings.navOrder);
   return (
     <>
       <div className="flex justify-center">
         <Button variant="ghost" size="sm" className="h-8 rounded-full px-4 text-xs text-muted-foreground" onClick={() => setOpen(true)} data-testid="button-customize-today">
-          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Edit cards
+          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Customize
         </Button>
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-sm" data-testid="dialog-customize-today">
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-customize-today">
           <DialogHeader className="text-left">
-            <DialogTitle>Edit cards</DialogTitle>
-            <DialogDescription className="sr-only">Choose which cards show on your Today page. Hold a card and drag to reorder.</DialogDescription>
+            <DialogTitle>Customize</DialogTitle>
+            <DialogDescription className="sr-only">Choose which cards show on your Today page and the order of the pages in the bottom bar. Hold an item and drag to reorder.</DialogDescription>
           </DialogHeader>
-          <SortableList
-            items={order}
-            onReorder={(next) => save.mutate({ todayPanelOrder: next })}
-            className="grid gap-1"
-            render={(id) => {
-              const p = TODAY_PANELS.find((panel) => panel.id === id)!;
-              return (
-                <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-today-${p.id}`}>
-                  <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="min-w-0 flex-1 text-sm font-medium">{p.label}</span>
-                  <Switch checked={panelShown(settings, p.id)} onCheckedChange={(v) => toggle(p.id, v)} aria-label={`Show ${p.label}`} data-testid={`switch-today-${p.id}`} />
-                </div>
-              );
-            }}
-          />
+          <section className="grid gap-1" aria-label="Cards">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cards</h3>
+            <SortableList
+              items={order}
+              onReorder={(next) => save.mutate({ todayPanelOrder: next })}
+              className="grid gap-1"
+              render={(id) => {
+                const p = TODAY_PANELS.find((panel) => panel.id === id)!;
+                return (
+                  <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-today-${p.id}`}>
+                    <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="min-w-0 flex-1 text-sm font-medium">{p.label}</span>
+                    <Switch checked={panelShown(settings, p.id)} onCheckedChange={(v) => toggle(p.id, v)} aria-label={`Show ${p.label}`} data-testid={`switch-today-${p.id}`} />
+                  </div>
+                );
+              }}
+            />
+          </section>
+          {/* Drawn like the bar itself; hold a page and drag it along. The app still opens on Today, wherever it sits. */}
+          <section className="grid gap-2" aria-label="Bottom bar">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bottom bar</h3>
+            <SortableList
+              horizontal
+              items={pages.map((n) => n.href)}
+              onReorder={(next) => save.mutate({ navOrder: next })}
+              className="flex rounded-[20px] border bg-muted/40 p-0.5"
+              itemClassName="min-w-0 flex-1"
+              render={(href, lifted) => {
+                const n = pages.find((page) => page.href === href)!;
+                return (
+                  <div className={cn("flex flex-col items-center gap-0.5 rounded-2xl py-2 text-muted-foreground", lifted && "text-primary")}
+                    data-testid={`row-nav-${n.label.toLowerCase()}`}>
+                    <n.icon className="h-5 w-5" aria-hidden />
+                    <span className="max-w-full truncate text-[10px] tracking-tight">{n.label}</span>
+                  </div>
+                );
+              }}
+            />
+          </section>
         </DialogContent>
       </Dialog>
     </>
@@ -266,8 +295,8 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
     onDone?.();
   };
   return (
-    <div className={cn("relative rounded bg-card text-card-foreground", appbar ? "border" : "card-md")}>
-      <div className={cn("flex items-center", appbar ? "gap-1.5 px-2.5" : "gap-2 px-3")}>
+    <div className={cn("relative bg-card text-card-foreground", appbar ? "rounded-full border" : "card-md !rounded-full")}>
+      <div className={cn("flex items-center", appbar ? "gap-1.5 px-3.5" : "gap-2 px-4")}>
         <Plus className="h-4 w-4 text-primary shrink-0" />
         <Input
           value={text}
@@ -471,9 +500,13 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 }
 
 /** Switches the day card between the timeline and the agenda list, like the calendar's view switch. */
-function DayViewToggle({ view, onPick }: { view: "timeline" | "agenda"; onPick: (v: "timeline" | "agenda") => void }) {
+function DayViewToggle({ view, onPick, wholeDay, onWholeDay }: {
+  view: "timeline" | "agenda"; onPick: (v: "timeline" | "agenda") => void;
+  /** The timeline's whole-day chevron: all 24 hours at once instead of scrolling inside the card. */
+  wholeDay?: boolean; onWholeDay?: () => void;
+}) {
   return (
-    <div className="px-2 pt-2 pb-2">
+    <div className="flex items-center justify-between gap-2 px-2 pt-2 pb-2">
       <div className="inline-flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Show the day as">
         {(["timeline", "agenda"] as const).map((v) => (
           <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => onPick(v)}
@@ -484,6 +517,14 @@ function DayViewToggle({ view, onPick }: { view: "timeline" | "agenda"; onPick: 
           </button>
         ))}
       </div>
+      {/* A chevron opens the timeline out to the whole day, and folds it back. */}
+      {onWholeDay && (
+        <button type="button" onClick={onWholeDay} aria-expanded={!!wholeDay} aria-label={wholeDay ? "Show less of the day" : "Show the whole day"}
+          className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+          data-testid="button-timeline-whole-day">
+          <ChevronDown className={cn("h-5 w-5 transition-transform", wholeDay && "rotate-180")} />
+        </button>
+      )}
     </div>
   );
 }

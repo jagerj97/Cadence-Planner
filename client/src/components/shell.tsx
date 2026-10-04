@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Home,
@@ -24,18 +24,29 @@ import { QuickAdd } from "@/pages/today";
 import { cn } from "@/lib/utils";
 
 
-const NAV = [
+export const NAV = [
   { href: "/", label: "Today", icon: Home, match: (l: string) => l === "/" || l.startsWith("/day") },
-  { href: "/calendar", label: "Calendar", icon: CalendarRange, match: (l: string) => /^\/(calendar|week|month|agenda|schedule)/.test(l) },
+  { href: "/calendar", label: "Calendar", icon: CalendarRange, match: (l: string) => /^\/(calendar|week|month|agenda|timeline|schedule)/.test(l) },
   { href: "/tasks", label: "Tasks", icon: CheckSquare, match: (l: string) => l.startsWith("/tasks") },
   { href: "/habits", label: "Habits", icon: Repeat, match: (l: string) => l.startsWith("/habits") },
   { href: "/journal", label: "Journal", icon: NotebookPen, match: (l: string) => l.startsWith("/journal") },
   { href: "/focus", label: "Focus", icon: Timer, match: (l: string) => l.startsWith("/focus") },
 ];
+/** The pages in the user's order (Settings, Customize); ones not placed yet keep their usual spot at the end. */
+export function orderNav(saved: string[] | undefined) {
+  const placed = (saved ?? []).map((href) => NAV.find((n) => n.href === href)).filter((n): n is (typeof NAV)[number] => !!n);
+  return [...new Set([...placed, ...NAV])];
+}
+function useNav() {
+  const { settings } = useSettings();
+  return useMemo(() => orderNav(settings.navOrder), [settings.navOrder]);
+}
+
 const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: SettingsIcon, match: (l: string) => l.startsWith("/settings") || l.startsWith("/sync") };
 
 function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
   const [loc] = useLocation();
+  const nav = useNav();
   const { focus, elapsed } = usePlanner();
   const row = (n: (typeof NAV)[number]) => {
     const on = n.match(loc);
@@ -60,7 +71,7 @@ function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <>
       <nav className="py-2" aria-label="Main">
-        {NAV.map(row)}
+        {nav.map(row)}
       </nav>
     </>
   );
@@ -137,7 +148,7 @@ function AddMenu() {
           <AddIcon open={open} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden rounded-[20px] p-0 shadow-lg">
+      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden p-0 shadow-lg">
         <div className="p-2.5 border-b">
           <QuickAdd appbar day={day} onDone={() => setOpen(false)} />
         </div>
@@ -146,7 +157,7 @@ function AddMenu() {
             <button
               key={k.kind}
               onClick={() => pick(k.kind)}
-              className="flex items-center gap-3 rounded px-3 py-2.5 text-sm hover:bg-muted text-left"
+              className="flex items-center gap-3 rounded-full py-1.5 pl-1.5 pr-3 text-sm font-medium hover:bg-muted text-left"
               data-testid={`button-add-${k.kind}`}
             >
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white" style={{ background: k.color }}>
@@ -187,12 +198,14 @@ function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
 }
 
 /**
- * Swiping left or right across a page goes to the next or previous page in the bar; the end pages
- * go no further. Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
+ * Swiping left or right across a page goes to the next or previous page in the bar (in the user's
+ * order); the end pages go no further. Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
  */
-function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, go: (href: string, dir: 1 | -1) => void) {
+function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typeof NAV)[number][], go: (href: string, dir: 1 | -1) => void) {
   const locRef = useRef(loc);
   locRef.current = loc;
+  const navRef = useRef(nav);
+  navRef.current = nav;
   useEffect(() => {
     const el = main.current;
     if (!el) return;
@@ -208,10 +221,11 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, go: (href
       if (!s || !t || Date.now() - s.t > 700) return;
       const dx = t.clientX - s.x, dy = t.clientY - s.y;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      const at = NAV.findIndex((n) => n.match(locRef.current));
+      const pages = navRef.current;
+      const at = pages.findIndex((n) => n.match(locRef.current));
       if (at < 0) return;
       const dir = dx < 0 ? 1 : -1;
-      const next = NAV[at + dir];
+      const next = pages[at + dir];
       if (next) go(next.href, dir);
     };
     el.addEventListener("touchstart", down, { passive: true });
@@ -229,7 +243,8 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, go: (href
 export function Shell({ children }: { children: ReactNode }) {
   const [loc, nav] = useLocation();
   const mainRef = useRef<HTMLElement>(null);
-  const page = NAV.findIndex((n) => n.match(loc));
+  const pages = useNav();
+  const page = pages.findIndex((n) => n.match(loc));
   // The page a swipe brings in slides in from that side.
   const [slide, setSlide] = useState<{ dir: 1 | -1; to: string } | null>(null);
   const go = useCallback((href: string, dir: 1 | -1) => {
@@ -237,8 +252,8 @@ export function Shell({ children }: { children: ReactNode }) {
     nav(href);
     setTimeout(() => setSlide(null), 300);
   }, [nav]);
-  usePageSwipe(mainRef, loc, go);
-  const slid = slide && NAV[page]?.href === slide.to ? slide.dir : 0;
+  usePageSwipe(mainRef, loc, pages, go);
+  const slid = slide && pages[page]?.href === slide.to ? slide.dir : 0;
   const { focus, elapsed } = usePlanner();
   const { settings } = useSettings();
   const inSettings = SETTINGS_NAV.match(loc);
@@ -247,7 +262,8 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background">
       {/* app bar: settings + add, nothing else */}
-      <header className="appbar relative z-30 flex h-14 md:h-16 shrink-0 items-center justify-between px-3 md:px-5">
+      {/* Runs up behind the phone's status bar (--safe-top), carrying its color and wash with it. */}
+      <header className="appbar relative z-30 box-content flex h-14 md:h-16 shrink-0 items-center justify-between px-3 md:px-5 pt-[var(--safe-top,env(safe-area-inset-top,0px))]">
         <button
           onClick={() => nav(inSettings ? lastPage : "/settings")}
           className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-transform duration-300", inSettings && "bg-black/10 dark:bg-white/15 rotate-90")}
@@ -283,7 +299,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       {/* bottom bar (phones) */}
       <nav className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Main">
-        {NAV.map((n) => {
+        {pages.map((n) => {
           const on = n.match(loc);
           const timer = n.href === "/focus" && focus;
           return (

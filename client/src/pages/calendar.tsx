@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/components/shell";
-import { DayColumn, HourLabels } from "@/components/timeline";
+import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
+import { allDayFor } from "@/lib/today";
 import { usePlanner } from "@/components/planner";
 import { useItems, useSettings } from "@/lib/data";
 import type { Item, WeekDay } from "@shared/schema";
@@ -30,11 +31,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { accentOf } from "@/components/taskTags";
-import { AgendaList } from "@/components/agendaList";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { AgendaList, DayHeading } from "@/components/agendaList";
+import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-const WEEK_HOUR = 48;
+const WEEK_HOUR = 60;
 /** Lines of items a month day shows before "+N more". */
 const MONTH_LINES = 3;
 
@@ -47,10 +48,8 @@ function BarLayer({ children }: { children: ReactNode }) {
  * An item over several days, drawn once across them. Square ends where it carries on past the days
  * shown. Its left and right sit inside the day cells' padding (--pad) unless it continues.
  */
-function SpanBar({ bar, days, className, style, onOpen, thinOnPhone }: {
+function SpanBar({ bar, days, className, style, onOpen }: {
   bar: Bar; days: number; className?: string; style?: React.CSSProperties; onOpen: () => void;
-  /** On phones, a thin line in the item's color (like the week view's other all-day items). */
-  thinOnPhone?: boolean;
 }) {
   const { settings } = useSettings();
   const i = bar.item;
@@ -71,10 +70,9 @@ function SpanBar({ bar, days, className, style, onOpen, thinOnPhone }: {
       }}
       data-testid={`bar-${i.id}-${bar.occ}`}
     >
-      {thinOnPhone && <span className="absolute inset-0 sm:hidden" style={{ background: accentOf(i, settings) }} aria-hidden />}
-      <span className={cn("h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0", thinOnPhone && "hidden sm:block")} style={{ background: accentOf(i, settings) }} />
+      <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: accentOf(i, settings) }} />
       {time && <span className="hidden sm:inline text-muted-foreground tnum shrink-0">{fmtTime(time, true)}</span>}
-      <span className={cn("block min-w-0 truncate whitespace-nowrap", thinOnPhone && "hidden sm:block")}>{i.title}</span>
+      <span className="block min-w-0 truncate whitespace-nowrap">{i.title}</span>
     </button>
   );
 }
@@ -142,12 +140,12 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
         {toggle}
       </PageHeader>
       {filters}
-      <div className="flex-1 min-h-0 p-4 md:p-6">
-        <div className="h-full card-md flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 pt-3 md:p-6">
+        <div className="h-full card-md card-flush flex flex-col overflow-hidden">
           <div className="flex min-w-0 flex-1 flex-col min-h-0">
             <div className="min-w-0 flex flex-col flex-1 min-h-0">
               {/* header: the days, a bar for each item over several days, then each day's other all-day items */}
-              <div className="border-b [--lane:10px] [--pad:2px] sm:[--lane:22px] sm:[--pad:6px]">
+              <div className="border-b [--lane:20px] [--pad:2px] sm:[--lane:22px] sm:[--pad:6px]">
                 <div className="flex">
                   <div className="w-9 sm:w-14 shrink-0" />
                   {days.map((d) => {
@@ -160,11 +158,11 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                           aria-label={fmtDate(d, { weekday: "long", month: "short", day: "numeric" })}
                           data-testid={`link-day-${d}`}
                         >
-                          <span className="text-[11px] sm:text-xs text-muted-foreground"><span className="sm:hidden">{DAY_SHORT[parseYmd(d).getDay()].slice(0, 1)}</span><span className="hidden sm:inline">{DAY_SHORT[parseYmd(d).getDay()]}</span></span>
+                          <span className="text-xs text-muted-foreground"><span className="sm:hidden">{DAY_SHORT[parseYmd(d).getDay()].slice(0, 1)}</span><span className="hidden sm:inline">{DAY_SHORT[parseYmd(d).getDay()]}</span></span>
                           <span
                             className={cn(
-                              "text-[12px] sm:text-sm font-semibold tnum",
-                              today && "rounded-full bg-primary text-primary-foreground px-1 sm:px-1.5",
+                              "text-[15px] sm:text-sm font-semibold tnum",
+                              today && "rounded-full bg-primary text-primary-foreground px-1.5",
                             )}
                           >
                             {parseYmd(d).getDate()}
@@ -181,7 +179,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                       {days.map((d) => <div key={d} className="border-l" aria-hidden />)}
                       <BarLayer>
                         {weekBars.bars.map((b) => (
-                          <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} thinOnPhone className="h-1.5 sm:h-5 text-xs"
+                          <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} className="h-[18px] sm:h-5 text-[11px] sm:text-xs"
                             style={{ top: `calc(4px + ${b.lane} * var(--lane))` }} onOpen={() => openDetails(b.item, b.occ)} />
                         ))}
                       </BarLayer>
@@ -200,14 +198,13 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                               key={i.id}
                               onClick={() => openDetails(i, d)}
                               aria-label={i.title}
-                              className="h-2.5 sm:h-auto min-w-0 truncate rounded px-0.5 sm:px-1 text-left text-xs"
-                              style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
+                              className="h-[18px] sm:h-auto min-w-0 truncate rounded px-1 text-left text-[11px] leading-[18px] sm:text-xs"
+                              style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)`, borderLeft: `2px solid ${accentOf(i, settings)}` }}
                             >
-                              <span className="block sm:hidden h-1.5 w-full rounded-full" style={{ background: accentOf(i, settings) }} aria-hidden />
-                              <span className="hidden sm:inline">{i.title}</span>
+                              {i.title}
                             </button>
                           ))}
-                          {untimed.length > 2 && <span className="text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{untimed.length - 2}<span className="hidden sm:inline"> more</span></span>}
+                          {untimed.length > 2 && <span className="text-[11px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{untimed.length - 2}<span className="hidden sm:inline"> more</span></span>}
                         </div>
                       </div>
                     );
@@ -287,11 +284,11 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
         {toggle}
       </PageHeader>
       {filters}
-      <div className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto md:overflow-auto">
-        <div className="card-md flex overflow-hidden min-w-0 h-full flex-col">
+      <div className="flex-1 min-h-0 pt-3 md:p-6 overflow-y-auto md:overflow-auto">
+        <div className="card-md card-flush flex overflow-hidden min-w-0 min-h-full flex-col">
           <div className="grid grid-cols-7 border-b">
             {weekdays.map((w) => (
-              <div key={w} className="min-w-0 px-0 sm:px-2 py-2 text-center sm:text-left text-[11px] sm:text-xs font-medium text-muted-foreground">
+              <div key={w} className="min-w-0 px-0 sm:px-2 py-2 text-center sm:text-left text-xs font-medium text-muted-foreground">
                 <span className="sm:hidden">{w.slice(0, 1)}</span><span className="hidden sm:inline">{w}</span>
               </div>
             ))}
@@ -304,7 +301,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
               const { bars, lanes } = barsFor(list, week[0], 7);
               const shownLanes = Math.min(lanes, MONTH_LINES);
               return (
-                <div key={week[0]} className="relative grid flex-1 grid-cols-7 [--lane:16px] [--pad:2px] [--top:24px] sm:[--lane:22px] sm:[--pad:6px] sm:[--top:32px]" data-testid={`row-month-${week[0]}`}>
+                <div key={week[0]} className="relative grid flex-1 grid-cols-7 [--lane:20px] [--pad:2px] [--top:30px] sm:[--lane:22px] sm:[--pad:6px] sm:[--top:32px]" data-testid={`row-month-${week[0]}`}>
                   {week.map((d, col) => {
                     const idx = w * 7 + col;
                     const inMonth = parseYmd(d).getMonth() === first.getMonth();
@@ -323,13 +320,13 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                     return (
                       <div
                         key={d}
-                        className={cn("min-w-0 min-h-[66px] sm:min-h-[96px] border-t border-l p-0.5 sm:p-1.5 flex flex-col gap-0.5", idx % 7 === 0 && "border-l-0", idx < 7 && "border-t-0", !inMonth && "bg-muted/40")}
+                        className={cn("min-w-0 min-h-[92px] sm:min-h-[96px] border-t border-l p-0.5 sm:p-1.5 flex flex-col gap-0.5", idx % 7 === 0 && "border-l-0", idx < 7 && "border-t-0", !inMonth && "bg-muted/40")}
                         data-testid={`cell-month-${d}`}
                       >
                         <button
                           onClick={() => nav(today ? "/" : `/day/${d}`)}
                           className={cn(
-                            "self-center sm:self-start text-[12px] sm:text-xs font-semibold tnum rounded-full h-5 min-w-5 sm:h-6 sm:min-w-6 px-0.5 sm:px-1.5 hover-elevate",
+                            "self-center sm:self-start text-sm sm:text-xs font-semibold tnum rounded-full h-6 min-w-6 px-1 sm:px-1.5 hover-elevate",
                             today ? "bg-primary text-primary-foreground" : inMonth ? "" : "text-muted-foreground",
                           )}
                           aria-label={fmtDate(d)}
@@ -342,7 +339,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                             key={i.id + (t || "")}
                             onClick={() => openDetails(i, d)}
                             aria-label={`${i.title}${t ? `, ${fmtTime(t, true)}` : ""}`}
-                            className="flex h-3.5 sm:h-5 items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[9px] sm:text-xs leading-none hover-elevate min-w-0 overflow-hidden"
+                            className="flex h-[18px] sm:h-5 items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[11px] sm:text-xs leading-none hover-elevate min-w-0 overflow-hidden"
                             style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
                           >
                             <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: accentOf(i, settings) }} />
@@ -351,7 +348,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                           </button>
                         ))}
                         {hidden > 0 && (
-                          <button onClick={() => nav(`/day/${d}`)} className="text-center sm:text-left text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1 hover:text-foreground">
+                          <button onClick={() => nav(`/day/${d}`)} className="text-center sm:text-left text-[11px] sm:text-xs text-muted-foreground px-0.5 sm:px-1 hover:text-foreground">
                             +{hidden}<span className="hidden sm:inline"> more</span>
                           </button>
                         )}
@@ -360,7 +357,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                   })}
                   <BarLayer>
                     {bars.filter((b) => b.lane < MONTH_LINES).map((b) => (
-                      <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} className="h-3.5 sm:h-5 text-[9px] sm:text-xs"
+                      <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} className="h-[18px] sm:h-5 text-[11px] sm:text-xs"
                         style={{ top: `calc(var(--top) + ${b.lane} * var(--lane))` }} onOpen={() => openDetails(b.item, b.occ)} />
                     ))}
                   </BarLayer>
@@ -374,22 +371,16 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
   );
 }
 
-/** Days drawn before and after today on opening, and how many more load at a time. */
-const BEFORE = 14, AHEAD = 45, STEP = 60;
-
 /**
- * The agenda view: every day with something on, as a list (like Google Calendar's). It opens on a
- * few weeks around today and loads more either way as it's scrolled, back as far as the first item. The title is the month in view
- * and opens the month picker to jump to a day; Today comes back to today.
+ * A scrolling run of days (the agenda, the timeline) that starts with a few around today and loads
+ * `step` more as either end nears, back as far as the first item (at most three years). Each day's
+ * element carries data-day. `place` scrolls `scroller` to a day once it's drawn; days added above keep
+ * the view steady; `inView` is the first day showing, for the page title.
  */
-export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
-  const { data: items } = useItems();
-  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+function useDayWindow(items: Item[] | undefined, size: { before: number; ahead: number; step: number }, place: (scroller: HTMLElement, day: string) => void) {
   const today = todayStr();
-  // Only a few weeks around today are drawn at first; more load as the list nears either end.
-  const around = (day: string) => ({ start: addDays(day, -BEFORE), end: addDays(day, AHEAD) });
+  const around = (day: string) => ({ start: addDays(day, -size.before), end: addDays(day, size.ahead) });
   const [range, setRange] = useState(() => around(today));
-  // How far back scrolling goes: the earliest item (at most three years).
   const floor = useMemo(() => {
     const limit = addDays(today, -3 * 365);
     const earliest = (items ?? []).reduce((m, i) => (i.date < m ? i.date : m), today);
@@ -398,16 +389,14 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
   const scroller = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(today);
   const [jump, setJump] = useState<string | null>(today);
-  // Scroll to a day (the first shown on or after it), once it's in the list.
+  // Scroll to a day once it's in the list.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!jump || !items || !el) return;
-    const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
-    const row = rows.find((r) => (r.dataset.day ?? "") >= jump) ?? rows[rows.length - 1];
-    if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+    place(el, jump);
     setInView(jump);
     setJump(null);
-  }, [jump, range, items]);
+  }, [jump, range, items]); // eslint-disable-line react-hooks/exhaustive-deps
   // A day outside what's loaded starts a fresh window around it rather than drawing everything between.
   const goTo = (day: string) => {
     if (day < range.start || day > range.end) setRange(around(day));
@@ -420,7 +409,6 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
     if (el && grewFrom.current != null) el.scrollTop += el.scrollHeight - grewFrom.current;
     grewFrom.current = null;
   }, [range.start]);
-  // The title follows the first day in view.
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
@@ -428,7 +416,6 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
     const row = [...el.querySelectorAll<HTMLElement>("[data-day]")].find((r) => r.getBoundingClientRect().bottom > top + 8);
     if (row?.dataset.day && row.dataset.day !== inView) setInView(row.dataset.day);
   };
-  // Nearing either end loads the next two months that way.
   const topEdge = useRef<HTMLDivElement>(null);
   const bottomEdge = useRef<HTMLDivElement>(null);
   const watchEdge = (edge: HTMLDivElement | null, grow: () => void) => {
@@ -439,12 +426,30 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
     watch.observe(edge);
     return () => watch.disconnect();
   };
-  useEffect(() => watchEdge(bottomEdge.current, () => setRange((r) => ({ ...r, end: addDays(r.end, STEP) }))), [range.end, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => watchEdge(bottomEdge.current, () => setRange((r) => ({ ...r, end: addDays(r.end, size.step) }))), [range.end, items]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => watchEdge(topEdge.current, () => {
     if (range.start <= floor || jump) return;
     grewFrom.current = scroller.current?.scrollHeight ?? null;
-    setRange((r) => { const start = addDays(r.start, -STEP); return { ...r, start: start < floor ? floor : start }; });
+    setRange((r) => { const start = addDays(r.start, -size.step); return { ...r, start: start < floor ? floor : start }; });
   }), [range.start, floor, jump, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll };
+}
+
+/**
+ * The agenda view: every day with something on, as a list (like Google Calendar's). It opens on a few
+ * weeks around today and loads two months more either way as it's scrolled. The title is the month
+ * in view and opens the month picker to jump to a day; Today comes back to today.
+ */
+export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
+  const { data: items } = useItems();
+  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+  const today = todayStr();
+  // The first day shown on or after the one asked for.
+  const { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll } = useDayWindow(items, { before: 14, ahead: 45, step: 60 }, (el, day) => {
+    const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
+    const row = rows.find((r) => (r.dataset.day ?? "") >= day) ?? rows[rows.length - 1];
+    if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top;
+  });
   return (
     <>
       <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-agenda-day" />}>
@@ -456,24 +461,124 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
         {toggle}
       </PageHeader>
       {filters}
-      <div ref={scroller} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 [overflow-anchor:none]" data-testid="agenda-scroller">
-        <div className="mx-auto grid max-w-2xl gap-4 pb-4">
-          <div ref={topEdge} className="h-px" aria-hidden />
-          {items && <AgendaList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
-          <div ref={bottomEdge} className="h-px" aria-hidden />
+      <div className="flex-1 min-h-0 pt-3 md:p-6">
+        <div className="card-md card-flush mx-auto h-full max-w-3xl overflow-hidden">
+          <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto scroll-thin [overflow-anchor:none]" data-testid="agenda-scroller">
+            <div ref={topEdge} className="h-px" aria-hidden />
+            {items && <AgendaList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
+            <div ref={bottomEdge} className="h-px" aria-hidden />
+          </div>
         </div>
       </div>
     </>
   );
 }
 
-/* ---------- Calendar tab: swaps between agenda, week and month ---------- */
-type CalView = "agenda" | "week" | "month";
-const VIEW_LABEL: Record<CalView, string> = { agenda: "Agenda", week: "Week", month: "Month" };
+/**
+ * The timeline view: the Today page's timeline for one day after another, so scrolling runs on from
+ * one day's evening into the next morning. Each day's date stays pinned at the top while it's in view.
+ * It opens at the current time and loads more days either way as it's scrolled; the title is the month
+ * in view and opens the picker to jump to a day, which opens an hour before you wake.
+ */
+export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
+  const { data: items } = useItems();
+  const { settings } = useSettings();
+  const { openDetails } = usePlanner();
+  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+  const today = todayStr();
+  const { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll } = useDayWindow(items, { before: 1, ahead: 3, step: 3 }, (el, day) => {
+    const grid = el.querySelector<HTMLElement>(`[data-day="${day}"] [data-day-grid]`);
+    if (!grid) return;
+    const now = new Date();
+    const minute = day === todayStr() ? now.getHours() * 60 + now.getMinutes() - 90 : toMin(settings.wakeTime) - 60;
+    const pinned = el.querySelector<HTMLElement>(`[data-day="${day}"] [data-day-head]`)?.offsetHeight ?? 0;
+    el.scrollTop += grid.getBoundingClientRect().top - el.getBoundingClientRect().top + (Math.max(0, minute) / 60) * HOUR_PX - pinned;
+  });
+  const days = Array.from({ length: dayDiff(range.start, range.end) + 1 }, (_, n) => addDays(range.start, n));
+  return (
+    <>
+      <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-timeline-day" />}>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={() => goTo(today)} data-testid="button-timeline-today">
+            Today
+          </Button>
+        </div>
+        {toggle}
+      </PageHeader>
+      {filters}
+      <div className="flex-1 min-h-0 pt-3 md:p-6">
+        <div className="card-md card-flush mx-auto h-full max-w-3xl overflow-hidden">
+          <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto scroll-thin [overflow-anchor:none]" data-testid="timeline-scroller">
+            <div ref={topEdge} className="h-px" aria-hidden />
+            {items && days.map((day) => {
+              const allDay = allDayFor(list, day);
+              return (
+                <section key={day} data-day={day} aria-label={fmtDate(day, { weekday: "long", month: "long", day: "numeric" })} data-testid={`timeline-day-${day}`}>
+                  {/* The date, pinned while the day is in view, with that day's all-day items under it. */}
+                  <div data-day-head className="sticky top-0 z-40 bg-card">
+                    <div className="px-4 pt-2 pb-1.5"><DayHeading day={day} /></div>
+                    {allDay.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 px-3 pb-2" aria-label="All-day">
+                        {allDay.map((i) => (
+                          <button key={i.id} onClick={() => openDetails(i, day)}
+                            className="min-w-0 max-w-full truncate rounded-md px-2 py-1 text-xs font-medium hover-elevate"
+                            style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${accentOf(i, settings)}` }}
+                            data-testid={`chip-timeline-allday-${day}-${i.id}`}>
+                            {i.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div data-day-grid className="flex pt-2 pb-3 pr-2">
+                    <HourLabels />
+                    <DayColumn day={day} items={list} wakeMin={toMin(settings.wakeTime)} bedMin={toMin(settings.bedTime)} />
+                  </div>
+                </section>
+              );
+            })}
+            <div ref={bottomEdge} className="h-px" aria-hidden />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------- Calendar tab: swaps between agenda, timeline, week and month ---------- */
+type CalView = "agenda" | "timeline" | "week" | "month";
+const VIEW_LABEL: Record<CalView, string> = { agenda: "Agenda", timeline: "Timeline", week: "Week", month: "Month" };
 let lastView: CalView = "month"; // remembered while the app is open
+
+/** Picks the calendar's view: a pill like the Today button across from it, opening a menu of pills. */
+function ViewMenu({ view, onPick }: { view: CalView; onPick: (v: CalView) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="ml-auto gap-1 pl-3.5 pr-2.5" aria-label={`Calendar view: ${VIEW_LABEL[view]}`} data-testid="button-calendar-view">
+          {VIEW_LABEL[view]}
+          <ChevronDown className={cn("transition-transform", open && "rotate-180")} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-40 rounded-[22px] p-1.5" role="menu" aria-label="Calendar view">
+        {(["agenda", "timeline", "week", "month"] as CalView[]).map((v) => (
+          <button key={v} type="button" role="menuitemradio" aria-checked={view === v}
+            onClick={() => { onPick(v); setOpen(false); }}
+            className={cn("flex h-9 w-full items-center justify-between rounded-full px-3.5 text-sm font-medium transition-colors",
+              view === v ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted")}
+            data-testid={`tab-view-${v}`}>
+            {VIEW_LABEL[v]}
+            {view === v && <Check className="h-4 w-4" />}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
 export function CalendarPage() {
   const [loc] = useLocation();
-  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/agenda") || loc.startsWith("/schedule") ? "agenda" : lastView));
+  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/agenda") || loc.startsWith("/schedule") ? "agenda" : loc.startsWith("/timeline") ? "timeline" : lastView));
   const [visibility, setVisibility] = useState<CalendarVisibility>(() => ({ ...lastVisibility }));
   const pick = (v: CalView) => {
     lastView = v;
@@ -511,29 +616,13 @@ export function CalendarPage() {
       })}
     </div>
   );
-  const toggle = (
-    <div className="ml-auto flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Calendar view">
-      {(["agenda", "week", "month"] as CalView[]).map((v) => (
-        <button
-          key={v}
-          role="tab"
-          aria-selected={view === v}
-          onClick={() => pick(v)}
-          className={cn(
-            "h-8 px-3 sm:px-4 rounded-full text-xs font-medium transition-colors",
-            view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
-          )}
-          data-testid={`tab-view-${v}`}
-        >
-          {VIEW_LABEL[v]}
-        </button>
-      ))}
-    </div>
-  );
+  const toggle = <ViewMenu view={view} onPick={pick} />;
   return view === "week"
     ? <WeekPage toggle={toggle} filters={filters} visibility={visibility} />
     : view === "agenda"
       ? <AgendaPage toggle={toggle} filters={filters} visibility={visibility} />
+      : view === "timeline"
+      ? <TimelinePage toggle={toggle} filters={filters} visibility={visibility} />
       : <MonthPage toggle={toggle} filters={filters} visibility={visibility} />;
 }
 
@@ -546,7 +635,7 @@ export function PickerTitle({ label, open, onOpenChange, children, testId }: {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <button type="button" className="inline-flex max-w-full items-center gap-1 rounded-md -mx-1 px-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        <button type="button" className="inline-flex max-w-full items-center gap-1 rounded-full -mx-2 px-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           aria-label={`${label}. Choose a different date`} data-testid={testId}>
           <span className="truncate">{label}</span>
           <ChevronDown className={cn("h-5 w-5 md:h-6 md:w-6 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} strokeWidth={2.5} aria-hidden />
@@ -587,7 +676,7 @@ function MonthPicker({ month, onPick }: { month: string; onPick: (firstOfMonth: 
           return (
             <button key={name} type="button"
               onClick={() => { onPick(ymd(new Date(year, m, 1))); setOpen(false); }}
-              className={cn("rounded-md py-2 text-sm font-medium transition-colors",
+              className={cn("rounded-full py-2 text-sm font-medium transition-colors",
                 selected ? "bg-primary text-primary-foreground" : isNow ? "text-primary ring-1 ring-primary/50 hover:bg-muted" : "hover:bg-muted")}
               aria-pressed={selected} data-testid={`button-pick-month-${m + 1}`}>
               {name}
@@ -628,7 +717,7 @@ function WeekPicker({ title, start, weekStartsOn, onPick }: {
           return (
             <button key={w} type="button"
               onClick={() => { onPick(w); setOpen(false); }}
-              className={cn("flex items-center justify-between rounded-md px-3 py-2 text-sm tnum transition-colors",
+              className={cn("flex items-center justify-between rounded-full px-3 py-2 text-sm tnum transition-colors",
                 selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted")}
               aria-pressed={selected} data-testid={`button-pick-week-${w}`}>
               <span>{range(w)}</span>
@@ -670,7 +759,7 @@ export function DayPicker({ day, label, marked, onPick, testId = "button-pick-jo
           const selected = d === day;
           return (
             <button key={d} type="button" onClick={() => { onPick(d); setOpen(false); }}
-              className={cn("relative grid h-9 place-items-center rounded-md text-sm tnum transition-colors",
+              className={cn("relative grid h-9 place-items-center rounded-full text-sm tnum transition-colors",
                 selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted",
                 !inMonth && !selected && "text-muted-foreground/50", d === today && !selected && "text-primary font-semibold")}
               aria-pressed={selected} aria-label={`${fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}${marked?.has(d) ? ", has entries" : ""}`}

@@ -116,11 +116,14 @@ final class PanelWidgets {
 
     // ---- shared card pieces ----
 
-    private static void paintCard(RemoteViews views, WidgetTheme theme, int bg, int border) {
-        views.setInt(R.id.card_bg, "setColorFilter", bg);
-        views.setInt(R.id.card_border, "setColorFilter", WidgetDraw.alpha(border, 0.62f));
+    /** The card in the theme's card color, washed from the top left corner with the widget's color. */
+    private static void paintCard(RemoteViews views, WidgetTheme theme, int color) {
+        views.setInt(R.id.card_bg, "setColorFilter", theme.card);
+        views.setInt(R.id.card_tint, "setColorFilter", color);
+        views.setInt(R.id.card_tint, "setImageAlpha", Math.round((theme.dark ? 0.16f : 0.22f) * 255));
     }
 
+    /** Opens the app, at a page ("open:/tasks") or to add something ("add-task"). */
     private static PendingIntent openApp(Context context, int code, String add) {
         Intent launch = new Intent(context, AppActivity.class)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -145,7 +148,7 @@ final class PanelWidgets {
         WidgetTheme theme = theme(context, snapshot);
         JSONObject day = today(snapshot);
         RemoteViews views;
-        if (provider == Now.class) views = renderNow(context, theme, day);
+        if (provider == Now.class) views = renderNow(context, manager, id, theme, day);
         else if (provider == Day.class) views = renderDay(context, manager, id, theme, day);
         else if (provider == Schedule.class) views = renderSchedule(context, id, theme, day, full);
         else if (provider == Agenda.class) views = renderAgenda(context, id, theme, snapshot);
@@ -155,13 +158,8 @@ final class PanelWidgets {
 
     // ---- Right now ----
 
-    private static RemoteViews renderNow(Context context, WidgetTheme theme, JSONObject day) {
-        RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_now);
-        paintCard(v, theme, theme.nowCard, theme.nowBorder);
+    private static RemoteViews renderNow(Context context, AppWidgetManager manager, int id, WidgetTheme theme, JSONObject day) {
         int now = nowMinutes();
-        v.setTextColor(R.id.now_heading, theme.foreground);
-        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800001, null));
-
         JSONObject current = null, next = null;
         JSONArray blocks = day == null ? null : day.optJSONArray("blocks");
         for (int i = 0; blocks != null && i < blocks.length(); i++) {
@@ -173,9 +171,44 @@ final class PanelWidgets {
             String continues = b.optString("continues");
             if (next == null && b.optInt("start") > now && !"before".equals(continues)) next = b;
         }
+        int color = current != null ? WidgetDraw.parse(current.optString("color"), theme.primary) : theme.primary;
+        int start = current == null ? 0 : current.optInt("fullStart", current.optInt("start"));
+        int end = current == null ? 0 : current.optInt("fullEnd", current.optInt("end"));
+
+        // One column wide: the ring above the title. A row tall: no heading or "next".
+        int width = widthDp(manager, id, 300), height = heightDp(manager, id);
+        if (width < 150) {
+            RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_now_small);
+            paintCard(v, theme, color);
+            v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800001, "open:/"));
+            boolean roomy = height == 0 || height >= 100;
+            if (current != null) {
+                v.setViewVisibility(R.id.now_ring, View.VISIBLE);
+                v.setImageViewBitmap(R.id.now_ring, WidgetDraw.ring(context, (now - start) / (float) Math.max(1, end - start),
+                    color, theme.border, current.optString("kind")));
+                v.setTextViewText(R.id.now_title, current.optString("title"));
+                v.setTextViewText(R.id.now_sub, duration(end - now) + " left");
+            } else {
+                v.setViewVisibility(R.id.now_ring, View.GONE);
+                v.setTextViewText(R.id.now_title, day == null ? "Open Cadence" : next != null ? next.optString("title") : "Nothing now");
+                v.setTextViewText(R.id.now_sub, next != null ? "Next · " + time(next.optInt("start")) : "");
+            }
+            v.setViewVisibility(R.id.now_title, roomy || current == null ? View.VISIBLE : View.GONE);
+            v.setViewVisibility(R.id.now_sub, roomy ? View.VISIBLE : View.GONE);
+            v.setTextColor(R.id.now_title, theme.foreground);
+            v.setTextColor(R.id.now_sub, theme.mutedForeground);
+            return v;
+        }
+
+        RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_now);
+        paintCard(v, theme, color);
+        v.setTextColor(R.id.now_heading, theme.foreground);
+        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800001, "open:/"));
+        boolean tall = height == 0 || height >= 100;
+        v.setViewVisibility(R.id.now_header, tall ? View.VISIBLE : View.GONE);
+        int pad = Math.round((tall ? 16 : 12) * context.getResources().getDisplayMetrics().density);
+        v.setViewPadding(R.id.now_body, pad, pad, pad, pad);
         if (current != null) {
-            int start = current.optInt("fullStart", current.optInt("start")), end = current.optInt("fullEnd", current.optInt("end"));
-            int color = WidgetDraw.parse(current.optString("color"), theme.primary);
             v.setViewVisibility(R.id.now_current, View.VISIBLE);
             v.setViewVisibility(R.id.now_empty, View.GONE);
             v.setImageViewBitmap(R.id.now_ring, WidgetDraw.ring(context, (now - start) / (float) Math.max(1, end - start),
@@ -190,7 +223,7 @@ final class PanelWidgets {
             v.setTextColor(R.id.now_empty, theme.mutedForeground);
             if (day == null) v.setTextViewText(R.id.now_empty, "Open Cadence to load your day");
         }
-        int nextVisibility = next == null ? View.GONE : View.VISIBLE;
+        int nextVisibility = next == null || !tall ? View.GONE : View.VISIBLE;
         v.setViewVisibility(R.id.now_divider, nextVisibility);
         v.setViewVisibility(R.id.now_next, nextVisibility);
         if (next != null) {
@@ -209,8 +242,8 @@ final class PanelWidgets {
 
     private static RemoteViews renderDay(Context context, AppWidgetManager manager, int id, WidgetTheme theme, JSONObject day) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_day);
-        paintCard(v, theme, theme.card, theme.border);
-        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800002, null));
+        paintCard(v, theme, theme.primary);
+        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800002, "open:/"));
         v.setTextColor(R.id.day_heading, theme.foreground);
         // A 4x1 widget fits just the bar and totals; the heading comes back when it's resized taller.
         v.setViewVisibility(R.id.day_heading, heightDp(manager, id) >= 100 ? View.VISIBLE : View.GONE);
@@ -237,15 +270,17 @@ final class PanelWidgets {
 
     private static RemoteViews renderSchedule(Context context, int id, WidgetTheme theme, JSONObject day, boolean full) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_schedule);
-        paintCard(v, theme, theme.card, theme.border);
+        paintCard(v, theme, theme.primary);
+        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800005, "open:/"));
         Intent strips = new Intent(context, StripService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
         strips.setData(Uri.parse(strips.toUri(Intent.URI_INTENT_SCHEME)));
         v.setRemoteAdapter(R.id.schedule_list, strips);
         v.setEmptyView(R.id.schedule_list, R.id.schedule_empty);
         v.setTextColor(R.id.schedule_empty, theme.mutedForeground);
-        // Taps on the timeline open the app (a list needs a template; the rows fill in nothing).
+        // Taps on the timeline open Today (a list needs a template; the rows fill in nothing).
         Intent launch = new Intent(context, AppActivity.class)
-            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_ADD, "open:/").setData(Uri.parse("cadence-widget://open/today"));
         v.setPendingIntentTemplate(R.id.schedule_list, PendingIntent.getActivity(context, 800003 + id, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
         // Open at the current hour, like the app: once when it's placed and once a day. Changes saved
@@ -263,10 +298,11 @@ final class PanelWidgets {
 
     private static RemoteViews renderAgenda(Context context, int id, WidgetTheme theme, JSONObject snapshot) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_agenda);
-        paintCard(v, theme, theme.card, theme.border);
+        paintCard(v, theme, theme.primary);
+        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800043, "open:/agenda"));
         v.setTextColor(R.id.agenda_heading, theme.foreground);
         v.setInt(R.id.agenda_add, "setColorFilter", theme.mutedForeground);
-        v.setOnClickPendingIntent(R.id.agenda_header, openApp(context, 800040, "open-agenda"));
+        v.setOnClickPendingIntent(R.id.agenda_header, openApp(context, 800040, "open:/agenda"));
         v.setOnClickPendingIntent(R.id.agenda_add, openApp(context, 800041, "add-event"));
         Intent rows = new Intent(context, AgendaService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
         rows.setData(Uri.parse(rows.toUri(Intent.URI_INTENT_SCHEME)));
@@ -276,7 +312,7 @@ final class PanelWidgets {
         // Tapping the list opens the app's agenda.
         Intent launch = new Intent(context, AppActivity.class)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(EXTRA_ADD, "open-agenda").setData(Uri.parse("cadence-widget://open-agenda"));
+            .putExtra(EXTRA_ADD, "open:/agenda").setData(Uri.parse("cadence-widget://open/agenda"));
         v.setPendingIntentTemplate(R.id.agenda_list, PendingIntent.getActivity(context, 800042 + id, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
         return v;
@@ -286,12 +322,13 @@ final class PanelWidgets {
 
     private static RemoteViews renderList(Context context, int id, boolean tasks, WidgetTheme theme, JSONObject day) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_list);
-        paintCard(v, theme, theme.card, theme.border);
+        paintCard(v, theme, tasks ? theme.task : theme.habit);
+        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800012 + (tasks ? 0 : 1), tasks ? "open:/tasks" : "open:/habits"));
         v.setTextViewText(R.id.list_heading, tasks ? "Tasks" : "Habits");
         v.setTextColor(R.id.list_heading, theme.foreground);
         v.setTextColor(R.id.list_count, theme.mutedForeground);
         v.setInt(R.id.list_add, "setColorFilter", theme.mutedForeground);
-        v.setOnClickPendingIntent(R.id.list_header, openApp(context, 800010 + (tasks ? 0 : 1), null));
+        v.setOnClickPendingIntent(R.id.list_header, openApp(context, 800010 + (tasks ? 0 : 1), tasks ? "open:/tasks" : "open:/habits"));
         v.setOnClickPendingIntent(R.id.list_add, openApp(context, 800020 + (tasks ? 0 : 1), tasks ? "add-task" : "add-habit"));
 
         JSONArray rows = day == null ? null : day.optJSONArray(tasks ? "tasks" : "habits");
@@ -544,13 +581,13 @@ final class PanelWidgets {
     }
 
     /**
-     * The snapshot's two weeks as rows: a month's name where a new month starts, then each item with
-     * its day's date beside the first one. Days already past (the snapshot may be a few days old) are
-     * left out, and today shows "Nothing planned" when it's empty.
+     * The snapshot's two weeks as rows: each day's date ("Today", "Thu, Oct 8"), then its items. Days
+     * already past (the snapshot may be a few days old) are left out, and an empty today says
+     * "Nothing planned".
      */
     static final class AgendaFactory implements RemoteViewsService.RemoteViewsFactory {
         private final Context context;
-        /** Each row: {"month": "October"} or {"day": {...}, "entry": {...} or null, "first": true/false}. */
+        /** Each row: {"date": "2026-10-08"} for a day's heading, or {"entry": {...}} (null entry: nothing planned). */
         private final java.util.ArrayList<JSONObject> rows = new java.util.ArrayList<>();
         private WidgetTheme theme = new WidgetTheme(null);
         private String today = "";
@@ -564,34 +601,25 @@ final class PanelWidgets {
             today = LocalDate.now().toString();
             rows.clear();
             JSONArray days = snapshot.optJSONArray("agenda");
-            String lastMonth = null;
+            if (days == null) return;
             boolean todayListed = false;
-            for (int d = 0; days != null && d < days.length(); d++) {
-                JSONObject day = days.optJSONObject(d);
-                if (day == null || day.optString("day").compareTo(today) < 0) continue;
-                JSONArray entries = day.optJSONArray("entries");
-                boolean isToday = today.equals(day.optString("day"));
-                if ((entries == null || entries.length() == 0) && !isToday) continue;
-                todayListed |= isToday;
-                try {
-                    String month = day.optString("month");
-                    if (!month.equals(lastMonth) && lastMonth != null) rows.add(new JSONObject().put("month", month));
-                    lastMonth = month;
-                    if (entries == null || entries.length() == 0) rows.add(new JSONObject().put("day", day).put("first", true));
-                    for (int e = 0; entries != null && e < entries.length(); e++) {
-                        rows.add(new JSONObject().put("day", day).put("entry", entries.optJSONObject(e)).put("first", e == 0));
-                    }
-                } catch (Exception ignored) {}
-            }
-            // A snapshot from before today began still leaves today at the top, empty.
-            if (!todayListed && days != null) {
-                try {
-                    LocalDate now = LocalDate.now();
-                    String weekday = now.getDayOfWeek().getDisplayName(java.time.format.TextStyle.SHORT, Locale.US);
-                    rows.add(0, new JSONObject().put("first", true).put("day", new JSONObject()
-                        .put("day", today).put("num", String.valueOf(now.getDayOfMonth())).put("weekday", weekday)));
-                } catch (Exception ignored) {}
-            }
+            try {
+                for (int d = 0; d < days.length(); d++) {
+                    JSONObject day = days.optJSONObject(d);
+                    String date = day == null ? "" : day.optString("day");
+                    if (date.compareTo(today) < 0) continue;
+                    JSONArray entries = day.optJSONArray("entries");
+                    boolean isToday = today.equals(date);
+                    if ((entries == null || entries.length() == 0) && !isToday) continue;
+                    // A snapshot from before today began still starts with today, empty.
+                    if (!todayListed && !isToday) { rows.add(new JSONObject().put("date", today)); rows.add(new JSONObject()); }
+                    todayListed = true;
+                    rows.add(new JSONObject().put("date", date));
+                    if (entries == null || entries.length() == 0) rows.add(new JSONObject());
+                    for (int e = 0; entries != null && e < entries.length(); e++) rows.add(new JSONObject().put("entry", entries.optJSONObject(e)));
+                }
+                if (!todayListed) { rows.add(new JSONObject().put("date", today)); rows.add(new JSONObject()); }
+            } catch (Exception ignored) {}
         }
         @Override public void onDestroy() {}
         @Override public int getCount() { return rows.size(); }
@@ -602,26 +630,16 @@ final class PanelWidgets {
 
         @Override public RemoteViews getViewAt(int position) {
             JSONObject r = position < rows.size() ? rows.get(position) : new JSONObject();
-            if (r.has("month")) {
-                RemoteViews m = new RemoteViews(context.getPackageName(), R.layout.widget_agenda_month);
-                m.setTextViewText(R.id.agenda_month, r.optString("month"));
-                m.setTextColor(R.id.agenda_month, theme.mutedForeground);
-                return m;
+            if (r.has("date")) {
+                String date = r.optString("date");
+                RemoteViews h = new RemoteViews(context.getPackageName(), R.layout.widget_agenda_day);
+                h.setTextViewText(R.id.agenda_day, dayLabel(date));
+                h.setTextColor(R.id.agenda_day, today.equals(date) ? theme.primary : theme.mutedForeground);
+                h.setOnClickFillInIntent(R.id.agenda_day, new Intent());
+                return h;
             }
             RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_agenda_row);
-            JSONObject day = r.optJSONObject("day");
             JSONObject entry = r.optJSONObject("entry");
-            boolean first = r.optBoolean("first");
-            boolean isToday = day != null && today.equals(day.optString("day"));
-            // The date shows beside a day's first item; the rest leave the space so the items line up.
-            v.setViewVisibility(R.id.agenda_date, first ? View.VISIBLE : View.INVISIBLE);
-            v.setViewPadding(R.id.agenda_row, dp(8), first && position > 0 ? dp(9) : dp(3), dp(12), dp(3));
-            if (day != null) {
-                v.setTextViewText(R.id.agenda_num, day.optString("num"));
-                v.setTextViewText(R.id.agenda_weekday, day.optString("weekday"));
-            }
-            v.setTextColor(R.id.agenda_num, isToday ? theme.primary : theme.foreground);
-            v.setTextColor(R.id.agenda_weekday, isToday ? theme.primary : theme.mutedForeground);
             if (entry == null) {
                 v.setViewVisibility(R.id.agenda_item, View.GONE);
                 v.setViewVisibility(R.id.agenda_nothing, View.VISIBLE);
@@ -653,8 +671,17 @@ final class PanelWidgets {
             return v;
         }
 
-        private int dp(int value) {
-            return Math.round(value * context.getResources().getDisplayMetrics().density);
+        /** "Today", "Tomorrow", or "Thu, Oct 8". */
+        private String dayLabel(String date) {
+            try {
+                LocalDate d = LocalDate.parse(date), now = LocalDate.now();
+                if (d.equals(now)) return "Today";
+                if (d.equals(now.plusDays(1))) return "Tomorrow";
+                return d.getDayOfWeek().getDisplayName(java.time.format.TextStyle.SHORT, Locale.US) + ", "
+                    + d.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, Locale.US) + " " + d.getDayOfMonth();
+            } catch (Exception e) {
+                return date;
+            }
         }
     }
 

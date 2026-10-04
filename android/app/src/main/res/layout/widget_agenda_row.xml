@@ -1,16 +1,9 @@
-<!-- One agenda item: the day's date on the left (on its first item only), then the item tinted in its color. -->
+<!-- One agenda item, tinted in its color, or "Nothing planned" for an empty today. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/agenda_row" android:layout_width="match_parent" android:layout_height="wrap_content"
-    android:orientation="horizontal" android:paddingStart="8dp" android:paddingEnd="12dp" android:paddingTop="3dp" android:paddingBottom="3dp">
-    <LinearLayout android:id="@+id/agenda_date" android:layout_width="44dp" android:layout_height="wrap_content"
-        android:orientation="vertical" android:gravity="center_horizontal" android:paddingTop="2dp" android:layout_marginEnd="6dp">
-        <TextView android:id="@+id/agenda_num" android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:textSize="18sp" android:fontFamily="sans-serif-medium" android:includeFontPadding="false" />
-        <TextView android:id="@+id/agenda_weekday" android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:layout_marginTop="3dp" android:textSize="11sp" android:includeFontPadding="false" />
-    </LinearLayout>
+    android:orientation="horizontal" android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="3dp" android:paddingBottom="3dp">
     <TextView android:id="@+id/agenda_nothing" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-        android:paddingTop="6dp" android:paddingBottom="6dp" android:text="Nothing planned" android:textSize="13sp" />
+        android:paddingStart="4dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:text="Nothing planned" android:textSize="13sp" />
     <FrameLayout android:id="@+id/agenda_item" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
         <ImageView android:id="@+id/agenda_item_bg" android:layout_width="match_parent" android:layout_height="match_parent"
             android:src="@drawable/widget_chip" android:scaleType="fitXY" android:importantForAccessibility="no" />

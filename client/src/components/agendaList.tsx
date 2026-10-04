@@ -3,14 +3,14 @@ import type { Item, Settings } from "@shared/schema";
 import { usePlanner } from "@/components/planner";
 import { accentOf } from "@/components/taskTags";
 import { useSettings } from "@/lib/data";
-import { KIND_META, addDays, colorOf, fmtDate, kindOf, parseYmd, tint, todayStr } from "@/lib/cal";
+import { KIND_META, addDays, colorOf, fmtDate, kindOf, tint, todayStr } from "@/lib/cal";
 import { agendaFor, type AgendaEntry as Entry } from "@/lib/today";
 import { cn } from "@/lib/utils";
 
 /**
- * The agenda view (laid out like Google Calendar's): days in order, each with its date on the left
- * and its items as cards like the timeline's: all-day ones first, then by time. Days with nothing on are left out, except
- * today. A heading marks each new month.
+ * The agenda view (laid out like Google Calendar's): days in order, each with its date above its items,
+ * shown as cards like the timeline's: all-day ones first, then by time. Days with nothing on are left
+ * out, except today.
  */
 
 /** An item as the timeline draws it: a tint of its color, its accent along the left, and its kind's icon. */
@@ -33,6 +33,17 @@ export function AgendaItem({ e, settings, compact = false }: { e: Entry; setting
         </div>
       )}
     </button>
+  );
+}
+
+/** A day's date as the agenda and timeline views head it: the day of the month in bold, then the weekday, lighter. */
+export function DayHeading({ day }: { day: string }) {
+  const isToday = day === todayStr();
+  return (
+    <div className={cn("flex items-baseline gap-2", isToday && "text-primary")}>
+      <span className="text-xl font-semibold leading-tight tnum">{Number(day.slice(8))}</span>
+      <span className={cn("text-sm", isToday ? "font-medium" : "text-muted-foreground")}>{fmtDate(day, { weekday: "long" })}{isToday && " · Today"}</span>
+    </div>
   );
 }
 
@@ -65,7 +76,7 @@ function useNowMinutes(on: boolean) {
  */
 export function AgendaList({ list, from, days, limit, compact = false, emptyToday = "Nothing planned", dates = true, always = false, now = true }: {
   list: Item[]; from: string; days: number; limit?: number; compact?: boolean; emptyToday?: string;
-  /** Show each day's date on the left (off for a single day's list). */
+  /** Show each day's date above its items (off for a single day's list). */
   dates?: boolean;
   /** Show every day in the range, even with nothing on (not just today). */
   always?: boolean;
@@ -87,35 +98,28 @@ export function AgendaList({ list, from, days, limit, compact = false, emptyToda
   }, [list, from, days, limit, always, today]);
   const nowMin = useNowMinutes(now && rows.some((r) => r.day === today));
   return (
-    <div className="grid gap-3" data-testid="agenda-list">
-      {rows.map(({ day, entries }, index) => {
-        const d = parseYmd(day);
+    <div className={cn("grid", !dates && "gap-3")} data-testid="agenda-list">
+      {rows.map(({ day, entries }) => {
         const isToday = day === today;
-        const newMonth = !compact && (index === 0 || parseYmd(rows[index - 1].day).getMonth() !== d.getMonth());
         // Now goes before the first item still to start (all-day ones sit above it).
         const at = !now || !isToday ? -1 : (() => { const k = entries.findIndex((e) => e.start > nowMin); return k < 0 ? entries.length : k; })();
         return (
-          <div key={day} className="grid gap-2" data-day={day}>
-            {newMonth && (
-              <h3 className={cn("text-sm font-semibold text-muted-foreground", index > 0 && "pt-2")}>{fmtDate(day, { month: "long", year: "numeric" })}</h3>
-            )}
-            <div className="flex gap-3" data-testid={`agenda-day-${day}`}>
-              {dates && (
-                <div className={cn("w-11 shrink-0 pt-1 text-center leading-none", isToday ? "text-primary" : "text-foreground")}>
-                  <div className={cn("font-semibold tnum", compact ? "text-lg" : "text-2xl")}>{d.getDate()}</div>
-                  <div className={cn("mt-1 text-xs", isToday ? "font-semibold" : "text-muted-foreground")}>{fmtDate(day, { weekday: "short" })}</div>
-                </div>
-              )}
-              <div className="grid min-w-0 flex-1 gap-1.5">
-                {entries.length === 0 && <div className="py-2 text-sm text-muted-foreground">{emptyToday}</div>}
-                {entries.map((e, k) => (
-                  <Fragment key={e.key}>
-                    {k === at && <NowMarker />}
-                    <AgendaItem e={e} settings={settings} compact={compact} />
-                  </Fragment>
-                ))}
-                {at >= 0 && at === entries.length && <NowMarker />}
+          <div key={day} data-day={day}>
+            {/* The date above the day's items, pinned while they're in view (as in the timeline view). */}
+            {dates && (
+              <div className="sticky top-0 z-10 bg-card px-4 pt-2 pb-1.5" data-testid={`agenda-date-${day}`}>
+                <DayHeading day={day} />
               </div>
+            )}
+            <div className={cn("grid min-w-0 gap-1.5", dates && "px-4 pt-3 pb-4")} data-testid={`agenda-day-${day}`}>
+              {entries.length === 0 && <div className="py-2 text-sm text-muted-foreground">{emptyToday}</div>}
+              {entries.map((e, k) => (
+                <Fragment key={e.key}>
+                  {k === at && <NowMarker />}
+                  <AgendaItem e={e} settings={settings} compact={compact} />
+                </Fragment>
+              ))}
+              {at >= 0 && at === entries.length && <NowMarker />}
             </div>
           </div>
         );

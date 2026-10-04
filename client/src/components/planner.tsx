@@ -45,6 +45,8 @@ import {
   sunTimes,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
+import { TwoRows } from "@/components/twoRows";
+import { Linked, LocationLink } from "@/components/links";
 import { WhatsNew } from "@/components/whatsNew";
 import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
 import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
@@ -359,14 +361,15 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   };
   const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
 
-  // A widget's + button opens the app to add a task, habit or event; the agenda widget opens the agenda.
+  // A widget's + button opens the app to add a task, habit or event; tapping a widget opens its page.
   useEffect(() => {
     const run = () => {
       const action = window.CadenceAndroid?.takeLaunchAction?.() || "";
       if (action === "add-task") openEditor({ date: todayStr(), kind: "task" });
       if (action === "add-habit") openEditor({ date: todayStr(), kind: "habit", recurrence: '{"freq":"daily"}' });
       if (action === "add-event") openEditor({ date: todayStr(), kind: "event" });
-      if (action === "open-agenda") window.location.hash = "#/agenda";
+      // Each widget opens its own page ("open:/tasks").
+      if (/^open:\/[a-z]*$/.test(action)) window.location.hash = `#${action.slice(5)}`;
     };
     run();
     window.addEventListener("cadence-launch-action", run);
@@ -616,9 +619,9 @@ function ItemDetails({ details, onClose, onEdit }: {
             </DialogHeader>
           </div>
           {tags.length > 0 && (
-            <div className="-mt-1 flex flex-wrap gap-1.5">
+            <TwoRows className="-mt-1 gap-1.5">
               {tags.map((t) => <TagChip key={t.name} tag={t} />)}
-            </div>
+            </TwoRows>
           )}
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
           <div className="grid grid-cols-1 gap-3 text-sm">
@@ -639,8 +642,9 @@ function ItemDetails({ details, onClose, onEdit }: {
               <div className="text-xs text-muted-foreground">Repeats</div>
               <div>{recLabel(i)}</div>
             </div>}
-            {i.location && <div className="break-words">{i.location}</div>}
-            {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground">{i.notes}</p>}
+            {/* A place opens the maps app, a link opens in the browser. */}
+            {i.location && <div><LocationLink location={i.location} /></div>}
+            {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground"><Linked text={i.notes} /></p>}
             {i.notes?.trim() && !routine && i.kind !== "habit" && i.id > 0 && (
               <JournalNotesCheckbox id="checkbox-notes-journal" checked={!i.journalOff && i.journalId != null}
                 onChange={(on) => update.mutate({ id: i.id, journalOff: !on })} />

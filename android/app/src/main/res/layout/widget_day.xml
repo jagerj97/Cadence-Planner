@@ -2,8 +2,8 @@
     android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
     <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
         android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
-    <ImageView android:id="@+id/card_border" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:src="@drawable/widget_card_border" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/card_tint" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card_tint" android:scaleType="fitXY" android:importantForAccessibility="no" />
     <!-- Sized for a 4x1 cell: the bar with the three totals under it. The heading shows when there's room. -->
     <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
         android:orientation="vertical" android:gravity="center_vertical"

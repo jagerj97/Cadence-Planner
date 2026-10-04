@@ -2,17 +2,17 @@
     android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
     <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
         android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
-    <ImageView android:id="@+id/card_border" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:src="@drawable/widget_card_border" android:scaleType="fitXY" android:importantForAccessibility="no" />
-    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+    <ImageView android:id="@+id/card_tint" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card_tint" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <LinearLayout android:id="@+id/now_body" android:layout_width="match_parent" android:layout_height="match_parent"
         android:orientation="vertical" android:padding="16dp" android:gravity="center_vertical">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:orientation="horizontal" android:gravity="center_vertical">
+        <LinearLayout android:id="@+id/now_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp" android:orientation="horizontal" android:gravity="center_vertical">
             <TextView android:id="@+id/now_heading" android:layout_width="0dp" android:layout_height="wrap_content"
                 android:layout_weight="1" android:text="Right now" android:textSize="15sp" android:textStyle="bold" />
         </LinearLayout>
         <LinearLayout android:id="@+id/now_current" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="12dp" android:orientation="horizontal" android:gravity="center_vertical">
+            android:orientation="horizontal" android:gravity="center_vertical">
             <ImageView android:id="@+id/now_ring" android:layout_width="48dp" android:layout_height="48dp"
                 android:layout_marginEnd="12dp" android:importantForAccessibility="no" />
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
@@ -24,7 +24,7 @@
             </LinearLayout>
         </LinearLayout>
         <TextView android:id="@+id/now_empty" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="12dp" android:textSize="15sp"
+            android:textSize="15sp"
             android:text="Nothing scheduled right now — a good moment for a task." />
         <!-- Widgets can't use a plain View, so the divider is a one-pixel image. -->
         <ImageView android:id="@+id/now_divider" android:layout_width="match_parent" android:layout_height="1dp"
