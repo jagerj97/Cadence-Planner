@@ -448,7 +448,7 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
   const { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll } = useDayWindow(items, { before: 14, ahead: 45, step: 60 }, (el, day) => {
     const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
     const row = rows.find((r) => (r.dataset.day ?? "") >= day) ?? rows[rows.length - 1];
-    if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+    if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top;
   });
   return (
     <>
@@ -463,12 +463,10 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
       {filters}
       <div className="flex-1 min-h-0 pt-3 md:p-6">
         <div className="card-md card-flush mx-auto h-full max-w-3xl overflow-hidden">
-          <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto p-4 md:p-5 [overflow-anchor:none]" data-testid="agenda-scroller">
-            <div className="grid gap-4 pb-4">
-              <div ref={topEdge} className="h-px" aria-hidden />
-              {items && <AgendaList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
-              <div ref={bottomEdge} className="h-px" aria-hidden />
-            </div>
+          <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto scroll-thin [overflow-anchor:none]" data-testid="agenda-scroller">
+            <div ref={topEdge} className="h-px" aria-hidden />
+            {items && <AgendaList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
+            <div ref={bottomEdge} className="h-px" aria-hidden />
           </div>
         </div>
       </div>
