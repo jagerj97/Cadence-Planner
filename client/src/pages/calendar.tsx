@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/components/shell";
-import { DayColumn, HourLabels } from "@/components/timeline";
+import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
+import { allDayFor } from "@/lib/today";
 import { usePlanner } from "@/components/planner";
 import { useItems, useSettings } from "@/lib/data";
 import type { Item, WeekDay } from "@shared/schema";
@@ -370,22 +371,16 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
   );
 }
 
-/** Days drawn before and after today on opening, and how many more load at a time. */
-const BEFORE = 14, AHEAD = 45, STEP = 60;
-
 /**
- * The agenda view: every day with something on, as a list (like Google Calendar's). It opens on a
- * few weeks around today and loads more either way as it's scrolled, back as far as the first item. The title is the month in view
- * and opens the month picker to jump to a day; Today comes back to today.
+ * A scrolling run of days (the agenda, the timeline) that starts with a few around today and loads
+ * `step` more as either end nears, back as far as the first item (at most three years). Each day's
+ * element carries data-day. `place` scrolls `scroller` to a day once it's drawn; days added above keep
+ * the view steady; `inView` is the first day showing, for the page title.
  */
-export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
-  const { data: items } = useItems();
-  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+function useDayWindow(items: Item[] | undefined, size: { before: number; ahead: number; step: number }, place: (scroller: HTMLElement, day: string) => void) {
   const today = todayStr();
-  // Only a few weeks around today are drawn at first; more load as the list nears either end.
-  const around = (day: string) => ({ start: addDays(day, -BEFORE), end: addDays(day, AHEAD) });
+  const around = (day: string) => ({ start: addDays(day, -size.before), end: addDays(day, size.ahead) });
   const [range, setRange] = useState(() => around(today));
-  // How far back scrolling goes: the earliest item (at most three years).
   const floor = useMemo(() => {
     const limit = addDays(today, -3 * 365);
     const earliest = (items ?? []).reduce((m, i) => (i.date < m ? i.date : m), today);
@@ -394,16 +389,14 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
   const scroller = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(today);
   const [jump, setJump] = useState<string | null>(today);
-  // Scroll to a day (the first shown on or after it), once it's in the list.
+  // Scroll to a day once it's in the list.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!jump || !items || !el) return;
-    const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
-    const row = rows.find((r) => (r.dataset.day ?? "") >= jump) ?? rows[rows.length - 1];
-    if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+    place(el, jump);
     setInView(jump);
     setJump(null);
-  }, [jump, range, items]);
+  }, [jump, range, items]); // eslint-disable-line react-hooks/exhaustive-deps
   // A day outside what's loaded starts a fresh window around it rather than drawing everything between.
   const goTo = (day: string) => {
     if (day < range.start || day > range.end) setRange(around(day));
@@ -416,7 +409,6 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
     if (el && grewFrom.current != null) el.scrollTop += el.scrollHeight - grewFrom.current;
     grewFrom.current = null;
   }, [range.start]);
-  // The title follows the first day in view.
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
@@ -424,7 +416,6 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
     const row = [...el.querySelectorAll<HTMLElement>("[data-day]")].find((r) => r.getBoundingClientRect().bottom > top + 8);
     if (row?.dataset.day && row.dataset.day !== inView) setInView(row.dataset.day);
   };
-  // Nearing either end loads the next two months that way.
   const topEdge = useRef<HTMLDivElement>(null);
   const bottomEdge = useRef<HTMLDivElement>(null);
   const watchEdge = (edge: HTMLDivElement | null, grow: () => void) => {
@@ -435,12 +426,30 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
     watch.observe(edge);
     return () => watch.disconnect();
   };
-  useEffect(() => watchEdge(bottomEdge.current, () => setRange((r) => ({ ...r, end: addDays(r.end, STEP) }))), [range.end, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => watchEdge(bottomEdge.current, () => setRange((r) => ({ ...r, end: addDays(r.end, size.step) }))), [range.end, items]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => watchEdge(topEdge.current, () => {
     if (range.start <= floor || jump) return;
     grewFrom.current = scroller.current?.scrollHeight ?? null;
-    setRange((r) => { const start = addDays(r.start, -STEP); return { ...r, start: start < floor ? floor : start }; });
+    setRange((r) => { const start = addDays(r.start, -size.step); return { ...r, start: start < floor ? floor : start }; });
   }), [range.start, floor, jump, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll };
+}
+
+/**
+ * The agenda view: every day with something on, as a list (like Google Calendar's). It opens on a few
+ * weeks around today and loads two months more either way as it's scrolled. The title is the month
+ * in view and opens the month picker to jump to a day; Today comes back to today.
+ */
+export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
+  const { data: items } = useItems();
+  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+  const today = todayStr();
+  // The first day shown on or after the one asked for.
+  const { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll } = useDayWindow(items, { before: 14, ahead: 45, step: 60 }, (el, day) => {
+    const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
+    const row = rows.find((r) => (r.dataset.day ?? "") >= day) ?? rows[rows.length - 1];
+    if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+  });
   return (
     <>
       <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-agenda-day" />}>
@@ -467,13 +476,88 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
   );
 }
 
-/* ---------- Calendar tab: swaps between agenda, week and month ---------- */
-type CalView = "agenda" | "week" | "month";
-const VIEW_LABEL: Record<CalView, string> = { agenda: "Agenda", week: "Week", month: "Month" };
+/**
+ * The timeline view: the Today page's timeline for one day after another, so scrolling runs on from
+ * one day's evening into the next morning. Each day's date stays pinned at the top while it's in view.
+ * It opens at the current time and loads more days either way as it's scrolled; the title is the day
+ * in view and opens the picker to jump to another, which opens an hour before you wake.
+ */
+export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
+  const { data: items } = useItems();
+  const { settings } = useSettings();
+  const { openDetails } = usePlanner();
+  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+  const today = todayStr();
+  const { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll } = useDayWindow(items, { before: 1, ahead: 3, step: 3 }, (el, day) => {
+    const grid = el.querySelector<HTMLElement>(`[data-day="${day}"] [data-day-grid]`);
+    if (!grid) return;
+    const now = new Date();
+    const minute = day === todayStr() ? now.getHours() * 60 + now.getMinutes() - 90 : toMin(settings.wakeTime) - 60;
+    const pinned = el.querySelector<HTMLElement>(`[data-day="${day}"] [data-day-head]`)?.offsetHeight ?? 0;
+    el.scrollTop += grid.getBoundingClientRect().top - el.getBoundingClientRect().top + (Math.max(0, minute) / 60) * HOUR_PX - pinned;
+  });
+  const days = Array.from({ length: dayDiff(range.start, range.end) + 1 }, (_, n) => addDays(range.start, n));
+  return (
+    <>
+      <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { weekday: "short", month: "short", day: "numeric" })} onPick={goTo} testId="button-pick-timeline-day" />}>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={() => goTo(today)} data-testid="button-timeline-today">
+            Today
+          </Button>
+        </div>
+        {toggle}
+      </PageHeader>
+      {filters}
+      <div className="flex-1 min-h-0 pt-3 md:p-6">
+        <div className="card-md card-flush mx-auto h-full max-w-3xl overflow-hidden">
+          <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto scroll-thin [overflow-anchor:none]" data-testid="timeline-scroller">
+            <div ref={topEdge} className="h-px" aria-hidden />
+            {items && days.map((day) => {
+              const allDay = allDayFor(list, day);
+              const isToday = day === today;
+              return (
+                <section key={day} data-day={day} aria-label={fmtDate(day, { weekday: "long", month: "long", day: "numeric" })} data-testid={`timeline-day-${day}`}>
+                  {/* The date, pinned while the day is in view, with that day's all-day items under it. */}
+                  <div data-day-head className="sticky top-0 z-40 border-b bg-card">
+                    <div className="flex items-baseline gap-2 px-4 pt-2.5 pb-2">
+                      <span className={cn("text-sm font-semibold", isToday && "text-primary")}>{fmtDate(day, { weekday: "long", month: "short", day: "numeric" })}</span>
+                      {isToday && <span className="text-xs font-medium text-primary">Today</span>}
+                    </div>
+                    {allDay.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 px-3 pb-2" aria-label="All-day">
+                        {allDay.map((i) => (
+                          <button key={i.id} onClick={() => openDetails(i, day)}
+                            className="min-w-0 max-w-full truncate rounded-md px-2 py-1 text-xs font-medium hover-elevate"
+                            style={{ background: `color-mix(in srgb, ${colorOf(i)} 16%, transparent)`, borderLeft: `3px solid ${accentOf(i, settings)}` }}
+                            data-testid={`chip-timeline-allday-${day}-${i.id}`}>
+                            {i.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div data-day-grid className="flex pt-2 pb-3 pr-2">
+                    <HourLabels />
+                    <DayColumn day={day} items={list} wakeMin={toMin(settings.wakeTime)} bedMin={toMin(settings.bedTime)} />
+                  </div>
+                </section>
+              );
+            })}
+            <div ref={bottomEdge} className="h-px" aria-hidden />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------- Calendar tab: swaps between agenda, timeline, week and month ---------- */
+type CalView = "agenda" | "timeline" | "week" | "month";
+const VIEW_LABEL: Record<CalView, string> = { agenda: "Agenda", timeline: "Timeline", week: "Week", month: "Month" };
 let lastView: CalView = "month"; // remembered while the app is open
 export function CalendarPage() {
   const [loc] = useLocation();
-  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/agenda") || loc.startsWith("/schedule") ? "agenda" : lastView));
+  const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/agenda") || loc.startsWith("/schedule") ? "agenda" : loc.startsWith("/timeline") ? "timeline" : lastView));
   const [visibility, setVisibility] = useState<CalendarVisibility>(() => ({ ...lastVisibility }));
   const pick = (v: CalView) => {
     lastView = v;
@@ -513,7 +597,7 @@ export function CalendarPage() {
   );
   const toggle = (
     <div className="ml-auto flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Calendar view">
-      {(["agenda", "week", "month"] as CalView[]).map((v) => (
+      {(["agenda", "timeline", "week", "month"] as CalView[]).map((v) => (
         <button
           key={v}
           role="tab"
@@ -534,6 +618,8 @@ export function CalendarPage() {
     ? <WeekPage toggle={toggle} filters={filters} visibility={visibility} />
     : view === "agenda"
       ? <AgendaPage toggle={toggle} filters={filters} visibility={visibility} />
+      : view === "timeline"
+      ? <TimelinePage toggle={toggle} filters={filters} visibility={visibility} />
       : <MonthPage toggle={toggle} filters={filters} visibility={visibility} />;
 }
 

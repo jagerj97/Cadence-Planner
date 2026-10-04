@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Today", icon: Home, match: (l: string) => l === "/" || l.startsWith("/day") },
-  { href: "/calendar", label: "Calendar", icon: CalendarRange, match: (l: string) => /^\/(calendar|week|month|agenda|schedule)/.test(l) },
+  { href: "/calendar", label: "Calendar", icon: CalendarRange, match: (l: string) => /^\/(calendar|week|month|agenda|timeline|schedule)/.test(l) },
   { href: "/tasks", label: "Tasks", icon: CheckSquare, match: (l: string) => l.startsWith("/tasks") },
   { href: "/habits", label: "Habits", icon: Repeat, match: (l: string) => l.startsWith("/habits") },
   { href: "/journal", label: "Journal", icon: NotebookPen, match: (l: string) => l.startsWith("/journal") },

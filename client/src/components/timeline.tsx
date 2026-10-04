@@ -5,6 +5,8 @@ import { accentOf } from "./taskTags";
 import { useItemMutations, useSettings } from "@/lib/data";
 import {
   KIND_META,
+  addDays,
+  fmtDate,
   blocksForDay,
   colorOf,
   fmtTime,
@@ -341,7 +343,9 @@ export function DayColumn({
                       : <>
                           {/* A narrow column (the week on a phone) has room for the start only. */}
                           {compact && <span className="sm:hidden">{fmtTime(fromMin(s), true)}</span>}
-                          <span className={cn(compact && "hidden sm:inline")}>{`${fmtTime(fromMin(s), true)} – ${b.continues === "after" && !live ? (b.item.endDate && b.item.endDate > b.occDate ? `ends ${b.item.endDate}` : fmtTime(b.item.endTime, true) + " next day") : fmtTime(fromMin(e), true)}`}</span>
+                          <span className={cn(compact && "hidden sm:inline")}>{`${fmtTime(fromMin(s), true)} – ${b.continues === "after" && !live ? (b.item.endDate && b.item.endDate > addDays(b.occDate, 1)
+                            ? `ends ${fmtDate(b.item.endDate, { month: "short", day: "numeric" })}, ${fmtTime(b.item.endTime, true)}`
+                            : fmtTime(b.item.endTime, true) + " next day") : fmtTime(fromMin(e), true)}`}</span>
                         </>}
                     {b.item.location && !compact ? ` · ${b.item.location}` : ""}
                   </div>
