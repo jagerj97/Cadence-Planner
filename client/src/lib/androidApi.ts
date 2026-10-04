@@ -12,6 +12,8 @@ export interface AndroidBridge {
   setPlain?(plain: boolean): void;
   /** Whether the phone is set to dark mode (Display mode: System setting). Older builds lack it. */
   systemDark?(): boolean;
+  /** The status bar's height in dp: the page draws behind it (older builds lack it). */
+  insetTop?(): number;
   /** "Play a sound": whether notifications (reminders, a finished timer) make their sound. Older builds lack it. */
   setSound?(on: boolean): void;
   /** The same from the Settings switch, then closes the app. Older builds lack it. */

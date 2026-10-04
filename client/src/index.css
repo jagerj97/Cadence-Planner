@@ -381,11 +381,14 @@
 @media (max-width: 767px) {
   .card-flush { border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; box-shadow: none; }
 }
+/* The bar the cat sits on, up through the phone's status bar: a wash of the color theme from the top
+   left corner, like the Right now card. */
 .appbar {
-  background: hsl(var(--appbar));
+  background: linear-gradient(to bottom right, hsl(var(--primary) / .26), hsl(var(--primary) / 0) 60%), hsl(var(--appbar));
   color: hsl(var(--appbar-fg));
   border-bottom: 1px solid hsl(var(--border));
 }
+.dark .appbar { background: linear-gradient(to bottom right, hsl(var(--primary) / .2), hsl(var(--primary) / 0) 65%), hsl(var(--appbar)); }
 :root[data-color-theme="ribbon"] { --primary: 5 65% 42%; --ring: 5 65% 42%; --sidebar-primary: 5 65% 42%; --sidebar-ring: 5 65% 42%; --accent: 6 72% 94%; --accent-foreground: 5 65% 30%; --sidebar-accent: 6 72% 94%; }
 :root[data-color-theme="denim"] { --primary: 228 43% 40%; --ring: 228 43% 40%; --sidebar-primary: 228 43% 40%; --sidebar-ring: 228 43% 40%; --accent: 227 57% 94%; --accent-foreground: 228 43% 30%; --sidebar-accent: 227 57% 94%; }
 :root[data-color-theme="butter"] { --primary: 46 96% 46%; --ring: 46 96% 46%; --sidebar-primary: 46 96% 46%; --sidebar-ring: 46 96% 46%; --accent: 48 90% 91%; --accent-foreground: 40 90% 24%; --sidebar-accent: 48 90% 91%; --primary-foreground: 30 20% 10%; --sidebar-primary-foreground: 30 20% 10%; }

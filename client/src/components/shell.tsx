@@ -247,7 +247,8 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background">
       {/* app bar: settings + add, nothing else */}
-      <header className="appbar relative z-30 flex h-14 md:h-16 shrink-0 items-center justify-between px-3 md:px-5">
+      {/* Runs up behind the phone's status bar (--safe-top), carrying its color and wash with it. */}
+      <header className="appbar relative z-30 box-content flex h-14 md:h-16 shrink-0 items-center justify-between px-3 md:px-5 pt-[var(--safe-top,env(safe-area-inset-top,0px))]">
         <button
           onClick={() => nav(inSettings ? lastPage : "/settings")}
           className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-transform duration-300", inSettings && "bg-black/10 dark:bg-white/15 rotate-90")}

@@ -759,7 +759,7 @@ export default function JournalPage() {
           </aside>
           {/* Tapping outside the window (or Back) saves the entry, like Save; Cancel leaves it as it was. */}
           <Dialog open={!!compose} onOpenChange={(o) => !o && (saveEntry.current ? saveEntry.current() : setCompose(null))}>
-            <DialogContent hideClose className="flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col gap-0 overflow-hidden rounded-xl p-0" data-testid="dialog-journal-entry"
+            <DialogContent hideClose className="flex max-h-[calc(100dvh-2rem-var(--safe-top,0px))] max-w-lg flex-col gap-0 overflow-hidden rounded-xl p-0" data-testid="dialog-journal-entry"
               // Start typing right away, at the end of an entry being edited.
               onOpenAutoFocus={(ev) => {
                 ev.preventDefault();
