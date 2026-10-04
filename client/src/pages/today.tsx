@@ -213,20 +213,22 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
               }}
             />
           </section>
-          {/* The app still opens on Today, wherever it sits in the bar. */}
-          <section className="grid gap-1" aria-label="Bottom bar">
+          {/* Drawn like the bar itself; hold a page and drag it along. The app still opens on Today, wherever it sits. */}
+          <section className="grid gap-2" aria-label="Bottom bar">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bottom bar</h3>
             <SortableList
+              horizontal
               items={pages.map((n) => n.href)}
               onReorder={(next) => save.mutate({ navOrder: next })}
-              className="grid gap-1"
-              render={(href) => {
+              className="flex rounded-[20px] border bg-muted/40 p-0.5"
+              itemClassName="min-w-0 flex-1"
+              render={(href, lifted) => {
                 const n = pages.find((page) => page.href === href)!;
                 return (
-                  <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-nav-${n.label.toLowerCase()}`}>
-                    <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                    <n.icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                    <span className="min-w-0 flex-1 text-sm font-medium">{n.label}</span>
+                  <div className={cn("flex flex-col items-center gap-0.5 rounded-2xl py-2 text-muted-foreground", lifted && "text-primary")}
+                    data-testid={`row-nav-${n.label.toLowerCase()}`}>
+                    <n.icon className="h-5 w-5" aria-hidden />
+                    <span className="max-w-full truncate text-[10px] tracking-tight">{n.label}</span>
                   </div>
                 );
               }}

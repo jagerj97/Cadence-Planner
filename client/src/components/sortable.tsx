@@ -9,16 +9,18 @@ const SLOP_PX = 8; // moving farther than this before the hold completes means t
 type Drag = { index: number; startY: number; dy: number; over: number; mids: number[]; step: number };
 
 /**
- * A vertical list reordered by touch: hold an item until it lifts (it grows slightly), drag it into
- * place, and let go to drop it. A quick swipe still scrolls the page, and taps reach the item as usual.
+ * A list reordered by touch: hold an item until it lifts (it grows slightly), drag it into place, and
+ * let go to drop it. A quick swipe still scrolls the page, and taps reach the item as usual. The list
+ * runs down the page, or across it with `horizontal` (a row like the bottom bar).
  */
-export function SortableList<T extends string | number>({ items, onReorder, render, className, itemClassName, as = "div" }: {
+export function SortableList<T extends string | number>({ items, onReorder, render, className, itemClassName, as = "div", horizontal = false }: {
   items: T[];
   onReorder: (next: T[]) => void;
   render: (item: T, lifted: boolean) => ReactNode;
   className?: string;
   itemClassName?: string;
   as?: "div" | "ul";
+  horizontal?: boolean;
 }) {
   const refs = useRef<(HTMLElement | null)[]>([]);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -45,23 +47,25 @@ export function SortableList<T extends string | number>({ items, onReorder, rend
     const self = rects[index];
     if (!self) return;
     const next = rects[index + 1] ?? rects[index - 1];
-    const gap = next ? Math.abs((index + 1 < rects.length ? next.top - self.bottom : self.top - next.bottom)) : 0;
+    const [start, end, size] = horizontal ? (["left", "right", "width"] as const) : (["top", "bottom", "height"] as const);
+    const gap = next ? Math.abs((index + 1 < rects.length ? next[start] - self[end] : self[start] - next[end])) : 0;
     haptic("hold");
-    update({ index, startY: y, dy: 0, over: index, mids: rects.map((r) => (r ? r.top + r.height / 2 : 0)), step: self.height + gap });
+    update({ index, startY: y, dy: 0, over: index, mids: rects.map((r) => (r ? r[start] + r[size] / 2 : 0)), step: self[size] + gap });
   };
 
   const onPointerDown = (index: number) => (event: React.PointerEvent) => {
     if (event.button !== 0 || dragRef.current) return;
     clearPending();
     const { clientX: x, clientY: y } = event;
-    pending.current = { index, x, y, timer: setTimeout(() => { pending.current = null; lift(index, y); }, HOLD_MS) };
+    pending.current = { index, x, y, timer: setTimeout(() => { pending.current = null; lift(index, horizontal ? x : y); }, HOLD_MS) };
   };
   const onPointerMove = (event: React.PointerEvent) => {
     const p = pending.current;
     if (p && Math.hypot(event.clientX - p.x, event.clientY - p.y) > SLOP_PX) clearPending();
     const d = dragRef.current;
     if (!d) return;
-    const dy = event.clientY - d.startY;
+    // Distance along the list (down it, or across it when horizontal); startY holds the start either way.
+    const dy = (horizontal ? event.clientX : event.clientY) - d.startY;
     const center = d.mids[d.index] + dy;
     let over = d.index;
     while (over < d.mids.length - 1 && center > d.mids[over + 1]) over++;
@@ -112,7 +116,7 @@ export function SortableList<T extends string | number>({ items, onReorder, rend
               lifted ? "z-20 rounded-xl bg-card shadow-lg" : drag ? "transition-transform duration-150" : "",
               itemClassName,
             )}
-            style={{ transform: lifted ? `translateY(${drag!.dy}px) scale(1.04)` : `translateY(${shift(index)}px)`, WebkitTouchCallout: "none" }}
+            style={{ transform: lifted ? `${horizontal ? "translateX" : "translateY"}(${drag!.dy}px) scale(1.04)` : `${horizontal ? "translateX" : "translateY"}(${shift(index)}px)`, WebkitTouchCallout: "none" }}
             data-sortable-lifted={lifted || undefined}
           >
             {render(item, lifted)}
