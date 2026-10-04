@@ -4,7 +4,7 @@ import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
 import { APP_VERSION } from "./changelog";
-import { addDays, blocksForDay, fmtDur, listOf, parseYmd, remindersOf, todayStr } from "./cal";
+import { addDays, blocksForDay, completionsOf, fmtDur, listOf, parseYmd, recOf, remindersOf, toMin, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -228,6 +228,38 @@ async function refreshNotifications() {
   }
   reminders.sort((a, b) => a.at - b.at);
   bridge.scheduleReminders(JSON.stringify(reminders.slice(0, 128)));
+}
+
+/**
+ * Whether an item is finished, so its journal entry moves to the Archive: a task once it's checked off,
+ * an event, meeting or focus time once it's over. Repeating ones finish only after their last repeat
+ * (a repeating task never does).
+ */
+function itemFinished(item: Item, now: Date): boolean {
+  const r = recOf(item);
+  if (item.kind === "task") return r.freq === "none" && completionsOf(item).has(item.date);
+  if (item.kind !== "event" && item.kind !== "meeting" && item.kind !== "focus") return false;
+  const lastDay = r.freq === "none" ? item.endDate || item.date : r.until;
+  if (!lastDay) return false;
+  const day = parseYmd(lastDay);
+  if (item.allDay || !item.startTime) return now >= new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+  const end = toMin(item.endTime || item.startTime);
+  // A timed item with no end date that ends at or before its start runs past midnight.
+  const overnight = !item.endDate && end <= toMin(item.startTime) && !!item.endTime;
+  return now >= new Date(day.getFullYear(), day.getMonth(), day.getDate() + (overnight ? 1 : 0), 0, end);
+}
+
+/** Archives the entries of items that have finished, and brings back ones whose item is no longer finished. */
+async function archiveFinished() {
+  const now = new Date();
+  const items = new Map((await list<Item>("items")).map((item) => [item.id, item]));
+  for (const entry of await list<JournalEntry>("journal")) {
+    const item = entry.itemId ? items.get(entry.itemId) : undefined;
+    if (!item) continue;
+    const finished = itemFinished(item, now);
+    if (finished && !entry.archivedAuto) await put("journal", { ...entry, archived: true, archivedAuto: true });
+    else if (!finished && entry.archivedAuto) await put("journal", { ...entry, archived: false, archivedAuto: false });
+  }
 }
 
 const backupStores: StoreName[] = ["items", "feeds", "journal", "sessions", "settings"];
@@ -531,6 +563,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   });
   if (path === "/api/journal" && method === "GET") {
     await (notesBackfilled ??= backfillNotes().catch(() => {}));
+    await exclusive(archiveFinished).catch(() => {});
     return ok((await list<JournalEntry>("journal")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   }
   // Renames a journal tag (to) or removes it (to: null) on every entry, in its tags and its #hashtags.
@@ -572,15 +605,19 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       return ok({ ok: true });
     }
     if (method === "PATCH") {
-      const saved = await put("journal", {
-        ...entry, ...data, itemId: entry.itemId,
+      const next = {
+        ...entry, ...data, itemId: entry.itemId, archivedAuto: entry.archivedAuto,
+        archived: data.archived !== undefined ? !!data.archived : !!entry.archived,
         title: data.title !== undefined ? entryTitle(data.title) : entry.title ?? null,
         body: typeof data.body === "string" ? data.body.trim() : entry.body,
         hashtags: data.hashtags !== undefined ? data.hashtags !== false : entry.hashtags !== false,
         tags: data.body !== undefined || data.tags || data.hashtags !== undefined
           ? normTags(data.body ?? entry.body, data.tags ?? JSON.parse(entry.tags), (data.hashtags ?? entry.hashtags) !== false) : entry.tags,
-        updatedAt: new Date().toISOString(),
-      });
+      };
+      // Only a change to what it says marks it edited (saving it unchanged, or archiving it, doesn't).
+      const changed = next.title !== (entry.title ?? null) || next.body !== entry.body || next.tags !== entry.tags ||
+        next.hashtags !== (entry.hashtags !== false) || next.date !== entry.date;
+      const saved = await put("journal", { ...next, updatedAt: changed ? new Date().toISOString() : entry.updatedAt });
       // Editing the entry edits the item's notes.
       if (item && saved.body && saved.body !== item.notes) await put("items", { ...item, notes: saved.body });
       return ok(saved);

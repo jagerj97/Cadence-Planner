@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronLeft, ChevronRight, Hash, Settings2, NotebookPen, Plus, Search, Trash2, X } from "lucide-react";
+import { TwoRows } from "@/components/twoRows";
+import { Archive, ArchiveRestore, ChevronDown, ChevronLeft, ChevronRight, Hash, Settings2, NotebookPen, Plus, Search, Trash2, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -98,7 +99,7 @@ function TagChips({ tags, onRemove, onClick, item }: { tags: string[]; onRemove?
   const { settings } = useSettings();
   if (!tags.length) return null;
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <TwoRows className="gap-1.5" chipClassName="h-6">
       {tags.map((t) => (
         <span key={t} className="inline-flex items-center gap-0.5 rounded-full bg-accent text-accent-foreground pl-2 pr-2 h-6 text-xs font-medium" style={tagStyle(tagColor(t, settings, item))}>
           <button onClick={() => onClick?.(t)} className={cn("inline-flex items-center", !onClick && "cursor-default")} data-testid={`chip-tag-${t}`}>
@@ -112,7 +113,7 @@ function TagChips({ tags, onRemove, onClick, item }: { tags: string[]; onRemove?
           )}
         </span>
       ))}
-    </div>
+    </TwoRows>
   );
 }
 
@@ -125,7 +126,7 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
   const { data: entries } = useJournal();
   const counts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const e of entries ?? []) for (const t of tagsOf(e)) m.set(t, (m.get(t) ?? 0) + 1);
+    for (const e of entries ?? []) if (!e.archived) for (const t of tagsOf(e)) m.set(t, (m.get(t) ?? 0) + 1);
     return m;
   }, [entries]);
   const typed = canonicalTag(cleanTag(q));
@@ -214,16 +215,22 @@ export type ConvertTo = { kind: Kind; title: string; body: string; tags: string[
  * (then scrolls once it fills the screen above the keyboard), tags, and format buttons along the bottom.
  * Picking a kind tag (#tasks, #events...) offers to turn the entry into that kind of item instead.
  */
-/** A bin that opens into a "Delete?" pill; tapping that deletes. Tapping anywhere else closes it again. */
-function DeleteButton({ onDelete }: { onDelete: () => void }) {
+/**
+ * A round icon button that opens into a pill asking to confirm ("Delete?", "Archive?"); tapping the
+ * pill does it. Tapping anywhere else closes it again.
+ */
+function ConfirmButton({ icon: Icon, label, ask, tone, onConfirm, testId }: {
+  icon: typeof Trash2; label: string; ask: string; tone: "destructive" | "primary"; onConfirm: () => void; testId: string;
+}) {
   const [armed, setArmed] = useState(false);
   return (
-    <button type="button" onClick={() => (armed ? onDelete() : setArmed(true))} onBlur={() => setArmed(false)}
+    <button type="button" onClick={() => (armed ? onConfirm() : setArmed(true))} onBlur={() => setArmed(false)}
       className={cn("mt-3 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full text-xs font-medium transition-all duration-200",
-        armed ? "bg-destructive px-3 text-destructive-foreground" : "w-8 text-muted-foreground hover:bg-muted hover:text-destructive")}
-      aria-label={armed ? "Delete? Tap again to delete" : "Delete entry"} data-testid="button-journal-delete">
-      <Trash2 className="h-4 w-4" />
-      {armed && <span>Delete?</span>}
+        armed ? (tone === "destructive" ? "bg-destructive px-3 text-destructive-foreground" : "bg-primary px-3 text-primary-foreground")
+          : cn("w-8 text-muted-foreground hover:bg-muted", tone === "destructive" ? "hover:text-destructive" : "hover:text-primary"))}
+      aria-label={armed ? `${ask} Tap again to confirm` : label} data-testid={testId}>
+      <Icon className="h-4 w-4" />
+      {armed && <span>{ask}</span>}
     </button>
   );
 }
@@ -240,6 +247,8 @@ function Composer({
   saveRef,
   busy,
   onDelete,
+  archived,
+  onArchive,
 }: {
   initialTitle?: string;
   initial?: string;
@@ -255,6 +264,10 @@ function Composer({
   busy?: boolean;
   /** Deletes the entry being edited (not offered for a new one). */
   onDelete?: () => void;
+  /** Whether the entry being edited is in the Archive. */
+  archived?: boolean;
+  /** Moves the entry being edited into the Archive, or back out, keeping what's been typed. */
+  onArchive?: (title: string, body: string, tags: string[], hashtags: boolean) => void;
 }) {
   const [sel, setSel] = useState<[number, number]>([initial.length, initial.length]);
   const [title, setTitle] = useState(initialTitle);
@@ -320,7 +333,7 @@ function Composer({
   const hasKind = all.some((t) => KIND_OF_TAG.has(t));
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex shrink-0 items-start gap-2 pr-3">
+      <div className="flex shrink-0 items-start gap-1 pr-3">
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -333,7 +346,12 @@ function Composer({
         aria-label="Title"
         data-testid="input-journal-title"
       />
-      {onDelete && <DeleteButton onDelete={onDelete} />}
+      {onArchive && (archived
+        ? <ConfirmButton icon={ArchiveRestore} label="Take out of the archive" ask="Unarchive?" tone="primary" testId="button-journal-archive"
+            onConfirm={() => onArchive(title, body, all, useHashtags)} />
+        : <ConfirmButton icon={Archive} label="Archive entry" ask="Archive?" tone="primary" testId="button-journal-archive"
+            onConfirm={() => onArchive(title, body, all, useHashtags)} />)}
+      {onDelete && <ConfirmButton icon={Trash2} label="Delete entry" ask="Delete?" tone="destructive" testId="button-journal-delete" onConfirm={onDelete} />}
       </div>
       <Textarea
         ref={ref}
@@ -438,6 +456,11 @@ function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
         ) : null}
         <span className="tnum" data-testid={`text-entry-time-${e.id}`}>{timeOf(e.createdAt)}</span>
         {e.updatedAt !== e.createdAt && <span className="shrink-0 tnum" data-testid={`text-entry-edited-${e.id}`}>· edited {editedAt(e)}</span>}
+        {e.archived && (
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-medium" data-testid={`text-entry-archived-${e.id}`}>
+            <Archive className="h-3 w-3" /> Archived
+          </span>
+        )}
       </div>
       {/* The title (the item's, for an item's notes) on its own line under the time. */}
       {item ? (
@@ -588,18 +611,24 @@ export default function JournalPage() {
     return () => window.removeEventListener("cadence:journal-compose", f);
   }, []);
   const all = entries ?? [];
+  // Archived entries stay on their day but are left out of tag counts, and out of searches unless asked for.
+  const live = useMemo(() => all.filter((e) => !e.archived), [all]);
+  const archivedEntries = useMemo(() => all.filter((e) => e.archived).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)), [all]);
+  const [inArchive, setInArchive] = useState(false);
+  const [withArchived, setWithArchived] = useState(false);
   const entryDays = useMemo(() => new Set(all.map((e) => e.date)), [all]);
 
   const dayEntries = all.filter((e) => e.date === day).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const tagsOfEntry = (e: JournalEntry) => entryTags(e, itemOf(e), settings);
-  const count = (tags: (e: JournalEntry) => string[]) => {
+  const count = (tags: (e: JournalEntry) => string[], from = live) => {
     const m = new Map<string, number>();
-    for (const e of all) for (const t of tags(e)) m.set(t, (m.get(t) ?? 0) + 1);
+    for (const e of from) for (const t of tags(e)) m.set(t, (m.get(t) ?? 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   };
   // Every tag to find entries by (task tags included), and the ones saved on entries themselves.
-  const tagCounts = useMemo(() => count(tagsOfEntry), [all, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
-  const savedTagCounts = useMemo(() => count(tagsOf), [all]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tagCounts = useMemo(() => count(tagsOfEntry), [live, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Manage lists tags on archived entries too, so they can still be renamed or removed.
+  const savedTagCounts = useMemo(() => count(tagsOf, all), [all]); // eslint-disable-line react-hooks/exhaustive-deps
   const recentDays = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of all) m.set(e.date, (m.get(e.date) ?? 0) + 1);
@@ -607,18 +636,14 @@ export default function JournalPage() {
   }, [all]);
 
   const query = q.trim().toLowerCase();
-  const results = useMemo(() => {
-    if (!query) return [];
-    const terms = query.split(/\s+/);
-    return all
-      .filter((e) =>
-        terms.every((t) =>
-          t.startsWith("#") ? tagsOfEntry(e).includes(canonicalTag(t.slice(1)))
-            : e.body.toLowerCase().includes(t) || !!e.title?.toLowerCase().includes(t) || tagsOfEntry(e).some((x) => x.includes(t)),
-        ),
-      )
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [all, query, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
+  const matches = (e: JournalEntry) => query.split(/\s+/).every((t) =>
+    t.startsWith("#") ? tagsOfEntry(e).includes(canonicalTag(t.slice(1)))
+      : e.body.toLowerCase().includes(t) || !!e.title?.toLowerCase().includes(t) || tagsOfEntry(e).some((x) => x.includes(t)));
+  const results = useMemo(() => (!query ? [] : (withArchived ? all : live).filter(matches).sort((a, b) => b.createdAt.localeCompare(a.createdAt))),
+    [all, live, withArchived, query, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
+  // How many more there'd be with archived entries, for the "show archived entries" option.
+  const archivedMatches = useMemo(() => (!query ? 0 : archivedEntries.filter(matches).length),
+    [archivedEntries, query, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tapping the tag being searched clears the search.
   // Tags are toggled in the search, so several can be picked at once (entries need all of them).
@@ -653,7 +678,8 @@ export default function JournalPage() {
           {/* search (top on phones) */}
           <aside className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-2" aria-label="Search and tags">
             <div className="card-md p-3">
-              <div className="flex items-center gap-2 rounded border px-2.5 focus-within:border-primary">
+              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded border px-2.5 focus-within:border-primary">
                 <Search className="h-4 w-4 text-muted-foreground shrink-0" />
                 <Input
                   value={q}
@@ -668,10 +694,19 @@ export default function JournalPage() {
                   </button>
                 )}
               </div>
+              {/* The Archive: entries put away by hand, and those of finished tasks and past events. */}
+              <button type="button" onClick={() => { setInArchive((v) => !v); setQ(""); }} aria-pressed={inArchive}
+                className={cn("inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
+                  inArchive ? "border-transparent bg-primary text-primary-foreground" : "text-muted-foreground hover-elevate")}
+                data-testid="button-journal-archive-view">
+                <Archive className="h-4 w-4" />
+                Archive
+              </button>
+              </div>
               {tagCounts.length > 0 && (
                 <div className="mt-3">
                   <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Tags</div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <TwoRows className="gap-1.5" testId="tags-journal">
                     <button type="button" onClick={() => setManaging(true)}
                       className="inline-flex h-7 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
                       data-testid="button-manage-journal-tags">
@@ -694,7 +729,7 @@ export default function JournalPage() {
                         <span className="opacity-70 tnum">{n}</span>
                       </button>
                     ))}
-                  </div>
+                  </TwoRows>
                 </div>
               )}
             </div>
@@ -752,6 +787,13 @@ export default function JournalPage() {
                     setCompose(null);
                     remove.mutate(id);
                   } : undefined}
+                  archived={!!compose.entry?.archived}
+                  onArchive={compose.entry ? (title, body, tags, hashtags) => {
+                    const entry = compose.entry!;
+                    saveEntry.current = null;
+                    setCompose(null);
+                    update.mutate({ id: entry.id, archived: !entry.archived, ...(body.trim() ? { title, body, tags, hashtags } : {}) });
+                  } : undefined}
                   onSubmit={async (title, body, tags, hashtags) => {
                     if (compose.entry) await update.mutateAsync({ id: compose.entry.id, title, body, tags, hashtags });
                     else await create.mutateAsync({ date: day, title, body, tags, hashtags });
@@ -781,16 +823,44 @@ export default function JournalPage() {
           <section className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">
             {query ? (
               <>
-                <div className="flex items-center gap-2 text-sm">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
                   <span className="text-muted-foreground" data-testid="text-search-count">
                     {results.length} {results.length === 1 ? "entry" : "entries"} for
                   </span>
-                  <span className="font-medium">{q.trim()}</span>
+                  <span className="min-w-0 break-words font-medium">{q.trim()}</span>
+                  {archivedEntries.length > 0 && (
+                    <button type="button" onClick={() => setWithArchived((v) => !v)} aria-pressed={withArchived}
+                      className={cn("ml-auto inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors",
+                        withArchived ? "border-transparent bg-primary text-primary-foreground" : "border-dashed text-muted-foreground hover:border-primary hover:text-primary")}
+                      data-testid="button-search-archived">
+                      <Archive className="h-3.5 w-3.5" />
+                      Show archived entries{!withArchived && archivedMatches ? ` (${archivedMatches})` : ""}
+                    </button>
+                  )}
                 </div>
                 {results.length === 0 ? (
                   <div className="card-md p-8 text-center text-sm text-muted-foreground">Nothing matches that yet.</div>
                 ) : (
                   results.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} showDate item={itemOf(e)} openDetails={openDetails} onEdit={(entry) => setCompose({ entry })} />)
+                )}
+              </>
+            ) : inArchive ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold">Archive</h2>
+                  <span className="text-sm text-muted-foreground tnum" data-testid="text-archive-count">
+                    {archivedEntries.length} {archivedEntries.length === 1 ? "entry" : "entries"}
+                  </span>
+                  <Button size="icon" variant="ghost" className="ml-auto h-8 w-8" onClick={() => setInArchive(false)} aria-label="Close the archive" data-testid="button-close-archive">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                {archivedEntries.length === 0 ? (
+                  <div className="card-md p-8 text-center text-sm text-muted-foreground">
+                    Nothing archived yet. Entries of finished tasks and past events land here, and any entry can be archived from its edit window.
+                  </div>
+                ) : (
+                  archivedEntries.map((e) => <EntryCard key={e.id} e={e} onTag={(t) => { setInArchive(false); searchTag(t); }} showDate item={itemOf(e)} openDetails={openDetails} onEdit={(entry) => setCompose({ entry })} />)
                 )}
               </>
             ) : (

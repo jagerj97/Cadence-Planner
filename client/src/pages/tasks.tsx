@@ -3,6 +3,7 @@ import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { usePlanner } from "@/components/planner";
 import { TagManager, tagTint, taskColor, taskTagsOf } from "@/components/taskTags";
+import { TwoRows } from "@/components/twoRows";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   addDays,
@@ -150,7 +151,7 @@ export default function TasksPage() {
           </div>
 
           {/* Tag filter: tap tags to show tasks with any of them; tap again to drop one. Manage comes first and is always there. */}
-          <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-0.5 scroll-thin md:mx-0 md:flex-wrap md:px-0" role="group" aria-label="Filter by tag">
+          <TwoRows className="items-center gap-1.5" role="group" aria-label="Filter by tag" testId="tags-task-filter">
             <button type="button" onClick={() => setManaging(true)}
               className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
               data-testid="button-manage-task-tags">
@@ -171,7 +172,7 @@ export default function TasksPage() {
                 </button>
               );
             })}
-          </div>
+          </TwoRows>
           <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => setTagFilter((f) => f.map((n) => (n === from ? to : n)))} />
 
           {isLoading ? (

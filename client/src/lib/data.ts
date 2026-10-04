@@ -153,7 +153,7 @@ export function useJournalMutations() {
     onSuccess: inv,
   });
   const update = useMutation({
-    mutationFn: async ({ id, ...d }: { id: number; title?: string | null; body?: string; tags?: string[]; date?: string; hashtags?: boolean }) =>
+    mutationFn: async ({ id, ...d }: { id: number; title?: string | null; body?: string; tags?: string[]; date?: string; hashtags?: boolean; archived?: boolean }) =>
       (await apiRequest("PATCH", `/api/journal/${id}`, d)).json() as Promise<JournalEntry>,
     onSuccess: inv,
   });

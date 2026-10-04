@@ -45,6 +45,7 @@ import {
   sunTimes,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
+import { TwoRows } from "@/components/twoRows";
 import { WhatsNew } from "@/components/whatsNew";
 import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
 import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
@@ -616,9 +617,9 @@ function ItemDetails({ details, onClose, onEdit }: {
             </DialogHeader>
           </div>
           {tags.length > 0 && (
-            <div className="-mt-1 flex flex-wrap gap-1.5">
+            <TwoRows className="-mt-1 gap-1.5">
               {tags.map((t) => <TagChip key={t.name} tag={t} />)}
-            </div>
+            </TwoRows>
           )}
           <div className="h-1 rounded-full" style={{ background: colorOf(i) }} />
           <div className="grid grid-cols-1 gap-3 text-sm">

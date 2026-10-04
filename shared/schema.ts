@@ -91,6 +91,11 @@ export type JournalEntry = {
   /** false: #words in the text are just text, not tags ("Use tags in entry" unchecked). */
   hashtags?: boolean;
   itemId?: number | null; // the planner item whose notes this entry mirrors
+  /** In the journal's Archive: left out of tag counts and (unless asked for) searches. */
+  archived?: boolean;
+  /** Set once the entry's item finished (a task done, an event over) and archived it, so taking it out of
+   *  the Archive by hand keeps it out; cleared if the item stops being finished. */
+  archivedAuto?: boolean;
   createdAt: string;
   updatedAt: string;
 };
