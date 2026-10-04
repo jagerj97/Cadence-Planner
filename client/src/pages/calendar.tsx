@@ -515,7 +515,7 @@ export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
               return (
                 <section key={day} data-day={day} aria-label={fmtDate(day, { weekday: "long", month: "long", day: "numeric" })} data-testid={`timeline-day-${day}`}>
                   {/* The date, pinned while the day is in view, with that day's all-day items under it. */}
-                  <div data-day-head className="sticky top-0 z-40 border-b bg-card">
+                  <div data-day-head className="sticky top-0 z-40 bg-card">
                     <div className="px-4 pt-2 pb-1.5"><DayHeading day={day} /></div>
                     {allDay.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 px-3 pb-2" aria-label="All-day">

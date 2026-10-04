@@ -107,7 +107,7 @@ export function AgendaList({ list, from, days, limit, compact = false, emptyToda
           <div key={day} data-day={day}>
             {/* The date above the day's items, pinned while they're in view (as in the timeline view). */}
             {dates && (
-              <div className="sticky top-0 z-10 border-b bg-card px-4 pt-2 pb-1.5" data-testid={`agenda-date-${day}`}>
+              <div className="sticky top-0 z-10 bg-card px-4 pt-2 pb-1.5" data-testid={`agenda-date-${day}`}>
                 <DayHeading day={day} />
               </div>
             )}
