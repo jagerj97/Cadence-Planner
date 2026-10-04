@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { accentOf } from "@/components/taskTags";
 import { AgendaList } from "@/components/agendaList";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const WEEK_HOUR = 60;
@@ -555,6 +555,33 @@ export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
 type CalView = "agenda" | "timeline" | "week" | "month";
 const VIEW_LABEL: Record<CalView, string> = { agenda: "Agenda", timeline: "Timeline", week: "Week", month: "Month" };
 let lastView: CalView = "month"; // remembered while the app is open
+
+/** Picks the calendar's view: a pill like the Today button across from it, opening a menu of pills. */
+function ViewMenu({ view, onPick }: { view: CalView; onPick: (v: CalView) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="ml-auto gap-1 pl-3.5 pr-2.5" aria-label={`Calendar view: ${VIEW_LABEL[view]}`} data-testid="button-calendar-view">
+          {VIEW_LABEL[view]}
+          <ChevronDown className={cn("transition-transform", open && "rotate-180")} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-40 rounded-[22px] p-1.5" role="menu" aria-label="Calendar view">
+        {(["agenda", "timeline", "week", "month"] as CalView[]).map((v) => (
+          <button key={v} type="button" role="menuitemradio" aria-checked={view === v}
+            onClick={() => { onPick(v); setOpen(false); }}
+            className={cn("flex h-9 w-full items-center justify-between rounded-full px-3.5 text-sm font-medium transition-colors",
+              view === v ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted")}
+            data-testid={`tab-view-${v}`}>
+            {VIEW_LABEL[v]}
+            {view === v && <Check className="h-4 w-4" />}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
 export function CalendarPage() {
   const [loc] = useLocation();
   const [view, setView] = useState<CalView>(() => (loc.startsWith("/month") ? "month" : loc.startsWith("/week") ? "week" : loc.startsWith("/agenda") || loc.startsWith("/schedule") ? "agenda" : loc.startsWith("/timeline") ? "timeline" : lastView));
@@ -595,25 +622,7 @@ export function CalendarPage() {
       })}
     </div>
   );
-  const toggle = (
-    <div className="ml-auto flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Calendar view">
-      {(["agenda", "timeline", "week", "month"] as CalView[]).map((v) => (
-        <button
-          key={v}
-          role="tab"
-          aria-selected={view === v}
-          onClick={() => pick(v)}
-          className={cn(
-            "h-8 px-3 sm:px-4 rounded-full text-xs font-medium transition-colors",
-            view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
-          )}
-          data-testid={`tab-view-${v}`}
-        >
-          {VIEW_LABEL[v]}
-        </button>
-      ))}
-    </div>
-  );
+  const toggle = <ViewMenu view={view} onPick={pick} />;
   return view === "week"
     ? <WeekPage toggle={toggle} filters={filters} visibility={visibility} />
     : view === "agenda"
