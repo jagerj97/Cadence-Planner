@@ -37,6 +37,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity-alias>
         <activity-alias
             android:name=".PlainLauncher"
@@ -49,6 +50,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity-alias>
         <receiver android:name=".Notifications$AlarmReceiver" android:exported="false" />
         <receiver android:name=".FocusTimer$ActionReceiver" android:exported="false" />

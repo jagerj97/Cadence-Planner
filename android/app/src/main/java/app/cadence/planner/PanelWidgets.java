@@ -297,7 +297,7 @@ final class PanelWidgets {
 
     // ---- Journal ----
 
-    /** A one-cell button: the journal icon on the card, in the theme's color; tapping it opens the journal. */
+    /** Laid out like an app: a tile with the journal icon in the theme's color, and "Journal" under it. */
     private static RemoteViews renderJournal(Context context, WidgetTheme theme) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_journal);
         paintCard(v, theme, theme.primary);
