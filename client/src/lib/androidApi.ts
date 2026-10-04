@@ -498,19 +498,22 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       try {
         const fetched = JSON.parse(window.CadenceAndroid!.fetchCalendar(feed.url));
         if (fetched.error) throw new Error(fetched.error);
-        const imported = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`, "expand")
+        const imported = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`).items
           .map((item) => ({ ...item, kind: feed.importKind ?? item.kind, color: feed.useColor ? feed.color : null }));
+        // A repeating event and a changed date of it can share a start date, so repeats are matched apart.
+        const keyOf = (item: InsertItem | Item) => `${item.uid || item.title}\0${item.date}\0${item.recurrence === '{"freq":"none"}' ? "" : "r"}`;
         return exclusive(async () => {
           const prior = (await list<Item>("items")).filter((item) => item.source === `feed:${id}`);
-          const byUid = new Map(prior.map((item) => [`${item.uid || item.title}\0${item.date}`, item]));
+          const byUid = new Map(prior.map((item) => [keyOf(item), item]));
           const seen = new Set<number>();
           for (const fresh of imported) {
-            const old = byUid.get(`${fresh.uid || fresh.title}\0${fresh.date}`);
+            const old = byUid.get(keyOf(fresh));
             if (old) {
               seen.add(old.id);
               // Kinds changed on the item stay unless "Import items as" was changed since.
               const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
-                completions: old.completions, exceptions: old.exceptions, reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
+                // Dates the calendar skips, plus any taken off in Cadence.
+                completions: old.completions, exceptions: JSON.stringify([...new Set([...listOf(old.exceptions), ...listOf(fresh.exceptions)])]), reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && (old.availableFrom || old.leadDays) ? {
                   availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, endDate: null, allDay: false,
                 } : {}) });
@@ -530,11 +533,11 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (path === "/api/import" && method === "POST") {
     try {
       if (data.importKind && !IMPORT_KINDS.includes(data.importKind)) return fail("Choose a valid import type");
-      const rows = parseAndroidIcs(data.ics, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, "import", "map");
+      const { items: rows, skipped } = parseAndroidIcs(data.ics, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, "import");
       await exclusive(async () => { for (const item of rows) await syncNotes(await put("items", {
         ...item, kind: data.importKind || item.kind, journalOff: !data.journalNotes,
       }) as Item, true); });
-      return ok({ imported: rows.length });
+      return ok({ imported: rows.length, skipped });
     } catch (cause) { return fail("Couldn't read calendar: " + String(cause instanceof Error ? cause.message : cause)); }
   }
   if (path === "/api/export.ics" && method === "GET") {

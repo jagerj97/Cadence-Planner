@@ -78,36 +78,61 @@ const previousDay = (date: string) => {
   return ymd(d);
 };
 
-function recurrence(component: ICAL.Component): Recurrence | null {
+/**
+ * A repeat rule as Cadence keeps it, or null when it says more than Cadence's repeats can (several
+ * days of the month, "the 2nd Tuesday", extra dates...); those are listed date by date instead.
+ * A rule ending after a number of repeats (COUNT) gets the date of its last one as its end.
+ */
+function recurrence(component: ICAL.Component, event: ICAL.Event, tz: string): Recurrence | null {
   const rrule = component.getFirstPropertyValue("rrule") as ICAL.Recur | null;
-  if (!rrule) return null;
+  if (!rrule || component.getAllProperties("rrule").length > 1 || component.getFirstProperty("rdate")) return null;
   const freq = rrule.freq.toLowerCase();
-  const byday = ((rrule.parts as Record<string, unknown>)?.BYDAY ?? []) as string[];
-  if (freq === "daily" && !byday.length) return {
-    freq: "daily", interval: rrule.interval || 1, until: rrule.until ? dateOf(rrule.until, "UTC") : null,
-  };
-  if (freq === "weekly" && byday.every((d) => days.includes(d))) {
+  const parts = (rrule.parts ?? {}) as Record<string, unknown[]>;
+  const used = Object.keys(parts).filter((key) => parts[key]?.length);
+  const byday = (parts.BYDAY ?? []) as string[];
+  const start = event.startDate;
+  const only = (key: string, value: number) => (parts[key] ?? []).length === 1 && Number(parts[key][0]) === value;
+  let rec: Recurrence | null = null;
+  if (freq === "daily" && !used.length) rec = { freq: "daily", interval: rrule.interval || 1 };
+  else if (freq === "weekly" && used.every((key) => key === "BYDAY") && byday.every((d) => days.includes(d))) {
     const selected = byday.map((d) => days.indexOf(d)).sort();
-    return {
-      freq: selected.join(",") === "1,2,3,4,5" && rrule.interval === 1 ? "weekdays" : "weekly",
-      interval: rrule.interval || 1, days: selected,
-      until: rrule.until ? dateOf(rrule.until, "UTC") : null,
-    };
+    rec = { freq: selected.join(",") === "1,2,3,4,5" && (rrule.interval || 1) === 1 ? "weekdays" : "weekly", interval: rrule.interval || 1, days: selected };
+  } else if (freq === "monthly" && used.every((key) => key === "BYMONTHDAY" && only(key, start.day))) rec = { freq: "monthly", interval: rrule.interval || 1 };
+  else if (freq === "yearly" && used.every((key) => (key === "BYMONTH" && only(key, start.month)) || (key === "BYMONTHDAY" && only(key, start.day)))) {
+    rec = { freq: "yearly", interval: rrule.interval || 1 };
   }
-  if (["monthly", "yearly"].includes(freq) && !byday.length) return {
-    freq: freq as "monthly" | "yearly", interval: rrule.interval || 1,
-    until: rrule.until ? dateOf(rrule.until, "UTC") : null,
-  };
-  return null;
+  if (!rec) return null;
+  if (rrule.until) return { ...rec, until: dateOf(rrule.until, "UTC") };
+  if (rrule.count) {
+    const iterator = event.iterator();
+    let last: ICAL.Time | null = null;
+    for (let n = 0; n < rrule.count && n < 100000; n++) {
+      const next = iterator.next();
+      if (!next) break;
+      last = next;
+    }
+    return last ? { ...rec, until: dateOf(last, tz) } : null;
+  }
+  return { ...rec, until: null };
 }
 
-export function parseAndroidIcs(text: string, tz: string, source: string, mode: "map" | "expand"): InsertItem[] {
-  if (new TextEncoder().encode(text).byteLength > 2 * 1024 * 1024) throw new Error("Calendar is too large (2 MB maximum)");
+/** Past this many items, the one-off events furthest from today are left out (repeating ones always stay). */
+const MAX_ITEMS = 10000;
+/** At most this many dates are listed for one repeating event that Cadence can't keep as a repeat. */
+const MAX_PER_SERIES = 800;
+
+/**
+ * Reads an .ics calendar into items. Repeating events become one repeating item each, except rules
+ * Cadence can't keep, which are listed date by date from 60 days ago to 400 days ahead. `skipped`
+ * counts the old one-off events left out of a calendar too big to keep whole.
+ */
+export function parseAndroidIcs(text: string, tz: string, source: string): { items: InsertItem[]; skipped: number } {
+  if (new TextEncoder().encode(text).byteLength > 8 * 1024 * 1024) throw new Error("Calendar is too large (8 MB maximum)");
   if (!text.includes("BEGIN:VCALENDAR")) throw new Error("That file isn't a valid .ics calendar");
   if (/^RRULE:[^\r\n]*FREQ=(SECONDLY|MINUTELY|HOURLY)\b/mi.test(text)) throw new Error("Sub-hourly repeating calendars aren't supported");
   const root = new ICAL.Component(ICAL.parse(text));
   const events = root.getAllSubcomponents("vevent");
-  if (events.length > 5000) throw new Error("Calendar has too many entries");
+  if (events.length > 50000) throw new Error("Calendar has too many entries");
   const overrides = new Map<string, ICAL.Component[]>();
   for (const component of events) {
     if (!component.getFirstProperty("recurrence-id")) continue;
@@ -115,10 +140,7 @@ export function parseAndroidIcs(text: string, tz: string, source: string, mode: 
     overrides.set(key, [...(overrides.get(key) ?? []), component]);
   }
   const output: InsertItem[] = [];
-  const append = (item: InsertItem) => {
-    if (output.length >= 5000) throw new Error("Calendar expands to too many events");
-    output.push(item);
-  };
+  const append = (item: InsertItem) => { output.push(item); };
   const windowStart = Date.now() - 60 * 86400000, windowEnd = Date.now() + 400 * 86400000;
   for (const component of events) {
     if (component.getFirstProperty("recurrence-id") || value(component, "status").toUpperCase() === "CANCELLED") continue;
@@ -130,15 +152,16 @@ export function parseAndroidIcs(text: string, tz: string, source: string, mode: 
     const changed = overrides.get(value(component, "uid")) ?? [];
     const overrideDates = changed.map((c) => dateOf(c.getFirstPropertyValue("recurrence-id") as ICAL.Time, tz));
     const seen = new Set([...exceptions, ...overrideDates]);
-    if (!component.getFirstProperty("rrule")) append(base);
+    if (!component.getFirstProperty("rrule") && !component.getFirstProperty("rdate")) append(base);
     else {
-      const rec = recurrence(component);
-      if (mode === "map" && rec) append({
-        ...base, recurrence: JSON.stringify(rec), exceptions: JSON.stringify([...seen]),
-      });
+      const rec = recurrence(component, event, tz);
+      if (rec) append({ ...base, recurrence: JSON.stringify(rec), exceptions: JSON.stringify([...seen]) });
       else {
+        // Walk the dates up to the window's end; ones before it are passed over without counting
+        // towards the limit, so a series that began years ago still shows its current dates.
         const iterator = event.iterator();
-        for (let n = 0; n < 800; n++) {
+        let listed = 0;
+        for (let steps = 0; steps < 200000 && listed < MAX_PER_SERIES; steps++) {
           const occurrence = iterator.next();
           if (!occurrence) break;
           const millis = occurrence.toJSDate().getTime();
@@ -146,6 +169,7 @@ export function parseAndroidIcs(text: string, tz: string, source: string, mode: 
           if (millis < windowStart || seen.has(dateOf(occurrence, tz))) continue;
           const details = event.getOccurrenceDetails(occurrence);
           append(row(component, details.startDate, details.endDate, tz, source));
+          listed++;
         }
       }
     }
@@ -155,7 +179,14 @@ export function parseAndroidIcs(text: string, tz: string, source: string, mode: 
       append(row(override, specific.startDate, specific.endDate, tz, source));
     }
   }
-  return output;
+  if (output.length <= MAX_ITEMS) return { items: output, skipped: 0 };
+  // Too many to keep: every repeating event, then the one-off events nearest today.
+  const today = ymd(new Date());
+  const repeating = output.filter((item) => item.recurrence !== '{"freq":"none"}');
+  const away = (date: string) => Math.abs(new Date(date + "T12:00:00").getTime() - new Date(today + "T12:00:00").getTime());
+  const oneOff = output.filter((item) => item.recurrence === '{"freq":"none"}').sort((a, b) => away(a.date) - away(b.date));
+  const kept = oneOff.slice(0, Math.max(0, MAX_ITEMS - repeating.length));
+  return { items: [...repeating, ...kept], skipped: output.length - repeating.length - kept.length };
 }
 
 const escapeIcs = (s: string) => s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
