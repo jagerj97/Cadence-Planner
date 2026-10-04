@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Home,
@@ -24,7 +24,7 @@ import { QuickAdd } from "@/pages/today";
 import { cn } from "@/lib/utils";
 
 
-const NAV = [
+export const NAV = [
   { href: "/", label: "Today", icon: Home, match: (l: string) => l === "/" || l.startsWith("/day") },
   { href: "/calendar", label: "Calendar", icon: CalendarRange, match: (l: string) => /^\/(calendar|week|month|agenda|timeline|schedule)/.test(l) },
   { href: "/tasks", label: "Tasks", icon: CheckSquare, match: (l: string) => l.startsWith("/tasks") },
@@ -32,10 +32,21 @@ const NAV = [
   { href: "/journal", label: "Journal", icon: NotebookPen, match: (l: string) => l.startsWith("/journal") },
   { href: "/focus", label: "Focus", icon: Timer, match: (l: string) => l.startsWith("/focus") },
 ];
+/** The pages in the user's order (Settings, Customize); ones not placed yet keep their usual spot at the end. */
+export function orderNav(saved: string[] | undefined) {
+  const placed = (saved ?? []).map((href) => NAV.find((n) => n.href === href)).filter((n): n is (typeof NAV)[number] => !!n);
+  return [...new Set([...placed, ...NAV])];
+}
+function useNav() {
+  const { settings } = useSettings();
+  return useMemo(() => orderNav(settings.navOrder), [settings.navOrder]);
+}
+
 const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: SettingsIcon, match: (l: string) => l.startsWith("/settings") || l.startsWith("/sync") };
 
 function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
   const [loc] = useLocation();
+  const nav = useNav();
   const { focus, elapsed } = usePlanner();
   const row = (n: (typeof NAV)[number]) => {
     const on = n.match(loc);
@@ -60,7 +71,7 @@ function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <>
       <nav className="py-2" aria-label="Main">
-        {NAV.map(row)}
+        {nav.map(row)}
       </nav>
     </>
   );
@@ -187,12 +198,14 @@ function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
 }
 
 /**
- * Swiping left or right across a page goes to the next or previous page in the bar; the end pages
- * go no further. Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
+ * Swiping left or right across a page goes to the next or previous page in the bar (in the user's
+ * order); the end pages go no further. Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
  */
-function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, go: (href: string, dir: 1 | -1) => void) {
+function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typeof NAV)[number][], go: (href: string, dir: 1 | -1) => void) {
   const locRef = useRef(loc);
   locRef.current = loc;
+  const navRef = useRef(nav);
+  navRef.current = nav;
   useEffect(() => {
     const el = main.current;
     if (!el) return;
@@ -208,10 +221,11 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, go: (href
       if (!s || !t || Date.now() - s.t > 700) return;
       const dx = t.clientX - s.x, dy = t.clientY - s.y;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      const at = NAV.findIndex((n) => n.match(locRef.current));
+      const pages = navRef.current;
+      const at = pages.findIndex((n) => n.match(locRef.current));
       if (at < 0) return;
       const dir = dx < 0 ? 1 : -1;
-      const next = NAV[at + dir];
+      const next = pages[at + dir];
       if (next) go(next.href, dir);
     };
     el.addEventListener("touchstart", down, { passive: true });
@@ -229,7 +243,8 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, go: (href
 export function Shell({ children }: { children: ReactNode }) {
   const [loc, nav] = useLocation();
   const mainRef = useRef<HTMLElement>(null);
-  const page = NAV.findIndex((n) => n.match(loc));
+  const pages = useNav();
+  const page = pages.findIndex((n) => n.match(loc));
   // The page a swipe brings in slides in from that side.
   const [slide, setSlide] = useState<{ dir: 1 | -1; to: string } | null>(null);
   const go = useCallback((href: string, dir: 1 | -1) => {
@@ -237,8 +252,8 @@ export function Shell({ children }: { children: ReactNode }) {
     nav(href);
     setTimeout(() => setSlide(null), 300);
   }, [nav]);
-  usePageSwipe(mainRef, loc, go);
-  const slid = slide && NAV[page]?.href === slide.to ? slide.dir : 0;
+  usePageSwipe(mainRef, loc, pages, go);
+  const slid = slide && pages[page]?.href === slide.to ? slide.dir : 0;
   const { focus, elapsed } = usePlanner();
   const { settings } = useSettings();
   const inSettings = SETTINGS_NAV.match(loc);
@@ -284,7 +299,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       {/* bottom bar (phones) */}
       <nav className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Main">
-        {NAV.map((n) => {
+        {pages.map((n) => {
           const on = n.match(loc);
           const timer = n.href === "/focus" && focus;
           return (

@@ -16,7 +16,7 @@ export const TODAY_PANELS = [
 ] as const;
 export type TodayPanel = (typeof TODAY_PANELS)[number]["id"];
 
-/** Cards that start off hidden: they show once turned on in Edit cards (Settings.shownTodayPanels). */
+/** Cards that start off hidden: they show once turned on in Customize (Settings.shownTodayPanels). */
 const OFF_BY_DEFAULT = new Set<string>([]);
 
 /** Whether a card is on: the usual ones unless turned off, the off-by-default ones once turned on. */

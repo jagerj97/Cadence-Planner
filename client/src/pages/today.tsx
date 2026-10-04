@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import type { Item } from "@shared/schema";
-import { PageHeader } from "@/components/shell";
+import { PageHeader, orderNav } from "@/components/shell";
 import { DayPicker } from "@/pages/calendar";
 import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
@@ -175,39 +175,63 @@ export default function Today() {
 }
 
 
+/** "Customize": which Today cards show and in what order, and the order of the pages in the bottom bar. */
 function CustomizeToday({ order }: { order: TodayPanel[] }) {
   const [open, setOpen] = useState(false);
   const save = useSaveSettings();
   const { settings } = useSettings();
   const toggle = (panel: TodayPanel, shown: boolean) => save.mutate(panelToggle(settings, panel, shown));
+  const pages = orderNav(settings.navOrder);
   return (
     <>
       <div className="flex justify-center">
         <Button variant="ghost" size="sm" className="h-8 rounded-full px-4 text-xs text-muted-foreground" onClick={() => setOpen(true)} data-testid="button-customize-today">
-          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Edit cards
+          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Customize
         </Button>
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-sm" data-testid="dialog-customize-today">
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-customize-today">
           <DialogHeader className="text-left">
-            <DialogTitle>Edit cards</DialogTitle>
-            <DialogDescription className="sr-only">Choose which cards show on your Today page. Hold a card and drag to reorder.</DialogDescription>
+            <DialogTitle>Customize</DialogTitle>
+            <DialogDescription className="sr-only">Choose which cards show on your Today page and the order of the pages in the bottom bar. Hold an item and drag to reorder.</DialogDescription>
           </DialogHeader>
-          <SortableList
-            items={order}
-            onReorder={(next) => save.mutate({ todayPanelOrder: next })}
-            className="grid gap-1"
-            render={(id) => {
-              const p = TODAY_PANELS.find((panel) => panel.id === id)!;
-              return (
-                <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-today-${p.id}`}>
-                  <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="min-w-0 flex-1 text-sm font-medium">{p.label}</span>
-                  <Switch checked={panelShown(settings, p.id)} onCheckedChange={(v) => toggle(p.id, v)} aria-label={`Show ${p.label}`} data-testid={`switch-today-${p.id}`} />
-                </div>
-              );
-            }}
-          />
+          <section className="grid gap-1" aria-label="Cards">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cards</h3>
+            <SortableList
+              items={order}
+              onReorder={(next) => save.mutate({ todayPanelOrder: next })}
+              className="grid gap-1"
+              render={(id) => {
+                const p = TODAY_PANELS.find((panel) => panel.id === id)!;
+                return (
+                  <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-today-${p.id}`}>
+                    <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="min-w-0 flex-1 text-sm font-medium">{p.label}</span>
+                    <Switch checked={panelShown(settings, p.id)} onCheckedChange={(v) => toggle(p.id, v)} aria-label={`Show ${p.label}`} data-testid={`switch-today-${p.id}`} />
+                  </div>
+                );
+              }}
+            />
+          </section>
+          {/* The app still opens on Today, wherever it sits in the bar. */}
+          <section className="grid gap-1" aria-label="Bottom bar">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bottom bar</h3>
+            <SortableList
+              items={pages.map((n) => n.href)}
+              onReorder={(next) => save.mutate({ navOrder: next })}
+              className="grid gap-1"
+              render={(href) => {
+                const n = pages.find((page) => page.href === href)!;
+                return (
+                  <div className="flex items-center gap-3 py-2 pr-1" data-testid={`row-nav-${n.label.toLowerCase()}`}>
+                    <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <n.icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="min-w-0 flex-1 text-sm font-medium">{n.label}</span>
+                  </div>
+                );
+              }}
+            />
+          </section>
         </DialogContent>
       </Dialog>
     </>
