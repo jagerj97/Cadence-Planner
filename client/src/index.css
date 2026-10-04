@@ -377,6 +377,10 @@
   box-shadow: 0 4px 24px hsl(24 50% 32% / .045);
 }
 .dark .card-md { box-shadow: 0 6px 24px hsl(0 0% 0% / .14); }
+/* The calendar's views on phones: the card runs to the screen's edges and down to the bottom bar. */
+@media (max-width: 767px) {
+  .card-flush { border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; box-shadow: none; }
+}
 .appbar {
   background: hsl(var(--appbar));
   color: hsl(var(--appbar-fg));

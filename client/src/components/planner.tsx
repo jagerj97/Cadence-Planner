@@ -360,14 +360,15 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   };
   const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
 
-  // A widget's + button opens the app to add a task, habit or event; the agenda widget opens the agenda.
+  // A widget's + button opens the app to add a task, habit or event; tapping a widget opens its page.
   useEffect(() => {
     const run = () => {
       const action = window.CadenceAndroid?.takeLaunchAction?.() || "";
       if (action === "add-task") openEditor({ date: todayStr(), kind: "task" });
       if (action === "add-habit") openEditor({ date: todayStr(), kind: "habit", recurrence: '{"freq":"daily"}' });
       if (action === "add-event") openEditor({ date: todayStr(), kind: "event" });
-      if (action === "open-agenda") window.location.hash = "#/agenda";
+      // Each widget opens its own page ("open:/tasks").
+      if (/^open:\/[a-z]*$/.test(action)) window.location.hash = `#${action.slice(5)}`;
     };
     run();
     window.addEventListener("cadence-launch-action", run);

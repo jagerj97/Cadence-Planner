@@ -37,7 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, panelShown, panelToggle, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, Play, CornerDownLeft, SlidersHorizontal, GripVertical, Maximize2, Minimize2 } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -55,6 +55,8 @@ export default function Today() {
   const view = settings.todayView ?? "timeline";
   const agenda = view === "agenda";
   const pickView = (v: "timeline" | "agenda") => v !== view && saveSettings.mutate({ todayView: v });
+  const wholeDay = !!settings.timelineWholeDay;
+  const toggleWholeDay = () => saveSettings.mutate({ timelineWholeDay: !wholeDay });
   const panelOrder = todayPanelOrder(settings.todayPanelOrder);
   // On phones the two columns below dissolve (display: contents) into one list in this order;
   // on wide screens each column keeps the same relative order.
@@ -71,7 +73,7 @@ export default function Today() {
     // that). 8px is the column's top padding.
     const now = new Date();
     el.scrollTop = Math.max(0, 8 + ((now.getHours() * 60 + now.getMinutes() - 90) / 60) * HOUR_PX);
-  }, [day, isLoading, shows("schedule"), agenda]); // eslint-disable-line
+  }, [day, isLoading, shows("schedule"), agenda, wholeDay]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
 
@@ -100,7 +102,7 @@ export default function Today() {
       <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
-          <section className="contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3" aria-label="Day timeline">
+          <section className={cn("contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3", wholeDay && "lg:overflow-y-auto scroll-thin lg:pr-1")} aria-label="Day timeline">
             {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
             {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
             {shows("schedule") && (agenda ? (
@@ -111,8 +113,8 @@ export default function Today() {
                 </div>
               </div>
             ) : (
-            <div className="flex flex-1 min-h-[420px] flex-col card-md overflow-hidden" style={at("schedule")} data-testid="card-day">
-              <DayViewToggle view={view} onPick={pickView} />
+            <div className={cn("flex flex-col card-md overflow-hidden", wholeDay ? "shrink-0" : "flex-1 min-h-[420px]")} style={at("schedule")} data-testid="card-day">
+              <DayViewToggle view={view} onPick={pickView} wholeDay={wholeDay} onWholeDay={toggleWholeDay} />
               {/* All-day items and ones for anytime that day, inside the card above the timeline. */}
               {allDay.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 border-b px-2 pb-2" aria-label="All-day">
@@ -129,7 +131,8 @@ export default function Today() {
                   ))}
                 </div>
               )}
-              <div className="relative flex-1">
+              {/* Scrolls inside the card, or (Whole day) is as tall as the day. */}
+              <div className={cn("relative", !wholeDay && "flex-1")}>
               {isLoading ? (
                 <div className="p-4 grid gap-3">
                   {[0, 1, 2, 3].map((k) => (
@@ -137,7 +140,7 @@ export default function Today() {
                   ))}
                 </div>
               ) : (
-                <div ref={scroller} className="absolute inset-0 overflow-y-auto scroll-thin">
+                <div ref={scroller} className={cn(!wholeDay && "absolute inset-0 overflow-y-auto scroll-thin")}>
                   <div className="flex pt-2 pb-4 pr-2">
                     <HourLabels />
                     <DayColumn
@@ -471,9 +474,13 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 }
 
 /** Switches the day card between the timeline and the agenda list, like the calendar's view switch. */
-function DayViewToggle({ view, onPick }: { view: "timeline" | "agenda"; onPick: (v: "timeline" | "agenda") => void }) {
+function DayViewToggle({ view, onPick, wholeDay, onWholeDay }: {
+  view: "timeline" | "agenda"; onPick: (v: "timeline" | "agenda") => void;
+  /** The timeline's "Whole day" switch: all 24 hours at once instead of scrolling inside the card. */
+  wholeDay?: boolean; onWholeDay?: () => void;
+}) {
   return (
-    <div className="px-2 pt-2 pb-2">
+    <div className="flex items-center justify-between gap-2 px-2 pt-2 pb-2">
       <div className="inline-flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Show the day as">
         {(["timeline", "agenda"] as const).map((v) => (
           <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => onPick(v)}
@@ -484,6 +491,15 @@ function DayViewToggle({ view, onPick }: { view: "timeline" | "agenda"; onPick: 
           </button>
         ))}
       </div>
+      {onWholeDay && (
+        <button type="button" onClick={onWholeDay} aria-pressed={!!wholeDay}
+          className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
+            wholeDay ? "border-transparent bg-primary/15 text-primary" : "text-muted-foreground hover-elevate")}
+          data-testid="button-timeline-whole-day">
+          {wholeDay ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          Whole day
+        </button>
+      )}
     </div>
   );
 }

@@ -250,12 +250,13 @@ public class AppActivity extends Activity {
         runOnUiThread(() -> { if (browser != null) browser.evaluateJavascript("window.dispatchEvent(new Event('" + event + "'))", null); });
     }
 
-    /** What a widget asked for ("add-task", "add-habit", "add-event", "open-agenda"); the page reads it via takeLaunchAction. */
+    /** What a widget asked for ("add-task", "add-habit", "add-event", or a page like "open:/tasks"); the page reads it via takeLaunchAction. */
     private volatile String launchAction = "";
 
     private void readLaunchAction(Intent intent) {
         String add = intent == null ? null : intent.getStringExtra(PanelWidgets.EXTRA_ADD);
-        if ("add-task".equals(add) || "add-habit".equals(add) || "add-event".equals(add) || "open-agenda".equals(add)) launchAction = add;
+        // "open:/tasks" and the like open a page (each widget opens its own).
+        if ("add-task".equals(add) || "add-habit".equals(add) || "add-event".equals(add) || add != null && add.matches("open:/[a-z]*")) launchAction = add;
         // The timer notification's Finish: finish the session here; the page logs it and asks about the calendar.
         if (intent != null && FocusTimer.ACTION_STOP.equals(intent.getAction())) {
             intent.setAction(null); // not again if the activity is recreated

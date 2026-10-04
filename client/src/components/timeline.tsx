@@ -329,15 +329,20 @@ export function DayColumn({
               {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && <div className="min-w-0 flex-1 overflow-hidden">
                 <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm", b.done && "line-through")}>
                   {!checkable && !compact && <M.icon className="h-3.5 w-3.5 shrink-0" style={{ color: colorOf(b.item) }} />}
-                  <span className="truncate whitespace-nowrap">{b.item.title}</span>
+                  {/* Narrow columns (the week) let a title take two lines when there's room. */}
+                  <span className={cn(compact && !tiny && h >= 44 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate whitespace-nowrap")}>{b.item.title}</span>
                   {recurring && !compact && !tiny && <Repeat className="h-3 w-3 shrink-0 text-muted-foreground" />}
                   {b.item.autoTimer && !tiny && <Timer className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Timer starts automatically" />}
                 </div>
                 {!tiny && (
-                  <div className={cn("text-xs text-muted-foreground tnum truncate", compact && "hidden sm:block")}>
+                  <div className={cn("text-xs text-muted-foreground tnum truncate", compact && "text-[10px] sm:text-xs")}>
                     {b.continues === "before" || b.continues === "through"
                       ? b.continues === "through" ? "continues" : "until " + fmtTime(b.item.endTime, true)
-                      : `${fmtTime(fromMin(s), true)} – ${b.continues === "after" && !live ? (b.item.endDate && b.item.endDate > b.occDate ? `ends ${b.item.endDate}` : fmtTime(b.item.endTime, true) + " next day") : fmtTime(fromMin(e), true)}`}
+                      : <>
+                          {/* A narrow column (the week on a phone) has room for the start only. */}
+                          {compact && <span className="sm:hidden">{fmtTime(fromMin(s), true)}</span>}
+                          <span className={cn(compact && "hidden sm:inline")}>{`${fmtTime(fromMin(s), true)} – ${b.continues === "after" && !live ? (b.item.endDate && b.item.endDate > b.occDate ? `ends ${b.item.endDate}` : fmtTime(b.item.endTime, true) + " next day") : fmtTime(fromMin(e), true)}`}</span>
+                        </>}
                     {b.item.location && !compact ? ` · ${b.item.location}` : ""}
                   </div>
                 )}

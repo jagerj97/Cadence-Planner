@@ -142,6 +142,8 @@ export type Settings = {
   todayPanelOrder: string[]; // Today page panel order; panels missing from it follow in the default order
   /** Which way the Today page's day card shows the day. */
   todayView?: "timeline" | "agenda";
+  /** The Today timeline shows the whole day at once instead of scrolling inside its card. */
+  timelineWholeDay?: boolean;
   taskTags: TaskTag[];
   /** Tint timelines with the sky and mark sunrise and sunset. */
   showSun: boolean;

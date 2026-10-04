@@ -34,7 +34,7 @@ import { AgendaList } from "@/components/agendaList";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-const WEEK_HOUR = 48;
+const WEEK_HOUR = 60;
 /** Lines of items a month day shows before "+N more". */
 const MONTH_LINES = 3;
 
@@ -47,10 +47,8 @@ function BarLayer({ children }: { children: ReactNode }) {
  * An item over several days, drawn once across them. Square ends where it carries on past the days
  * shown. Its left and right sit inside the day cells' padding (--pad) unless it continues.
  */
-function SpanBar({ bar, days, className, style, onOpen, thinOnPhone }: {
+function SpanBar({ bar, days, className, style, onOpen }: {
   bar: Bar; days: number; className?: string; style?: React.CSSProperties; onOpen: () => void;
-  /** On phones, a thin line in the item's color (like the week view's other all-day items). */
-  thinOnPhone?: boolean;
 }) {
   const { settings } = useSettings();
   const i = bar.item;
@@ -71,10 +69,9 @@ function SpanBar({ bar, days, className, style, onOpen, thinOnPhone }: {
       }}
       data-testid={`bar-${i.id}-${bar.occ}`}
     >
-      {thinOnPhone && <span className="absolute inset-0 sm:hidden" style={{ background: accentOf(i, settings) }} aria-hidden />}
-      <span className={cn("h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0", thinOnPhone && "hidden sm:block")} style={{ background: accentOf(i, settings) }} />
+      <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: accentOf(i, settings) }} />
       {time && <span className="hidden sm:inline text-muted-foreground tnum shrink-0">{fmtTime(time, true)}</span>}
-      <span className={cn("block min-w-0 truncate whitespace-nowrap", thinOnPhone && "hidden sm:block")}>{i.title}</span>
+      <span className="block min-w-0 truncate whitespace-nowrap">{i.title}</span>
     </button>
   );
 }
@@ -142,12 +139,12 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
         {toggle}
       </PageHeader>
       {filters}
-      <div className="flex-1 min-h-0 p-4 md:p-6">
-        <div className="h-full card-md flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 pt-3 md:p-6">
+        <div className="h-full card-md card-flush flex flex-col overflow-hidden">
           <div className="flex min-w-0 flex-1 flex-col min-h-0">
             <div className="min-w-0 flex flex-col flex-1 min-h-0">
               {/* header: the days, a bar for each item over several days, then each day's other all-day items */}
-              <div className="border-b [--lane:10px] [--pad:2px] sm:[--lane:22px] sm:[--pad:6px]">
+              <div className="border-b [--lane:20px] [--pad:2px] sm:[--lane:22px] sm:[--pad:6px]">
                 <div className="flex">
                   <div className="w-9 sm:w-14 shrink-0" />
                   {days.map((d) => {
@@ -160,11 +157,11 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                           aria-label={fmtDate(d, { weekday: "long", month: "short", day: "numeric" })}
                           data-testid={`link-day-${d}`}
                         >
-                          <span className="text-[11px] sm:text-xs text-muted-foreground"><span className="sm:hidden">{DAY_SHORT[parseYmd(d).getDay()].slice(0, 1)}</span><span className="hidden sm:inline">{DAY_SHORT[parseYmd(d).getDay()]}</span></span>
+                          <span className="text-xs text-muted-foreground"><span className="sm:hidden">{DAY_SHORT[parseYmd(d).getDay()].slice(0, 1)}</span><span className="hidden sm:inline">{DAY_SHORT[parseYmd(d).getDay()]}</span></span>
                           <span
                             className={cn(
-                              "text-[12px] sm:text-sm font-semibold tnum",
-                              today && "rounded-full bg-primary text-primary-foreground px-1 sm:px-1.5",
+                              "text-[15px] sm:text-sm font-semibold tnum",
+                              today && "rounded-full bg-primary text-primary-foreground px-1.5",
                             )}
                           >
                             {parseYmd(d).getDate()}
@@ -181,7 +178,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                       {days.map((d) => <div key={d} className="border-l" aria-hidden />)}
                       <BarLayer>
                         {weekBars.bars.map((b) => (
-                          <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} thinOnPhone className="h-1.5 sm:h-5 text-xs"
+                          <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} className="h-[18px] sm:h-5 text-[11px] sm:text-xs"
                             style={{ top: `calc(4px + ${b.lane} * var(--lane))` }} onOpen={() => openDetails(b.item, b.occ)} />
                         ))}
                       </BarLayer>
@@ -200,14 +197,13 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                               key={i.id}
                               onClick={() => openDetails(i, d)}
                               aria-label={i.title}
-                              className="h-2.5 sm:h-auto min-w-0 truncate rounded px-0.5 sm:px-1 text-left text-xs"
-                              style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
+                              className="h-[18px] sm:h-auto min-w-0 truncate rounded px-1 text-left text-[11px] leading-[18px] sm:text-xs"
+                              style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)`, borderLeft: `2px solid ${accentOf(i, settings)}` }}
                             >
-                              <span className="block sm:hidden h-1.5 w-full rounded-full" style={{ background: accentOf(i, settings) }} aria-hidden />
-                              <span className="hidden sm:inline">{i.title}</span>
+                              {i.title}
                             </button>
                           ))}
-                          {untimed.length > 2 && <span className="text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{untimed.length - 2}<span className="hidden sm:inline"> more</span></span>}
+                          {untimed.length > 2 && <span className="text-[11px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{untimed.length - 2}<span className="hidden sm:inline"> more</span></span>}
                         </div>
                       </div>
                     );
@@ -287,11 +283,11 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
         {toggle}
       </PageHeader>
       {filters}
-      <div className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto md:overflow-auto">
-        <div className="card-md flex overflow-hidden min-w-0 h-full flex-col">
+      <div className="flex-1 min-h-0 pt-3 md:p-6 overflow-y-auto md:overflow-auto">
+        <div className="card-md card-flush flex overflow-hidden min-w-0 min-h-full flex-col">
           <div className="grid grid-cols-7 border-b">
             {weekdays.map((w) => (
-              <div key={w} className="min-w-0 px-0 sm:px-2 py-2 text-center sm:text-left text-[11px] sm:text-xs font-medium text-muted-foreground">
+              <div key={w} className="min-w-0 px-0 sm:px-2 py-2 text-center sm:text-left text-xs font-medium text-muted-foreground">
                 <span className="sm:hidden">{w.slice(0, 1)}</span><span className="hidden sm:inline">{w}</span>
               </div>
             ))}
@@ -304,7 +300,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
               const { bars, lanes } = barsFor(list, week[0], 7);
               const shownLanes = Math.min(lanes, MONTH_LINES);
               return (
-                <div key={week[0]} className="relative grid flex-1 grid-cols-7 [--lane:16px] [--pad:2px] [--top:24px] sm:[--lane:22px] sm:[--pad:6px] sm:[--top:32px]" data-testid={`row-month-${week[0]}`}>
+                <div key={week[0]} className="relative grid flex-1 grid-cols-7 [--lane:20px] [--pad:2px] [--top:30px] sm:[--lane:22px] sm:[--pad:6px] sm:[--top:32px]" data-testid={`row-month-${week[0]}`}>
                   {week.map((d, col) => {
                     const idx = w * 7 + col;
                     const inMonth = parseYmd(d).getMonth() === first.getMonth();
@@ -323,13 +319,13 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                     return (
                       <div
                         key={d}
-                        className={cn("min-w-0 min-h-[66px] sm:min-h-[96px] border-t border-l p-0.5 sm:p-1.5 flex flex-col gap-0.5", idx % 7 === 0 && "border-l-0", idx < 7 && "border-t-0", !inMonth && "bg-muted/40")}
+                        className={cn("min-w-0 min-h-[92px] sm:min-h-[96px] border-t border-l p-0.5 sm:p-1.5 flex flex-col gap-0.5", idx % 7 === 0 && "border-l-0", idx < 7 && "border-t-0", !inMonth && "bg-muted/40")}
                         data-testid={`cell-month-${d}`}
                       >
                         <button
                           onClick={() => nav(today ? "/" : `/day/${d}`)}
                           className={cn(
-                            "self-center sm:self-start text-[12px] sm:text-xs font-semibold tnum rounded-full h-5 min-w-5 sm:h-6 sm:min-w-6 px-0.5 sm:px-1.5 hover-elevate",
+                            "self-center sm:self-start text-sm sm:text-xs font-semibold tnum rounded-full h-6 min-w-6 px-1 sm:px-1.5 hover-elevate",
                             today ? "bg-primary text-primary-foreground" : inMonth ? "" : "text-muted-foreground",
                           )}
                           aria-label={fmtDate(d)}
@@ -342,7 +338,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                             key={i.id + (t || "")}
                             onClick={() => openDetails(i, d)}
                             aria-label={`${i.title}${t ? `, ${fmtTime(t, true)}` : ""}`}
-                            className="flex h-3.5 sm:h-5 items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[9px] sm:text-xs leading-none hover-elevate min-w-0 overflow-hidden"
+                            className="flex h-[18px] sm:h-5 items-center gap-0.5 sm:gap-1 rounded px-0.5 sm:px-1 text-left text-[11px] sm:text-xs leading-none hover-elevate min-w-0 overflow-hidden"
                             style={{ background: `color-mix(in srgb, ${colorOf(i)} 15%, transparent)` }}
                           >
                             <span className="h-2.5 w-0.5 sm:h-1.5 sm:w-1.5 rounded-full shrink-0" style={{ background: accentOf(i, settings) }} />
@@ -351,7 +347,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                           </button>
                         ))}
                         {hidden > 0 && (
-                          <button onClick={() => nav(`/day/${d}`)} className="text-center sm:text-left text-[10px] sm:text-xs text-muted-foreground px-0.5 sm:px-1 hover:text-foreground">
+                          <button onClick={() => nav(`/day/${d}`)} className="text-center sm:text-left text-[11px] sm:text-xs text-muted-foreground px-0.5 sm:px-1 hover:text-foreground">
                             +{hidden}<span className="hidden sm:inline"> more</span>
                           </button>
                         )}
@@ -360,7 +356,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
                   })}
                   <BarLayer>
                     {bars.filter((b) => b.lane < MONTH_LINES).map((b) => (
-                      <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} className="h-3.5 sm:h-5 text-[9px] sm:text-xs"
+                      <SpanBar key={`${b.item.id}:${b.occ}`} bar={b} days={7} className="h-[18px] sm:h-5 text-[11px] sm:text-xs"
                         style={{ top: `calc(var(--top) + ${b.lane} * var(--lane))` }} onOpen={() => openDetails(b.item, b.occ)} />
                     ))}
                   </BarLayer>
@@ -456,11 +452,15 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
         {toggle}
       </PageHeader>
       {filters}
-      <div ref={scroller} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 [overflow-anchor:none]" data-testid="agenda-scroller">
-        <div className="mx-auto grid max-w-2xl gap-4 pb-4">
-          <div ref={topEdge} className="h-px" aria-hidden />
-          {items && <AgendaList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
-          <div ref={bottomEdge} className="h-px" aria-hidden />
+      <div className="flex-1 min-h-0 pt-3 md:p-6">
+        <div className="card-md card-flush mx-auto h-full max-w-3xl overflow-hidden">
+          <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto p-4 md:p-5 [overflow-anchor:none]" data-testid="agenda-scroller">
+            <div className="grid gap-4 pb-4">
+              <div ref={topEdge} className="h-px" aria-hidden />
+              {items && <AgendaList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
+              <div ref={bottomEdge} className="h-px" aria-hidden />
+            </div>
+          </div>
         </div>
       </div>
     </>

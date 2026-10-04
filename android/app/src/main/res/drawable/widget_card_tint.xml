@@ -1,0 +1,7 @@
+<!-- The widget's color wash: solid at the top left corner, fading out by the middle. Tinted (and
+     faded) in code with the widget's color, like the app's Right now card. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:type="linear" android:angle="315"
+        android:startColor="#FFFFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerX="0.6" />
+    <corners android:radius="20dp" />
+</shape>
