@@ -155,8 +155,22 @@ public class AppActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 if ("https".equals(uri.getScheme()) && HOST.equals(uri.getHost())) return false;
-                if ("https".equals(uri.getScheme()) || "mailto".equals(uri.getScheme())) {
-                    try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (Exception ignored) {}
+                // Links leave the app: web pages for the browser, email, phone numbers, and places (geo:)
+                // for the default maps or navigation app, or Google Maps in the browser if there isn't one.
+                String scheme = uri.getScheme();
+                if ("https".equals(scheme) || "http".equals(scheme) || "mailto".equals(scheme) || "tel".equals(scheme) || "geo".equals(scheme)) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                    } catch (Exception none) {
+                        String link = uri.toString();
+                        int query = link.indexOf("q=");
+                        if ("geo".equals(scheme) && query >= 0) {
+                            try {
+                                startActivity(new Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("https://www.google.com/maps/search/?api=1&query=" + link.substring(query + 2))));
+                            } catch (Exception ignored) {}
+                        }
+                    }
                 }
                 return true;
             }

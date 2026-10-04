@@ -41,6 +41,8 @@ const webBridge: AndroidBridge = {
 
 // Any other bridge call (settings the phone applies, like the app icon or sounds) is ignored.
 if (!window.CadenceAndroid) {
+  // Places open in Google Maps here rather than through geo: links (links.tsx).
+  window.cadenceWeb = true;
   window.CadenceAndroid = new Proxy(webBridge, {
     get: (target, key) => (key in target ? target[key as keyof AndroidBridge] : key === "then" || key === "systemDark" ? undefined : () => ""),
   });

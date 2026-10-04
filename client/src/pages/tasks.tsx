@@ -319,7 +319,7 @@ function TaskQuickAdd() {
     setText("");
   };
   return (
-    <div className="flex items-center gap-2 card-md px-3">
+    <div className="flex items-center gap-2 card-md !rounded-full px-4">
       <Plus className="h-4 w-4 text-primary shrink-0" />
       <Input
         value={text}

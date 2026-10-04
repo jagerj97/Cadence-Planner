@@ -46,6 +46,7 @@ import {
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { TwoRows } from "@/components/twoRows";
+import { Linked, LocationLink } from "@/components/links";
 import { WhatsNew } from "@/components/whatsNew";
 import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
 import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
@@ -641,8 +642,9 @@ function ItemDetails({ details, onClose, onEdit }: {
               <div className="text-xs text-muted-foreground">Repeats</div>
               <div>{recLabel(i)}</div>
             </div>}
-            {i.location && <div className="break-words">{i.location}</div>}
-            {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground">{i.notes}</p>}
+            {/* A place opens the maps app, a link opens in the browser. */}
+            {i.location && <div><LocationLink location={i.location} /></div>}
+            {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground"><Linked text={i.notes} /></p>}
             {i.notes?.trim() && !routine && i.kind !== "habit" && i.id > 0 && (
               <JournalNotesCheckbox id="checkbox-notes-journal" checked={!i.journalOff && i.journalId != null}
                 onChange={(on) => update.mutate({ id: i.id, journalOff: !on })} />

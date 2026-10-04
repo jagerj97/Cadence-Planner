@@ -269,8 +269,8 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
     onDone?.();
   };
   return (
-    <div className={cn("relative bg-card text-card-foreground", appbar ? "rounded-full border" : "rounded card-md")}>
-      <div className={cn("flex items-center", appbar ? "gap-1.5 px-3.5" : "gap-2 px-3")}>
+    <div className={cn("relative bg-card text-card-foreground", appbar ? "rounded-full border" : "card-md !rounded-full")}>
+      <div className={cn("flex items-center", appbar ? "gap-1.5 px-3.5" : "gap-2 px-4")}>
         <Plus className="h-4 w-4 text-primary shrink-0" />
         <Input
           value={text}

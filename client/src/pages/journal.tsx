@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { TwoRows } from "@/components/twoRows";
+import { Linked } from "@/components/links";
 import { Archive, ArchiveRestore, ChevronDown, ChevronLeft, ChevronRight, Hash, Settings2, NotebookPen, Plus, Search, Trash2, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -65,11 +66,12 @@ function Rich({ text, onTag }: { text: string; onTag?: (t: string) => void }) {
   );
 }
 
-/** body text with formatting, and #hashtags highlighted and clickable */
+/** body text with formatting, #hashtags highlighted and clickable, and links that open in the browser */
 function Body({ text, onTag }: { text: string; onTag?: (t: string) => void }) {
   return (
     <p className="text-[16px] leading-relaxed whitespace-pre-wrap break-words">
-      <Rich text={text} onTag={onTag} />
+      {/* Links are found first, so their own #anchors and underscores aren't read as tags or formatting. */}
+      <Linked text={text} rest={(part) => <Rich text={part} onTag={onTag} />} />
     </p>
   );
 }
@@ -679,7 +681,7 @@ export default function JournalPage() {
           <aside className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-2" aria-label="Search and tags">
             <div className="card-md p-3">
               <div className="flex items-center gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded border px-2.5 focus-within:border-primary">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border px-3.5 focus-within:border-primary">
                 <Search className="h-4 w-4 text-muted-foreground shrink-0" />
                 <Input
                   value={q}
@@ -867,7 +869,7 @@ export default function JournalPage() {
               <>
                 {/* Looks like the Tasks page's add field; tapping it opens the entry window. */}
                 <button type="button" onClick={() => setCompose({})}
-                  className="flex w-full items-center gap-2 card-md px-3 h-11 text-left text-base text-muted-foreground"
+                  className="flex w-full items-center gap-2 card-md !rounded-full px-4 h-11 text-left text-base text-muted-foreground"
                   data-testid="button-journal-new">
                   <Plus className="h-4 w-4 text-primary shrink-0" />
                   <span className="truncate text-[14px] italic">{settings.plain ? "Had a shower thought #ideas" : "Got the zoomies #exercise"}</span>
