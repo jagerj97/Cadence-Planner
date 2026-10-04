@@ -8,6 +8,23 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  */
 export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
+  "1.5.5-beta": {
+    fixes: [
+      "Calendar links with lots of events sync again, and long-running repeats show their current dates.",
+      "Saving a journal entry without changes no longer marks it edited.",
+      "Items running past midnight say \"next day\" instead of showing a date.",
+    ],
+    changes: [
+      "The journal has an Archive. Entries of finished tasks and past events go there on their own.",
+      "The calendar has a Timeline view, and a menu to switch views.",
+      "Week, month and agenda fill the screen, with bigger text.",
+      "Links and locations open in your browser or maps app.",
+      "Customize on Today lets you reorder the bottom bar. Tap the chevron to see the whole day.",
+      "Widgets take their own colors, open their pages, and fit smaller sizes.",
+      "The status bar matches the top of the app, and long tag lists fold away.",
+      "UI changes.",
+    ],
+  },
   "1.5.4-beta": {
     fixes: [
       "The agenda opens quickly, even with a lot planned.",
