@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { colorOf, kindOf, listOf } from "@/lib/cal";
+import { colorOf, kindColorOf, kindOf, listOf } from "@/lib/cal";
 import { Check, Hash, Pencil, Plus, Trash2, X } from "lucide-react";
 
 /**
@@ -37,8 +37,11 @@ export function itemTags(i: Pick<Item, "tags">, settings: Settings): TaskTag[] {
 export const firstTagColor = (i: Item, settings: Settings): string | undefined =>
   kindOf(i) === "task" ? itemTags(i, settings)[0]?.color : undefined;
 
-/** An item's accent (checkbox and left edge) in calendar views: a tagged task's tag color, otherwise its usual color. */
-export const accentOf = (i: Item, settings: Settings) => firstTagColor(i, settings) ?? colorOf(i);
+/**
+ * The bar down an item's left edge in calendar views: always its kind's color (task yellow, event blue...),
+ * while the item itself takes its own color (a task's tag, or the color picked for it; see colorOf).
+ */
+export const accentOf = (i: Item, _settings?: Settings) => kindColorOf(i);
 
 /** A task's checkbox color in lists: its first tag's color, or the task yellow. */
 export const taskColor = (i: Item, settings: Settings) => firstTagColor(i, settings) ?? "hsl(var(--k-task))";

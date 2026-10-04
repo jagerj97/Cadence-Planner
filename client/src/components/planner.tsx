@@ -48,8 +48,8 @@ import { cn } from "@/lib/utils";
 import { TwoRows } from "@/components/twoRows";
 import { Linked, LocationLink } from "@/components/links";
 import { WhatsNew } from "@/components/whatsNew";
-import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
-import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
+import { TAG_COLORS, TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
+import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Palette, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
@@ -749,6 +749,8 @@ type FormVals = {
   autoTimer: boolean;
   location: string;
   notes: string;
+  /** The item's own color ("" for its kind's); a task takes its tag's instead. */
+  color: string;
 };
 
 /** "Any day before" is stored as a year's window: a year before a one-off's due date, or 365 days' lead. */
@@ -823,7 +825,8 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
       date: f.date,
       availableFrom: avail !== "day" && oneOff ? addDays(f.date, -before) : null,
       leadDays: avail !== "day" && !oneOff ? before : null,
-      color: existing?.source.startsWith("feed:") && f.kind !== existing.kind ? null : existing?.color ?? null,
+      // A task's color comes from its tag; other items keep the color picked for them, if any.
+      color: existing?.source.startsWith("feed:") && f.kind !== existing.kind ? null : task ? existing?.color ?? null : f.color || null,
       // A task is due at its time (no end); others end at their end time, the next day if that's earlier.
       endDate: task ? null : timed && f.endDate === f.date && toMin(f.endTime) <= toMin(start) ? addDays(f.date, 1) : f.endDate,
       allDay: !task && !timed,
@@ -1142,6 +1145,12 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
               </EditorRow>
             )}
 
+            {v.kind !== "task" && v.kind !== "sleep" && (
+              <EditorRow icon={Palette}>
+                <ItemColorPicker kind={v.kind} value={v.color} onChange={(c) => setValue("color", c)} />
+              </EditorRow>
+            )}
+
             <EditorRow icon={MapPin}>
               <Input placeholder="Location or link" className="h-9" {...register("location")} data-testid="input-location" />
             </EditorRow>
@@ -1235,6 +1244,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
     notes: i.notes || "",
+    color: i.color || "",
   };
 }
 
@@ -1298,3 +1308,26 @@ export function useNow(intervalMs = 30000) {
   return n;
 }
 
+/**
+ * An item's color: its kind's (the first choice) or one of the tag colors. The item is drawn in it,
+ * with its kind's color kept as the bar down its left edge.
+ */
+function ItemColorPicker({ kind, value, onChange }: { kind: Kind; value: string; onChange: (color: string) => void }) {
+  const kindColor = `hsl(var(${KIND_META[kind].cssVar}))`;
+  const choices = ["", ...TAG_COLORS];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Color">
+      {choices.map((c) => {
+        const on = value === c;
+        return (
+          <button key={c || "kind"} type="button" role="radio" aria-checked={on} aria-label={c ? `Color ${c}` : `${KIND_META[kind].label} color`}
+            onClick={() => onChange(c)}
+            className={cn("grid h-7 w-7 place-items-center rounded-full", on && "ring-2 ring-offset-2 ring-offset-background ring-foreground/60")}
+            style={{ background: c || kindColor }} data-testid={`swatch-item-${c ? c.slice(1) : "kind"}`}>
+            {on && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

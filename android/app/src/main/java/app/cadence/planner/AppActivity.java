@@ -58,9 +58,10 @@ public class AppActivity extends Activity {
     private final AtomicInteger notificationIds = new AtomicInteger(600000);
     private WebView browser;
     private FrameLayout content;
-    private View bottomInset;
     /** The status bar's height in dp; the page draws behind it and pads its app bar by this much. */
     private volatile int topInsetDp = 0;
+    /** The navigation (gesture) bar's height in dp; the page's bottom bar runs behind it the same way. */
+    private volatile int bottomInsetDp = 0;
     private ValueCallback<Uri[]> pendingFile;
     private String pendingExport;
     private GeolocationPermissions.Callback pendingLocation;
@@ -103,21 +104,19 @@ public class AppActivity extends Activity {
         browser = new WebView(this);
         content = new FrameLayout(this);
         content.addView(browser, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        bottomInset = new View(this);
-        content.addView(bottomInset, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, android.view.Gravity.BOTTOM));
         ViewCompat.setOnApplyWindowInsetsListener(content, (view, insets) -> {
-            androidx.core.graphics.Insets safe = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime());
-            // The page runs up behind the status bar, so its app bar (and its color) fills that strip; the
-            // page pads the bar by the strip's height (--safe-top). The other edges stay inset, with the
-            // band under the bottom navigation painted to match it.
-            view.setPadding(safe.left, 0, safe.right, safe.bottom);
-            topInsetDp = Math.round(safe.top / getResources().getDisplayMetrics().density);
+            androidx.core.graphics.Insets bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            int keyboard = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+            // The page runs behind the status bar and the navigation bar, so its app bar and bottom bar (and
+            // their colors) fill those strips; it pads them by the strips' heights (--safe-top, --safe-bottom).
+            // While the keyboard is up the page sits above it instead.
+            boolean typing = keyboard > bars.bottom;
+            view.setPadding(bars.left, 0, bars.right, typing ? keyboard : 0);
+            float density = getResources().getDisplayMetrics().density;
+            topInsetDp = Math.round(bars.top / density);
+            bottomInsetDp = typing ? 0 : Math.round(bars.bottom / density);
             pushTopInset();
-            FrameLayout.LayoutParams bottom = (FrameLayout.LayoutParams) bottomInset.getLayoutParams();
-            bottom.height = safe.bottom;
-            bottom.bottomMargin = -safe.bottom;
-            bottomInset.setLayoutParams(bottom);
             return WindowInsetsCompat.CONSUMED;
         });
         setContentView(content, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -212,21 +211,21 @@ public class AppActivity extends Activity {
         browser.loadUrl("https://" + HOST + "/android.html");
     }
 
-    /** Tells the page how tall the status bar is (it also asks for it when it starts, via insetTop). */
+    /** Tells the page how tall the status and navigation bars are (it also asks when it starts, via insetTop/insetBottom). */
     private void pushTopInset() {
         if (browser != null) browser.evaluateJavascript(
-            "document.documentElement.style.setProperty('--safe-top','" + topInsetDp + "px')", null);
+            "document.documentElement.style.setProperty('--safe-top','" + topInsetDp + "px');"
+            + "document.documentElement.style.setProperty('--safe-bottom','" + bottomInsetDp + "px')", null);
     }
 
     private void applyAppearance(boolean dark) {
-        // The page draws its own app bar behind the status bar, which stays see-through.
-        int bottom = dark ? Color.rgb(44, 40, 38) : Color.WHITE;
-        content.setBackgroundColor(bottom);
-        browser.setBackgroundColor(dark ? Color.rgb(31, 27, 25) : Color.rgb(249, 247, 245));
-        bottomInset.setBackgroundColor(bottom);
+        // The page draws its own app bar and bottom bar behind the system bars, which stay see-through.
+        int page = dark ? Color.rgb(31, 27, 25) : Color.rgb(249, 247, 245);
+        content.setBackgroundColor(page);
+        browser.setBackgroundColor(page);
         Window window = getWindow();
         window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(bottom);
+        window.setNavigationBarColor(Color.TRANSPARENT);
         WindowCompat.getInsetsController(window, window.getDecorView()).setAppearanceLightStatusBars(!dark);
         WindowCompat.getInsetsController(window, window.getDecorView()).setAppearanceLightNavigationBars(!dark);
     }
@@ -496,6 +495,11 @@ public class AppActivity extends Activity {
         /** The status bar's height in dp, for the page's app bar to sit below. */
         @JavascriptInterface public int insetTop() {
             return topInsetDp;
+        }
+
+        /** The navigation bar's height in dp, for the page's bottom bar to sit above. */
+        @JavascriptInterface public int insetBottom() {
+            return bottomInsetDp;
         }
 
         @JavascriptInterface public boolean systemDark() {

@@ -289,7 +289,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <aside className="wellness-rail hidden md:flex w-56 shrink-0 flex-col overflow-y-auto bg-sidebar border-r z-20">
           <DrawerLinks />
         </aside>
-        <main ref={mainRef} className="flex-1 min-w-0 flex flex-col overflow-hidden pb-14 md:pb-0">
+        <main ref={mainRef} className="flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
           <div key={page}
             className={cn("flex flex-1 min-h-0 flex-col", slid !== 0 && "animate-in fade-in duration-200", slid > 0 ? "slide-in-from-right-8" : slid < 0 && "slide-in-from-left-8")}>
             {children}
@@ -298,7 +298,8 @@ export function Shell({ children }: { children: ReactNode }) {
       </div>
 
       {/* bottom bar (phones) */}
-      <nav className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Main">
+      {/* Runs down behind the phone's navigation bar (--safe-bottom), its color filling that strip. */}
+      <nav className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[var(--safe-bottom,env(safe-area-inset-bottom,0px))]" aria-label="Main">
         {pages.map((n) => {
           const on = n.match(loc);
           const timer = n.href === "/focus" && focus;

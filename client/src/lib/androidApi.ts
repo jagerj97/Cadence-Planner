@@ -14,6 +14,8 @@ export interface AndroidBridge {
   systemDark?(): boolean;
   /** The status bar's height in dp: the page draws behind it (older builds lack it). */
   insetTop?(): number;
+  /** The navigation bar's height in dp: the page's bottom bar runs behind it (older builds lack it). */
+  insetBottom?(): number;
   /** "Play a sound": whether notifications (reminders, a finished timer) make their sound. Older builds lack it. */
   setSound?(on: boolean): void;
   /** The same from the Settings switch, then closes the app. Older builds lack it. */

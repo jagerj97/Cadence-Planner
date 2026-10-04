@@ -1,6 +1,6 @@
 import type { Item, Settings } from "@shared/schema";
 import {
-  KIND_META, addDays, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
+  KIND_META, addDays, colorOf, setTagColors, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
   routineSchedules, sunTimes, todayStr,
 } from "./cal";
 import { agendaFor, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
@@ -32,7 +32,10 @@ const hslToHex = (hsl: string) => {
   return `#${alpha}${f(0)}${f(8)}${f(4)}`;
 };
 const cssVarHex = (name: string) => hslToHex(getComputedStyle(document.documentElement).getPropertyValue(name));
-const hexOf = (i: Item) => (i.color && /^#[0-9a-f]{6}$/i.test(i.color) ? i.color : cssVarHex(KIND_META[kindOf(i)].cssVar));
+/** An item's own color as hex: a tagged task's tag color, a picked color, or its kind's (as colorOf). */
+const hexOf = (i: Item) => { const c = colorOf(i); return /^#[0-9a-f]{6}$/i.test(c) ? c : cssVarHex(KIND_META[kindOf(i)].cssVar); };
+/** The kind's color, for the bar down an item's left edge. */
+const kindHexOf = (i: Item) => cssVarHex(KIND_META[kindOf(i)].cssVar);
 
 /** Blends two "#rrggbb" colors: t of the first over the second. */
 const mixHex = (a: string, b: string, t: number) => "#" + [1, 3, 5].map((i) =>
@@ -67,6 +70,7 @@ function readTheme(dark: boolean) {
 }
 
 export function widgetSnapshot(items: Item[], settings: Settings) {
+  setTagColors(settings.taskTags); // tagged tasks take their tag's color (colorOf)
   const today = todayStr();
   const days: Record<string, unknown> = {};
   for (let offset = 0; offset < WIDGET_DAYS; offset++) {
@@ -84,7 +88,7 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       blocks: arrangeBlocks(blocksForDay(items, day), 45).map(({ b, col, cols, depth }) => ({
         title: b.item.title, start: b.start, end: b.end, fullStart: b.fullStart, fullEnd: b.fullEnd,
         continues: b.continues ?? "", col, cols, depth, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),
-        accent: firstTagColor(b.item, settings) ?? "",
+        accent: kindHexOf(b.item),
         // The line under the title, as the timeline shows it.
         sub: (b.continues === "before" || b.continues === "through"
           ? b.continues === "through" ? "continues" : "until " + fmtTime(b.item.endTime, true)
@@ -126,7 +130,7 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       month: fmtDate(day, { month: "long" }),
       entries: entries.map((e) => ({
         title: e.i.title, kind: kindOf(e.i), done: e.done, color: hexOf(e.i),
-        accent: firstTagColor(e.i, settings) ?? "",
+        accent: kindHexOf(e.i),
         sub: [e.time, e.i.location].filter(Boolean).join(" · "),
       })),
     });

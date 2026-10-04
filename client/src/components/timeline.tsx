@@ -102,7 +102,8 @@ export function DayColumn({
   const onGridClick = (e: React.MouseEvent) => {
     if (e.target !== e.currentTarget) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const m = Math.max(0, Math.min(1439, Math.round(pxToMin(e.clientY - rect.top))));
+    // To the nearest quarter hour, like dragging.
+    const m = Math.max(0, Math.min(1425, Math.round(pxToMin(e.clientY - rect.top) / 15) * 15));
     openEditor({ date: day, startTime: fromMin(m), endTime: fromMin(m + 60), kind: "event" });
   };
 
@@ -299,9 +300,9 @@ export function DayColumn({
               left: `calc(${(col / cols) * 100}% + ${gap + indent}px)`,
               width: `calc(${100 / cols}% - ${gap * 2 + indent}px)`,
               zIndex: lifted ? undefined : nested ? depth : undefined,
-              // While lifted (or on top of another item), a solid card under the tint keeps what's
-              // behind from showing through.
-              background: lifted || nested ? `linear-gradient(${fill}, ${fill}), hsl(var(--card))` : fill,
+              // While lifted, a solid card under the tint keeps what's behind from showing through. On top of
+              // another item it stays see-through like the rest, over a light veil of the card so its text reads.
+              background: lifted ? `linear-gradient(${fill}, ${fill}), hsl(var(--card))` : nested ? `linear-gradient(${fill}, ${fill}), hsl(var(--card) / .55)` : fill,
               transform: lifted ? "scale(1.04)" : undefined,
               borderLeft: `3px solid ${accentOf(b.item, settings)}`,
               boxShadow: [active && `inset 0 0 0 1.5px ${accentOf(b.item, settings)}`, nested && "0 0 0 1px hsl(var(--card))"].filter(Boolean).join(", ") || undefined,
@@ -321,7 +322,7 @@ export function DayColumn({
                     "mt-0.5 h-4 w-4 shrink-0 rounded grid place-items-center border",
                     tiny && "mt-0",
                   )}
-                  style={{ borderColor: accentOf(b.item, settings), background: b.done ? accentOf(b.item, settings) : "transparent" }}
+                  style={{ borderColor: colorOf(b.item), background: b.done ? colorOf(b.item) : "transparent" }}
                   aria-label={b.done ? "Mark not done" : "Mark done"}
                   data-testid={`button-check-${b.key}`}
                 >

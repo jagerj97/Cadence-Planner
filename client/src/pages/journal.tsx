@@ -466,7 +466,7 @@ function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
       </div>
       {/* The title (the item's, for an item's notes) on its own line under the time. */}
       {item ? (
-        <button onClick={() => openDetails(item)} className="mt-1 block max-w-full truncate text-left text-sm font-semibold hover:underline" style={{ color: accentOf(item, settings) }} data-testid={`button-entry-item-${e.id}`}>
+        <button onClick={() => openDetails(item)} className="mt-1 block max-w-full truncate text-left text-sm font-semibold hover:underline" style={{ color: colorOf(item) }} data-testid={`button-entry-item-${e.id}`}>
           {item.title}
         </button>
       ) : e.title ? (

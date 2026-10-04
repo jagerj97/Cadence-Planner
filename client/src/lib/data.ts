@@ -3,6 +3,7 @@ import { apiRequest, queryClient } from "./queryClient";
 import type { Item, InsertItem, Feed, Session, Settings } from "@shared/schema";
 import { DEFAULT_SETTINGS, canonicalTag } from "@shared/schema";
 import { haptic } from "./haptics";
+import { setTagColors } from "./cal";
 
 export const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
 
@@ -11,7 +12,9 @@ export function useItems() {
 }
 export function useSettings() {
   const q = useQuery<Settings>({ queryKey: ["/api/settings"] });
-  return { ...q, settings: q.data ?? DEFAULT_SETTINGS };
+  const settings = q.data ?? DEFAULT_SETTINGS;
+  setTagColors(settings.taskTags);
+  return { ...q, settings };
 }
 export function useFeeds() {
   return useQuery<Feed[]>({ queryKey: ["/api/feeds"] });

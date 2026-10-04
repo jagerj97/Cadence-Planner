@@ -235,15 +235,19 @@ final class WidgetDraw {
         shape.addRoundRect(rect, radii, Path.Direction.CW);
 
         if (depth > 0) {
+            // A thin card-colored outline only, so the item underneath still shows through.
             Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setStrokeWidth(d);
             edge.setColor(theme.card);
-            RectF outer = new RectF(rect.left - d, rect.top - d, rect.right + d, rect.bottom + d);
-            canvas.drawRoundRect(outer, r + d, r + d, edge);
+            RectF outer = new RectF(rect.left - d / 2, rect.top - d / 2, rect.right + d / 2, rect.bottom + d / 2);
+            canvas.drawRoundRect(outer, r + d / 2, r + d / 2, edge);
         }
         int layer = canvas.saveLayerAlpha(rect, done ? 140 : 255);
         canvas.clipPath(shape);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(theme.card);
+        // On top of another item, only a light veil of the card goes under the tint, so it stays see-through.
+        paint.setColor(depth > 0 ? alpha(theme.card, 0.55f) : theme.card);
         canvas.drawRect(rect, paint);
         paint.setColor(alpha(color, "sleep".equals(kind) ? 0.1f : 0.15f));
         canvas.drawRect(rect, paint);

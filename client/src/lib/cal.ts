@@ -29,12 +29,28 @@ export function orderHabits(habits: Item[], settings: Settings): Item[] {
 }
 
 /** returns a CSS color string for an item */
-export function colorOf(i: Item): string {
-  if (i.color) return i.color;
-  return `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
+/**
+ * Task tag colors by name, kept current from Settings (useSettings), so a tagged task is drawn in its
+ * tag's color everywhere without every caller passing Settings around.
+ */
+let tagColors = new Map<string, string>();
+let tagColorsFrom: unknown = null;
+export function setTagColors(tags: { name: string; color: string }[] | undefined) {
+  if (tags === tagColorsFrom) return;
+  tagColorsFrom = tags;
+  tagColors = new Map((tags ?? []).map((t) => [t.name, t.color]));
 }
+const tagColorOf = (i: Item) => (kindOf(i) === "task" ? tagColors.get(String(listOf(i.tags)[0] ?? "")) : undefined);
+
+/** An item's own color: a tagged task's tag color, a color picked for the item, or its kind's color. */
+export function colorOf(i: Item): string {
+  return tagColorOf(i) ?? i.color ?? `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
+}
+/** The kind's color, for the bar down an item's left edge (the item itself takes colorOf). */
+export const kindColorOf = (i: Item) => `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
 export function tint(i: Item, alpha: number): string {
-  if (i.color) return hexAlpha(i.color, alpha);
+  const own = tagColorOf(i) ?? i.color;
+  if (own) return hexAlpha(own, alpha);
   return `hsl(var(${KIND_META[kindOf(i)].cssVar}) / ${alpha})`;
 }
 function hexAlpha(hex: string, a: number) {
