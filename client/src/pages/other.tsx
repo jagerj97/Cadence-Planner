@@ -1166,7 +1166,7 @@ export function SettingsPage() {
                   className={cn("inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-foreground capitalize transition-colors", draft.colorTheme === name ? "border-primary bg-primary/10 font-semibold" : "hover:bg-muted")}
                   data-testid={`button-theme-${name}`}>
                   <span className="h-4 w-4 rounded-full" style={{ background: {
-                    ribbon: "#cf493e", carrot: "#e66b0a", butter: "#e0a80b", grass: "#6a8229",
+                    ribbon: "#cf3517", carrot: "#e66b0a", butter: "#e0a80b", grass: "#6a8229",
                     denim: "#4d60ab", plum: "#95549d", mouse: "#62676b",
                   }[name] }} />
                   {draft.plain ? PLAIN_THEME_NAMES[name] : name}

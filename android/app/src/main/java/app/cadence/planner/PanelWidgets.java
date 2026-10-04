@@ -299,20 +299,20 @@ final class PanelWidgets {
     private static RemoteViews renderAgenda(Context context, int id, WidgetTheme theme, JSONObject snapshot) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_agenda);
         paintCard(v, theme, theme.primary);
-        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800043, "open:/agenda"));
+        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800043, "open:/"));
         v.setTextColor(R.id.agenda_heading, theme.foreground);
         v.setInt(R.id.agenda_add, "setColorFilter", theme.mutedForeground);
-        v.setOnClickPendingIntent(R.id.agenda_header, openApp(context, 800040, "open:/agenda"));
+        v.setOnClickPendingIntent(R.id.agenda_header, openApp(context, 800040, "open:/"));
         v.setOnClickPendingIntent(R.id.agenda_add, openApp(context, 800041, "add-event"));
         Intent rows = new Intent(context, AgendaService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
         rows.setData(Uri.parse(rows.toUri(Intent.URI_INTENT_SCHEME)));
         v.setRemoteAdapter(R.id.agenda_list, rows);
         v.setEmptyView(R.id.agenda_list, R.id.agenda_empty);
         v.setTextColor(R.id.agenda_empty, theme.mutedForeground);
-        // Tapping the list opens the app's agenda.
+        // Tapping the list opens Today.
         Intent launch = new Intent(context, AppActivity.class)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(EXTRA_ADD, "open:/agenda").setData(Uri.parse("cadence-widget://open/agenda"));
+            .putExtra(EXTRA_ADD, "open:/").setData(Uri.parse("cadence-widget://open/agenda-today"));
         v.setPendingIntentTemplate(R.id.agenda_list, PendingIntent.getActivity(context, 800042 + id, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
         return v;
