@@ -37,7 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, panelShown, panelToggle, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronLeft, ChevronRight, Plus, Check, Play, CornerDownLeft, SlidersHorizontal, GripVertical, Maximize2, Minimize2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Check, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -131,7 +131,7 @@ export default function Today() {
                   ))}
                 </div>
               )}
-              {/* Scrolls inside the card, or (Whole day) is as tall as the day. */}
+              {/* Scrolls inside the card, or (opened with the chevron) is as tall as the day. */}
               <div className={cn("relative", !wholeDay && "flex-1")}>
               {isLoading ? (
                 <div className="p-4 grid gap-3">
@@ -476,7 +476,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
 /** Switches the day card between the timeline and the agenda list, like the calendar's view switch. */
 function DayViewToggle({ view, onPick, wholeDay, onWholeDay }: {
   view: "timeline" | "agenda"; onPick: (v: "timeline" | "agenda") => void;
-  /** The timeline's "Whole day" switch: all 24 hours at once instead of scrolling inside the card. */
+  /** The timeline's whole-day chevron: all 24 hours at once instead of scrolling inside the card. */
   wholeDay?: boolean; onWholeDay?: () => void;
 }) {
   return (
@@ -491,13 +491,12 @@ function DayViewToggle({ view, onPick, wholeDay, onWholeDay }: {
           </button>
         ))}
       </div>
+      {/* A chevron opens the timeline out to the whole day, and folds it back. */}
       {onWholeDay && (
-        <button type="button" onClick={onWholeDay} aria-pressed={!!wholeDay}
-          className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
-            wholeDay ? "border-transparent bg-primary/15 text-primary" : "text-muted-foreground hover-elevate")}
+        <button type="button" onClick={onWholeDay} aria-expanded={!!wholeDay} aria-label={wholeDay ? "Show less of the day" : "Show the whole day"}
+          className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
           data-testid="button-timeline-whole-day">
-          {wholeDay ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-          Whole day
+          <ChevronDown className={cn("h-5 w-5 transition-transform", wholeDay && "rotate-180")} />
         </button>
       )}
     </div>
