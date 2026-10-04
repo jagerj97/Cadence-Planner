@@ -358,6 +358,8 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
   // A task is due at its time rather than taking up the half hour it's drawn as: it can be next, not current.
   const current = blocks.find((b) => nm >= b.start && nm < b.end && kindOf(b.item) !== "task");
   const next = blocks.find((b) => b.start > nm && b.continues !== "before");
+  // With nothing on, it nudges toward a task if any are left today.
+  const tasksLeft = taskRowsFor(items, today, true).some((r) => !r.done);
   return (
     <div className="card-md wellness-now p-4 md:p-5 grid gap-3" data-testid="card-now">
       <div className="flex items-center justify-between">
@@ -400,7 +402,9 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
           )}
         </div>
       ) : (
-        <div className="text-sm text-muted-foreground">Nothing scheduled right now — a good moment for a task below.</div>
+        <div className="text-sm text-muted-foreground" data-testid="text-now-empty">
+          {tasksLeft ? "Nothing's happening right now... Maybe there's time for a task!" : "Looks like you've got some free time!"}
+        </div>
       )}
       {next && (
         <button type="button" onClick={() => openDetails(next.item, next.occDate)}

@@ -6,5 +6,5 @@
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_list"
-    android:previewLayout="@layout/widget_list"
+    android:previewLayout="@layout/widget_habits_preview"
     android:widgetCategory="home_screen" />

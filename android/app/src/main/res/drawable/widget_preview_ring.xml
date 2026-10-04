@@ -1,0 +1,9 @@
+<!-- Right now's progress ring in the widget preview: a track, about two thirds done. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="oval"><stroke android:width="4dp" android:color="@color/wp_line" /></shape></item>
+    <item><rotate android:fromDegrees="-90" android:toDegrees="-90" android:pivotX="50%" android:pivotY="50%">
+        <shape android:shape="ring" android:innerRadiusRatio="2.4" android:thickness="4dp" android:useLevel="false">
+            <gradient android:type="sweep" android:startColor="@color/wp_event" android:centerColor="@color/wp_event" android:endColor="#00000000" android:centerX="0.5" android:centerY="0.5" />
+        </shape>
+    </rotate></item>
+</layer-list>

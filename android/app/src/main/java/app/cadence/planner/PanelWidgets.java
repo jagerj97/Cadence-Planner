@@ -212,6 +212,7 @@ final class PanelWidgets {
         v.setViewPadding(R.id.now_body, pad, pad, pad, pad);
         if (current != null) {
             v.setViewVisibility(R.id.now_current, View.VISIBLE);
+            v.setViewVisibility(R.id.now_ring, View.VISIBLE);
             v.setViewVisibility(R.id.now_empty, View.GONE);
             v.setImageViewBitmap(R.id.now_ring, WidgetDraw.ring(context, (now - start) / (float) Math.max(1, end - start),
                 color, theme.border, current.optString("kind")));
@@ -219,11 +220,21 @@ final class PanelWidgets {
             v.setTextColor(R.id.now_title, theme.foreground);
             v.setTextViewText(R.id.now_sub, duration(end - now) + " left · ends " + time(end));
             v.setTextColor(R.id.now_sub, theme.mutedForeground);
+        } else if (!tall && next != null) {
+            // A row tall with nothing on: what's next, in the current item's place.
+            v.setViewVisibility(R.id.now_current, View.VISIBLE);
+            v.setViewVisibility(R.id.now_empty, View.GONE);
+            v.setViewVisibility(R.id.now_ring, View.GONE);
+            v.setTextViewText(R.id.now_title, next.optString("title"));
+            v.setTextColor(R.id.now_title, theme.foreground);
+            v.setTextViewText(R.id.now_sub, "Next · " + time(next.optInt("start")) + " · in " + duration(next.optInt("start") - now));
+            v.setTextColor(R.id.now_sub, theme.mutedForeground);
         } else {
             v.setViewVisibility(R.id.now_current, View.GONE);
             v.setViewVisibility(R.id.now_empty, View.VISIBLE);
             v.setTextColor(R.id.now_empty, theme.mutedForeground);
-            if (day == null) v.setTextViewText(R.id.now_empty, "Open Cadence to load your day");
+            v.setTextViewText(R.id.now_empty, day == null ? "Open Cadence to load your day" : tasksLeft(day)
+                ? "Nothing's happening right now... Maybe there's time for a task!" : "Looks like you've got some free time!");
         }
         int nextVisibility = next == null || !tall ? View.GONE : View.VISIBLE;
         v.setViewVisibility(R.id.now_divider, nextVisibility);
@@ -238,6 +249,16 @@ final class PanelWidgets {
             v.setTextColor(R.id.now_next_when, theme.mutedForeground);
         }
         return v;
+    }
+
+    /** Whether any of the day's tasks are still to do. */
+    private static boolean tasksLeft(JSONObject day) {
+        JSONArray tasks = day.optJSONArray("tasks");
+        for (int i = 0; tasks != null && i < tasks.length(); i++) {
+            JSONObject t = tasks.optJSONObject(i);
+            if (t != null && !t.optBoolean("done")) return true;
+        }
+        return false;
     }
 
     // ---- Your day ----
