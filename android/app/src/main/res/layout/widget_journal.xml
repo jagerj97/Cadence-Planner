@@ -1,20 +1,23 @@
-<!-- The journal shortcut, laid out like an app on the home screen: a rounded tile with the journal
-     icon and "Journal" under it. Tapping it opens the Journal page. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:gravity="center" android:contentDescription="Open the journal">
-    <FrameLayout android:layout_width="52dp" android:layout_height="52dp">
-        <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
-            android:src="@drawable/widget_icon_bg" android:scaleType="fitXY" android:importantForAccessibility="no" />
-        <ImageView android:id="@+id/card_tint" android:layout_width="match_parent" android:layout_height="match_parent"
-            android:src="@drawable/widget_icon_tint" android:scaleType="fitXY" android:importantForAccessibility="no" />
-        <ImageView android:id="@+id/journal_icon" android:layout_width="28dp" android:layout_height="28dp"
-            android:layout_gravity="center" android:src="@drawable/ic_journal" android:importantForAccessibility="no" />
-    </FrameLayout>
-    <!-- Styled like the launcher's app names: white with a soft shadow. -->
-    <TextView android:id="@+id/journal_label" android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_marginTop="4dp" android:text="@string/widget_journal_label" android:textColor="#FFFFFFFF"
-        android:textSize="12sp" android:maxLines="1" android:ellipsize="end"
-        android:shadowColor="#99000000" android:shadowDx="0" android:shadowDy="1" android:shadowRadius="3"
-        android:importantForAccessibility="no" />
-</LinearLayout>
+<!-- The journal widget: today's entries, or a note that there are none yet and the latest two. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/card_tint" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card_tint" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+        <LinearLayout android:id="@+id/journal_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical"
+            android:paddingStart="16dp" android:paddingEnd="10dp" android:paddingTop="10dp" android:paddingBottom="4dp">
+            <TextView android:id="@+id/journal_heading" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:text="Journal" android:textSize="15sp" android:textStyle="bold" />
+            <TextView android:id="@+id/journal_count" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp" android:textSize="13sp" />
+            <ImageView android:id="@+id/journal_add" android:layout_width="30dp" android:layout_height="30dp" android:padding="6dp"
+                android:src="@drawable/ic_plus" android:contentDescription="New entry" />
+        </LinearLayout>
+        <ListView android:id="@+id/journal_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+            android:paddingBottom="8dp" android:clipToPadding="false"
+            android:divider="@null" android:dividerHeight="0dp" android:scrollbars="none" />
+    </LinearLayout>
+</FrameLayout>

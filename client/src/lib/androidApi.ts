@@ -208,7 +208,7 @@ async function refreshNotifications() {
   if (!bridge?.scheduleReminders) return;
   const items = await list<Item>("items");
   try {
-    bridge.updateWidget?.(JSON.stringify(widgetSnapshot(items, await pref())));
+    bridge.updateWidget?.(JSON.stringify(widgetSnapshot(items, await pref(), await list<JournalEntry>("journal"))));
   } catch { /* the widget is optional */ }
   // `start` lets the notification count down to it (older builds show `body` as it is).
   const reminders: { at: number; start: number; title: string; body: string }[] = [];
@@ -656,7 +656,7 @@ export function installAndroidApi() {
       }
       const response = await localApi(method, url.pathname, data);
       if (response.ok && method !== "GET" && (
-        url.pathname.startsWith("/api/items") || url.pathname.startsWith("/api/feeds") ||
+        url.pathname.startsWith("/api/items") || url.pathname.startsWith("/api/feeds") || url.pathname.startsWith("/api/journal") ||
         url.pathname === "/api/import" || url.pathname === "/api/settings"
       )) await refreshNotifications();
       return response;

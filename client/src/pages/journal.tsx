@@ -881,7 +881,7 @@ export default function JournalPage() {
                     <div className="h-12 w-12 rounded-full bg-accent grid place-items-center text-primary">
                       <NotebookPen className="h-5 w-5" />
                     </div>
-                    <div className="font-medium">There's nothing here yet...</div>
+                    <div className="font-medium">{isToday ? "What's on your mind today?" : "There's nothing here yet..."}</div>
                   </div>
                 ) : (
                   dayEntries.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} item={itemOf(e)} openDetails={openDetails} onEdit={(entry) => setCompose({ entry })} />)

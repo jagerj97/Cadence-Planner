@@ -90,6 +90,7 @@ final class PanelWidgets {
             for (int id : ids) render(context, manager, provider, id, full);
             if (provider == Schedule.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.schedule_list);
             if (provider == Agenda.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.agenda_list);
+            if (provider == Journal.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.journal_list);
             if (provider == Tasks.class || provider == Habits.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.list_rows);
         }
         if (any) scheduleTick(context);
@@ -152,7 +153,7 @@ final class PanelWidgets {
         else if (provider == Day.class) views = renderDay(context, manager, id, theme, day);
         else if (provider == Schedule.class) views = renderSchedule(context, id, theme, day, full);
         else if (provider == Agenda.class) views = renderAgenda(context, id, theme, snapshot);
-        else if (provider == Journal.class) views = renderJournal(context, theme);
+        else if (provider == Journal.class) views = renderJournal(context, id, theme, snapshot);
         else views = renderList(context, id, provider == Tasks.class, theme, day);
         manager.updateAppWidget(id, views);
     }
@@ -297,12 +298,26 @@ final class PanelWidgets {
 
     // ---- Journal ----
 
-    /** Laid out like an app: a tile with the journal icon in the theme's color, and "Journal" under it. */
-    private static RemoteViews renderJournal(Context context, WidgetTheme theme) {
+    /** Today's entries, or a note that there are none yet and the latest two. Tapping it opens the journal. */
+    private static RemoteViews renderJournal(Context context, int id, WidgetTheme theme, JSONObject snapshot) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_journal);
         paintCard(v, theme, theme.primary);
-        v.setInt(R.id.journal_icon, "setColorFilter", theme.primary);
         v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800050, "open:/journal"));
+        v.setOnClickPendingIntent(R.id.journal_header, openApp(context, 800051, "open:/journal"));
+        v.setTextColor(R.id.journal_heading, theme.foreground);
+        int count = JournalFactory.todays(snapshot.optJSONArray("journal"), LocalDate.now().toString()).size();
+        v.setTextViewText(R.id.journal_count, count == 0 ? "" : count + " today");
+        v.setTextColor(R.id.journal_count, theme.mutedForeground);
+        v.setInt(R.id.journal_add, "setColorFilter", theme.primary);
+        v.setOnClickPendingIntent(R.id.journal_add, openApp(context, 800052, "add-journal"));
+        Intent rows = new Intent(context, JournalService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
+        rows.setData(Uri.parse(rows.toUri(Intent.URI_INTENT_SCHEME)));
+        v.setRemoteAdapter(R.id.journal_list, rows);
+        Intent launch = new Intent(context, AppActivity.class)
+            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_ADD, "open:/journal").setData(Uri.parse("cadence-widget://open/journal-list"));
+        v.setPendingIntentTemplate(R.id.journal_list, PendingIntent.getActivity(context, 800053 + id, launch,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
         return v;
     }
 
@@ -313,7 +328,7 @@ final class PanelWidgets {
         paintCard(v, theme, theme.primary);
         v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800043, "open:/"));
         v.setTextColor(R.id.agenda_heading, theme.foreground);
-        v.setInt(R.id.agenda_add, "setColorFilter", theme.mutedForeground);
+        v.setInt(R.id.agenda_add, "setColorFilter", theme.primary);
         v.setOnClickPendingIntent(R.id.agenda_header, openApp(context, 800040, "open:/"));
         v.setOnClickPendingIntent(R.id.agenda_add, openApp(context, 800041, "add-event"));
         Intent rows = new Intent(context, AgendaService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
@@ -339,7 +354,7 @@ final class PanelWidgets {
         v.setTextViewText(R.id.list_heading, tasks ? "Tasks" : "Habits");
         v.setTextColor(R.id.list_heading, theme.foreground);
         v.setTextColor(R.id.list_count, theme.mutedForeground);
-        v.setInt(R.id.list_add, "setColorFilter", theme.mutedForeground);
+        v.setInt(R.id.list_add, "setColorFilter", theme.primary);
         v.setOnClickPendingIntent(R.id.list_header, openApp(context, 800010 + (tasks ? 0 : 1), tasks ? "open:/tasks" : "open:/habits"));
         v.setOnClickPendingIntent(R.id.list_add, openApp(context, 800020 + (tasks ? 0 : 1), tasks ? "add-task" : "add-habit"));
 
@@ -697,6 +712,95 @@ final class PanelWidgets {
         }
     }
 
+    // ---- journal rows ----
+
+    public static class JournalService extends RemoteViewsService {
+        @Override public RemoteViewsFactory onGetViewFactory(Intent intent) {
+            return new JournalFactory(getApplicationContext());
+        }
+    }
+
+    /**
+     * The snapshot's latest entries: today's, or (with none today, or a snapshot from an earlier day)
+     * a note saying so and the latest two.
+     */
+    static final class JournalFactory implements RemoteViewsService.RemoteViewsFactory {
+        private final Context context;
+        /** Each row: an entry, or null for the note. */
+        private final java.util.ArrayList<JSONObject> rows = new java.util.ArrayList<>();
+        private WidgetTheme theme = new WidgetTheme(null);
+        private boolean today;
+
+        JournalFactory(Context context) { this.context = context; }
+
+        /** The entries written on `date`. */
+        static java.util.ArrayList<JSONObject> todays(JSONArray entries, String date) {
+            java.util.ArrayList<JSONObject> out = new java.util.ArrayList<>();
+            for (int i = 0; entries != null && i < entries.length(); i++) {
+                JSONObject e = entries.optJSONObject(i);
+                if (e != null && date.equals(e.optString("date"))) out.add(e);
+            }
+            return out;
+        }
+
+        @Override public void onCreate() {}
+        @Override public void onDataSetChanged() {
+            JSONObject snapshot = snapshot(context);
+            theme = theme(context, snapshot);
+            rows.clear();
+            JSONArray entries = snapshot.optJSONArray("journal");
+            String date = LocalDate.now().toString();
+            rows.addAll(todays(entries, date));
+            today = !rows.isEmpty();
+            if (today) return;
+            rows.add(null);
+            // The latest two from before today (the snapshot lists the newest first).
+            for (int i = 0; entries != null && i < entries.length() && rows.size() < 3; i++) {
+                JSONObject e = entries.optJSONObject(i);
+                if (e != null && e.optString("date").compareTo(date) < 0) rows.add(e);
+            }
+        }
+        @Override public void onDestroy() {}
+        @Override public int getCount() { return rows.size(); }
+        @Override public RemoteViews getLoadingView() { return null; }
+        @Override public int getViewTypeCount() { return 2; }
+        @Override public long getItemId(int position) { return position; }
+        @Override public boolean hasStableIds() { return false; }
+
+        @Override public RemoteViews getViewAt(int position) {
+            JSONObject e = position < rows.size() ? rows.get(position) : null;
+            if (e == null) {
+                RemoteViews n = new RemoteViews(context.getPackageName(), R.layout.widget_journal_note);
+                n.setInt(R.id.journal_note_bg, "setColorFilter", mix(theme.primary, theme.card, theme.dark ? 0.16f : 0.12f));
+                n.setTextColor(R.id.journal_note, theme.foreground);
+                n.setTextColor(R.id.journal_recent, theme.mutedForeground);
+                n.setViewVisibility(R.id.journal_recent, rows.size() > 1 ? View.VISIBLE : View.GONE);
+                n.setOnClickFillInIntent(R.id.journal_note_row, new Intent());
+                return n;
+            }
+            RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_journal_row);
+            v.setInt(R.id.journal_edge, "setColorFilter", today ? theme.primary : theme.mutedForeground);
+            v.setTextViewText(R.id.journal_title, e.optString("title"));
+            v.setTextColor(R.id.journal_title, theme.foreground);
+            // Today's show the time written; earlier ones the day ("Fri", or "Sep 28" from over a week ago).
+            String time;
+            if (today) time = e.optString("time");
+            else {
+                boolean thisWeek = false;
+                try { thisWeek = !LocalDate.parse(e.optString("date")).isBefore(LocalDate.now().minusDays(6)); } catch (Exception ignored) {}
+                time = e.optString(thisWeek ? "weekday" : "short");
+            }
+            v.setTextViewText(R.id.journal_time, time);
+            v.setTextColor(R.id.journal_time, theme.mutedForeground);
+            String text = e.optString("text");
+            v.setTextViewText(R.id.journal_text, text);
+            v.setViewVisibility(R.id.journal_text, text.isEmpty() ? View.GONE : View.VISIBLE);
+            v.setTextColor(R.id.journal_text, theme.mutedForeground);
+            v.setOnClickFillInIntent(R.id.journal_row, new Intent());
+            return v;
+        }
+    }
+
     /** `t` of color `a` over color `b`, opaque. */
     static int mix(int a, int b, float t) {
         int r = Math.round(android.graphics.Color.red(a) * t + android.graphics.Color.red(b) * (1 - t));
@@ -712,6 +816,7 @@ final class PanelWidgets {
             for (int id : ids) render(context, manager, getClass(), id, true);
             if (getClass() == Schedule.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.schedule_list);
             if (getClass() == Agenda.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.agenda_list);
+            if (getClass() == Journal.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.journal_list);
             if (getClass() == Tasks.class || getClass() == Habits.class) manager.notifyAppWidgetViewDataChanged(ids, R.id.list_rows);
             scheduleTick(context);
         }

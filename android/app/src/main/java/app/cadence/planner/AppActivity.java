@@ -274,7 +274,7 @@ public class AppActivity extends Activity {
     private void readLaunchAction(Intent intent) {
         String add = intent == null ? null : intent.getStringExtra(PanelWidgets.EXTRA_ADD);
         // "open:/tasks" and the like open a page (each widget opens its own).
-        if ("add-task".equals(add) || "add-habit".equals(add) || "add-event".equals(add) || add != null && add.matches("open:/[a-z]*")) launchAction = add;
+        if ("add-task".equals(add) || "add-habit".equals(add) || "add-event".equals(add) || "add-journal".equals(add) || add != null && add.matches("open:/[a-z]*")) launchAction = add;
         // The timer notification's Finish: finish the session here; the page logs it and asks about the calendar.
         if (intent != null && FocusTimer.ACTION_STOP.equals(intent.getAction())) {
             intent.setAction(null); // not again if the activity is recreated

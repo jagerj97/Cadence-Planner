@@ -361,13 +361,18 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   };
   const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
 
-  // A widget's + button opens the app to add a task, habit or event; tapping a widget opens its page.
+  // A widget's + button opens the app to add a task, habit, event or journal entry; tapping a widget opens its page.
   useEffect(() => {
     const run = () => {
       const action = window.CadenceAndroid?.takeLaunchAction?.() || "";
       if (action === "add-task") openEditor({ date: todayStr(), kind: "task" });
       if (action === "add-habit") openEditor({ date: todayStr(), kind: "habit", recurrence: '{"freq":"daily"}' });
       if (action === "add-event") openEditor({ date: todayStr(), kind: "event" });
+      // The journal widget's +: the journal, with a new entry open.
+      if (action === "add-journal") {
+        window.location.hash = "#/journal";
+        setTimeout(() => window.dispatchEvent(new Event("cadence:journal-compose")), 300);
+      }
       // Each widget opens its own page ("open:/tasks").
       if (/^open:\/[a-z]*$/.test(action)) window.location.hash = `#${action.slice(5)}`;
     };

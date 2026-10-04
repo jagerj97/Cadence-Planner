@@ -1,4 +1,4 @@
-import type { Item, Settings } from "@shared/schema";
+import type { Item, JournalEntry, Settings } from "@shared/schema";
 import {
   KIND_META, addDays, colorOf, setTagColors, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
   routineSchedules, sunTimes, todayStr,
@@ -69,7 +69,37 @@ function readTheme(dark: boolean) {
   };
 }
 
-export function widgetSnapshot(items: Item[], settings: Settings) {
+/** The journal widget gets this many of the latest entries, and picks today's from them itself. */
+export const WIDGET_JOURNAL = 12;
+
+/** An entry's text as one plain line: no **bold** or similar marks, no line breaks. */
+const plainLine = (text: string) => text.replace(/(\*\*|__|\*)(.+?)\1/g, "$2").replace(/\s+/g, " ").trim();
+
+/** The latest entries (not archived) for the journal widget: a title (the entry's, its item's, or its first line) and a snippet. */
+function journalFor(entries: JournalEntry[], items: Item[]) {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return entries
+    .filter((e) => !e.archived)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, WIDGET_JOURNAL)
+    .map((e) => {
+      const item = e.itemId ? byId.get(e.itemId) : undefined;
+      const lines = e.body.split("\n").map(plainLine).filter(Boolean);
+      const named = item?.title || e.title?.trim() || "";
+      const created = new Date(e.createdAt);
+      return {
+        date: e.date,
+        title: named || lines[0] || "",
+        text: (named ? lines : lines.slice(1)).join(" ").slice(0, 200),
+        // When it was written, for today's entries ("8:12 AM").
+        time: Number.isNaN(created.getTime()) ? "" : fmtTime(created.getHours() * 60 + created.getMinutes(), true),
+        weekday: fmtDate(e.date, { weekday: "short" }),
+        short: fmtDate(e.date, { month: "short", day: "numeric" }),
+      };
+    });
+}
+
+export function widgetSnapshot(items: Item[], settings: Settings, journal: JournalEntry[] = []) {
   setTagColors(settings.taskTags); // tagged tasks take their tag's color (colorOf)
   const today = todayStr();
   const days: Record<string, unknown> = {};
@@ -135,5 +165,5 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       })),
     });
   }
-  return { version: 2, generatedAt: Date.now(), themes: { light: themeFor(false), dark: themeFor(true) }, days, agenda };
+  return { version: 2, generatedAt: Date.now(), themes: { light: themeFor(false), dark: themeFor(true) }, days, agenda, journal: journalFor(journal, items) };
 }
