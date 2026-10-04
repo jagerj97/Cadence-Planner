@@ -23,6 +23,7 @@ import {
   parseQuick,
   recLabel,
   recOf,
+  routineSchedules,
   toMin,
   todayStr,
   taskAvailableFrom,
@@ -360,6 +361,9 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
   const next = blocks.find((b) => b.start > nm && b.continues !== "before");
   // With nothing on, it nudges toward a task if any are left today.
   const tasksLeft = taskRowsFor(items, today, true).some((r) => !r.done);
+  const { settings } = useSettings();
+  // With nothing else on, a routine from Settings is named (no ring, and it's never "next").
+  const routine = blocksForDay(routineSchedules(settings), today).find((b) => nm >= b.start && nm < b.end);
   return (
     <div className="card-md wellness-now p-4 md:p-5 grid gap-3" data-testid="card-now">
       <div className="flex items-center justify-between">
@@ -403,7 +407,8 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
         </div>
       ) : (
         <div className="text-sm text-muted-foreground" data-testid="text-now-empty">
-          {tasksLeft ? "Nothing's happening right now... Maybe there's time for a task!" : "Looks like you've got some free time!"}
+          {routine ? `Looks like you've got a routine now — ${routine.item.title}`
+            : tasksLeft ? "Nothing's happening right now... Maybe there's time for a task!" : "Looks like you've got some free time!"}
         </div>
       )}
       {next && (

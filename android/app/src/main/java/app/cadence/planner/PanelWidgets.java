@@ -173,6 +173,13 @@ final class PanelWidgets {
             String continues = b.optString("continues");
             if (next == null && b.optInt("start") > now && !"before".equals(continues)) next = b;
         }
+        // With nothing else on, a routine from Settings is named (no ring, and it's never "next").
+        JSONObject routine = null;
+        JSONArray routines = day == null ? null : day.optJSONArray("routines");
+        for (int i = 0; routines != null && i < routines.length() && routine == null; i++) {
+            JSONObject r = routines.optJSONObject(i);
+            if (r != null && now >= r.optInt("start") && now < r.optInt("end")) routine = r;
+        }
         int color = current != null ? WidgetDraw.parse(current.optString("color"), theme.primary) : theme.primary;
         int start = current == null ? 0 : current.optInt("fullStart", current.optInt("start"));
         int end = current == null ? 0 : current.optInt("fullEnd", current.optInt("end"));
@@ -192,8 +199,9 @@ final class PanelWidgets {
                 v.setTextViewText(R.id.now_sub, duration(end - now) + " left");
             } else {
                 v.setViewVisibility(R.id.now_ring, View.GONE);
-                v.setTextViewText(R.id.now_title, day == null ? "Open Cadence" : next != null ? next.optString("title") : "Nothing now");
-                v.setTextViewText(R.id.now_sub, next != null ? "Next · " + time(next.optInt("start")) : "");
+                v.setTextViewText(R.id.now_title, day == null ? "Open Cadence" : routine != null ? routine.optString("title")
+                    : next != null ? next.optString("title") : "Nothing now");
+                v.setTextViewText(R.id.now_sub, routine != null ? "Routine now" : next != null ? "Next · " + time(next.optInt("start")) : "");
             }
             v.setViewVisibility(R.id.now_title, roomy || current == null ? View.VISIBLE : View.GONE);
             v.setViewVisibility(R.id.now_sub, roomy ? View.VISIBLE : View.GONE);
@@ -220,6 +228,11 @@ final class PanelWidgets {
             v.setTextColor(R.id.now_title, theme.foreground);
             v.setTextViewText(R.id.now_sub, duration(end - now) + " left · ends " + time(end));
             v.setTextColor(R.id.now_sub, theme.mutedForeground);
+        } else if (routine != null) {
+            v.setViewVisibility(R.id.now_current, View.GONE);
+            v.setViewVisibility(R.id.now_empty, View.VISIBLE);
+            v.setTextColor(R.id.now_empty, theme.mutedForeground);
+            v.setTextViewText(R.id.now_empty, "Looks like you've got a routine now — " + routine.optString("title"));
         } else if (!tall && next != null) {
             // A row tall with nothing on: what's next, in the current item's place.
             v.setViewVisibility(R.id.now_current, View.VISIBLE);
