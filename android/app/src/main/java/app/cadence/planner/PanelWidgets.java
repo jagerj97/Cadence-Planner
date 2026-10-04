@@ -342,7 +342,7 @@ final class PanelWidgets {
         int count = JournalFactory.todays(snapshot.optJSONArray("journal"), LocalDate.now().toString()).size();
         v.setTextViewText(R.id.journal_count, count == 0 ? "" : count + " today");
         v.setTextColor(R.id.journal_count, theme.mutedForeground);
-        v.setInt(R.id.journal_add, "setColorFilter", theme.primary);
+        v.setInt(R.id.journal_add, "setColorFilter", theme.mutedForeground);
         v.setOnClickPendingIntent(R.id.journal_add, openApp(context, 800052, "add-journal"));
         Intent rows = new Intent(context, JournalService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
         rows.setData(Uri.parse(rows.toUri(Intent.URI_INTENT_SCHEME)));
@@ -362,7 +362,7 @@ final class PanelWidgets {
         paintCard(v, theme, theme.primary);
         v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800043, "open:/"));
         v.setTextColor(R.id.agenda_heading, theme.foreground);
-        v.setInt(R.id.agenda_add, "setColorFilter", theme.primary);
+        v.setInt(R.id.agenda_add, "setColorFilter", theme.mutedForeground);
         v.setOnClickPendingIntent(R.id.agenda_header, openApp(context, 800040, "open:/"));
         v.setOnClickPendingIntent(R.id.agenda_add, openApp(context, 800041, "add-event"));
         Intent rows = new Intent(context, AgendaService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
@@ -388,7 +388,7 @@ final class PanelWidgets {
         v.setTextViewText(R.id.list_heading, tasks ? "Tasks" : "Habits");
         v.setTextColor(R.id.list_heading, theme.foreground);
         v.setTextColor(R.id.list_count, theme.mutedForeground);
-        v.setInt(R.id.list_add, "setColorFilter", theme.primary);
+        v.setInt(R.id.list_add, "setColorFilter", theme.mutedForeground);
         v.setOnClickPendingIntent(R.id.list_header, openApp(context, 800010 + (tasks ? 0 : 1), tasks ? "open:/tasks" : "open:/habits"));
         v.setOnClickPendingIntent(R.id.list_add, openApp(context, 800020 + (tasks ? 0 : 1), tasks ? "add-task" : "add-habit"));
 
