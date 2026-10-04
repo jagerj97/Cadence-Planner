@@ -147,7 +147,7 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
           add tag
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0 rounded shadow-lg">
+      <PopoverContent align="start" className="w-64 overflow-hidden p-0 shadow-lg">
         <div className="flex items-center gap-1.5 border-b px-3">
           <Hash className="h-4 w-4 text-muted-foreground" />
           <input
@@ -165,18 +165,18 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
             data-testid="input-journal-tag"
           />
         </div>
-        <div className="max-h-60 overflow-y-auto py-1" role="listbox" aria-label="Tag suggestions">
+        <div className="max-h-60 overflow-y-auto p-1.5" role="listbox" aria-label="Tag suggestions">
           {typed && !pool.includes(typed) && !taken.includes(typed) && !hide?.(typed) && (
-            <button onClick={() => add(typed)} className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left" data-testid="button-create-tag">
+            <button onClick={() => add(typed)} className="flex h-9 w-full items-center gap-2 rounded-full px-3.5 text-sm font-medium hover:bg-muted text-left" data-testid="button-create-tag">
               <Plus className="h-3.5 w-3.5 text-primary" />
               Create <span className="font-medium text-primary">#{typed}</span>
             </button>
           )}
           {options.length === 0 && !typed ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">No more suggestions</div>
+            <div className="px-3.5 py-2 text-sm text-muted-foreground">No more suggestions</div>
           ) : (
             options.map((t) => (
-              <button key={t} onClick={() => add(t)} className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted text-left" role="option" data-testid={`option-tag-${t}`}>
+              <button key={t} onClick={() => add(t)} className="flex h-9 w-full items-center justify-between rounded-full px-3.5 text-sm font-medium hover:bg-muted text-left" role="option" data-testid={`option-tag-${t}`}>
                 <span>#{t}</span>
                 <span className="text-xs text-muted-foreground tnum">{counts.get(t) ? `${counts.get(t)} used` : "suggested"}</span>
               </button>

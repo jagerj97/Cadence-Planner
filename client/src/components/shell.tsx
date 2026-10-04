@@ -137,7 +137,7 @@ function AddMenu() {
           <AddIcon open={open} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden rounded-[20px] p-0 shadow-lg">
+      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden p-0 shadow-lg">
         <div className="p-2.5 border-b">
           <QuickAdd appbar day={day} onDone={() => setOpen(false)} />
         </div>
@@ -146,7 +146,7 @@ function AddMenu() {
             <button
               key={k.kind}
               onClick={() => pick(k.kind)}
-              className="flex items-center gap-3 rounded px-3 py-2.5 text-sm hover:bg-muted text-left"
+              className="flex items-center gap-3 rounded-full py-1.5 pl-1.5 pr-3 text-sm font-medium hover:bg-muted text-left"
               data-testid={`button-add-${k.kind}`}
             >
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white" style={{ background: k.color }}>

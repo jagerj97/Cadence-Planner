@@ -635,7 +635,7 @@ export function PickerTitle({ label, open, onOpenChange, children, testId }: {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <button type="button" className="inline-flex max-w-full items-center gap-1 rounded-md -mx-1 px-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        <button type="button" className="inline-flex max-w-full items-center gap-1 rounded-full -mx-2 px-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           aria-label={`${label}. Choose a different date`} data-testid={testId}>
           <span className="truncate">{label}</span>
           <ChevronDown className={cn("h-5 w-5 md:h-6 md:w-6 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} strokeWidth={2.5} aria-hidden />
@@ -676,7 +676,7 @@ function MonthPicker({ month, onPick }: { month: string; onPick: (firstOfMonth: 
           return (
             <button key={name} type="button"
               onClick={() => { onPick(ymd(new Date(year, m, 1))); setOpen(false); }}
-              className={cn("rounded-md py-2 text-sm font-medium transition-colors",
+              className={cn("rounded-full py-2 text-sm font-medium transition-colors",
                 selected ? "bg-primary text-primary-foreground" : isNow ? "text-primary ring-1 ring-primary/50 hover:bg-muted" : "hover:bg-muted")}
               aria-pressed={selected} data-testid={`button-pick-month-${m + 1}`}>
               {name}
@@ -717,7 +717,7 @@ function WeekPicker({ title, start, weekStartsOn, onPick }: {
           return (
             <button key={w} type="button"
               onClick={() => { onPick(w); setOpen(false); }}
-              className={cn("flex items-center justify-between rounded-md px-3 py-2 text-sm tnum transition-colors",
+              className={cn("flex items-center justify-between rounded-full px-3 py-2 text-sm tnum transition-colors",
                 selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted")}
               aria-pressed={selected} data-testid={`button-pick-week-${w}`}>
               <span>{range(w)}</span>
@@ -759,7 +759,7 @@ export function DayPicker({ day, label, marked, onPick, testId = "button-pick-jo
           const selected = d === day;
           return (
             <button key={d} type="button" onClick={() => { onPick(d); setOpen(false); }}
-              className={cn("relative grid h-9 place-items-center rounded-md text-sm tnum transition-colors",
+              className={cn("relative grid h-9 place-items-center rounded-full text-sm tnum transition-colors",
                 selected ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-muted",
                 !inMonth && !selected && "text-muted-foreground/50", d === today && !selected && "text-primary font-semibold")}
               aria-pressed={selected} aria-label={`${fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}${marked?.has(d) ? ", has entries" : ""}`}
