@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
+import { NavOrderEditor } from "@/components/navOrder";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS, PLAIN_THEME_NAMES } from "@shared/schema";
 import type { ColorTheme, DisplayMode, Feed, ImportKind, Routine, Session, Settings, WeekDay } from "@shared/schema";
@@ -1157,7 +1158,7 @@ export function SettingsPage() {
 
             </div>
           </Section>
-          <Section title="Appearance" hint="Choose a color theme and display mode">
+          <Section title="Appearance" hint="Color theme, display mode and the bottom bar">
             <div className="flex flex-wrap gap-2" role="group" aria-label="App color theme">
               {COLOR_THEMES.map((name) => (
                 <button key={name} type="button" aria-pressed={draft.colorTheme === name}
@@ -1188,6 +1189,11 @@ export function SettingsPage() {
                   <SelectItem value="sun">Sunrise/sunset</SelectItem>
                 </SelectContent>
               </Select>
+            </Field>
+            <Field label="Bottom bar">
+              {/* Saved with the rest of the page's settings; also in Today's Customize window. */}
+              <NavOrderEditor order={draft.navOrder} onReorder={(next) => setDraft((d) => ({ ...d, navOrder: next }))} />
+              <p className="text-xs text-muted-foreground">Hold a page and drag it along. Cadence still opens on Today.</p>
             </Field>
             <SubSection title="Let Cadence outside" hint="Hide the cat stuff">
               <p className="text-sm text-muted-foreground">

@@ -409,6 +409,18 @@
   --background: 0 0% 10%; --card: 0 0% 16%; --sidebar: 0 0% 14%; --border: 0 0% 26%; --muted: 0 0% 19%;
   --accent: 0 0% 24%; --accent-foreground: 0 0% 90%; --sidebar-accent: 0 0% 24%;
 }
+/* Each color theme tints the page's neutrals (background, borders, muted fills, and in dark mode the
+   cards) with its own hue, as lightly as Carrot's warm cream; Mouse keeps them grey. */
+:root[data-color-theme="ribbon"] { --background: 5 28% 97%; --sidebar: 5 29% 98%; --border: 5 19% 88%; --muted: 5 25% 95%; --secondary: 5 12% 93%; }
+:root[data-color-theme="denim"] { --background: 228 28% 97%; --sidebar: 228 29% 98%; --border: 228 19% 88%; --muted: 228 25% 95%; --secondary: 228 12% 93%; }
+:root[data-color-theme="butter"] { --background: 46 28% 97%; --sidebar: 46 29% 98%; --border: 46 19% 88%; --muted: 46 25% 95%; --secondary: 46 12% 93%; }
+:root[data-color-theme="plum"] { --background: 291 28% 97%; --sidebar: 291 29% 98%; --border: 291 19% 88%; --muted: 291 25% 95%; --secondary: 291 12% 93%; }
+:root[data-color-theme="grass"] { --background: 82 28% 97%; --sidebar: 82 29% 98%; --border: 82 19% 88%; --muted: 82 25% 95%; --secondary: 82 12% 93%; }
+.dark[data-color-theme="ribbon"] { --background: 5 10% 11%; --card: 5 8% 16%; --sidebar: 5 8% 14%; --border: 5 6% 22%; --muted: 5 7% 19%; --secondary: 5 7% 20%; }
+.dark[data-color-theme="denim"] { --background: 228 10% 11%; --card: 228 8% 16%; --sidebar: 228 8% 14%; --border: 228 6% 22%; --muted: 228 7% 19%; --secondary: 228 7% 20%; }
+.dark[data-color-theme="butter"] { --background: 46 10% 11%; --card: 46 8% 16%; --sidebar: 46 8% 14%; --border: 46 6% 22%; --muted: 46 7% 19%; --secondary: 46 7% 20%; }
+.dark[data-color-theme="plum"] { --background: 291 10% 11%; --card: 291 8% 16%; --sidebar: 291 8% 14%; --border: 291 6% 22%; --muted: 291 7% 19%; --secondary: 291 7% 20%; }
+.dark[data-color-theme="grass"] { --background: 82 10% 11%; --card: 82 8% 16%; --sidebar: 82 8% 14%; --border: 82 6% 22%; --muted: 82 7% 19%; --secondary: 82 7% 20%; }
 .dark[data-color-theme]:not([data-color-theme="carrot"]) { --primary-foreground: 23 8% 12%; --sidebar-primary-foreground: 23 8% 12%; }
 .fab { box-shadow: 0 3px 6px hsl(0 0% 0% / 0.2), 0 3px 6px hsl(0 0% 0% / 0.26); transition: box-shadow .2s, transform .2s; }
 .fab:hover { box-shadow: 0 10px 20px hsl(0 0% 0% / 0.22), 0 6px 6px hsl(0 0% 0% / 0.26); transform: translateY(-1px); }

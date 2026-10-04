@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import type { Item } from "@shared/schema";
-import { PageHeader, orderNav } from "@/components/shell";
+import { PageHeader } from "@/components/shell";
+import { NavOrderEditor } from "@/components/navOrder";
 import { DayPicker } from "@/pages/calendar";
 import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
@@ -181,7 +182,6 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
   const save = useSaveSettings();
   const { settings } = useSettings();
   const toggle = (panel: TodayPanel, shown: boolean) => save.mutate(panelToggle(settings, panel, shown));
-  const pages = orderNav(settings.navOrder);
   return (
     <>
       <div className="flex justify-center">
@@ -216,23 +216,7 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
           {/* Drawn like the bar itself; hold a page and drag it along. The app still opens on Today, wherever it sits. */}
           <section className="grid gap-2" aria-label="Bottom bar">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bottom bar</h3>
-            <SortableList
-              horizontal
-              items={pages.map((n) => n.href)}
-              onReorder={(next) => save.mutate({ navOrder: next })}
-              className="flex rounded-[20px] border bg-muted/40 p-0.5"
-              itemClassName="min-w-0 flex-1"
-              render={(href, lifted) => {
-                const n = pages.find((page) => page.href === href)!;
-                return (
-                  <div className={cn("flex flex-col items-center gap-0.5 rounded-2xl py-2 text-muted-foreground", lifted && "text-primary")}
-                    data-testid={`row-nav-${n.label.toLowerCase()}`}>
-                    <n.icon className="h-5 w-5" aria-hidden />
-                    <span className="max-w-full truncate text-[10px] tracking-tight">{n.label}</span>
-                  </div>
-                );
-              }}
-            />
+            <NavOrderEditor order={settings.navOrder} onReorder={(next) => save.mutate({ navOrder: next })} />
           </section>
         </DialogContent>
       </Dialog>
