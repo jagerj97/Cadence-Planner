@@ -31,7 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { accentOf } from "@/components/taskTags";
-import { AgendaList } from "@/components/agendaList";
+import { AgendaList, DayHeading } from "@/components/agendaList";
 import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -477,8 +477,8 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
 /**
  * The timeline view: the Today page's timeline for one day after another, so scrolling runs on from
  * one day's evening into the next morning. Each day's date stays pinned at the top while it's in view.
- * It opens at the current time and loads more days either way as it's scrolled; the title is the day
- * in view and opens the picker to jump to another, which opens an hour before you wake.
+ * It opens at the current time and loads more days either way as it's scrolled; the title is the month
+ * in view and opens the picker to jump to a day, which opens an hour before you wake.
  */
 export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
   const { data: items } = useItems();
@@ -497,7 +497,7 @@ export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
   const days = Array.from({ length: dayDiff(range.start, range.end) + 1 }, (_, n) => addDays(range.start, n));
   return (
     <>
-      <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { weekday: "short", month: "short", day: "numeric" })} onPick={goTo} testId="button-pick-timeline-day" />}>
+      <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-timeline-day" />}>
         <div className="flex items-center gap-1">
           <Button variant="outline" size="sm" onClick={() => goTo(today)} data-testid="button-timeline-today">
             Today
@@ -512,15 +512,11 @@ export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
             <div ref={topEdge} className="h-px" aria-hidden />
             {items && days.map((day) => {
               const allDay = allDayFor(list, day);
-              const isToday = day === today;
               return (
                 <section key={day} data-day={day} aria-label={fmtDate(day, { weekday: "long", month: "long", day: "numeric" })} data-testid={`timeline-day-${day}`}>
                   {/* The date, pinned while the day is in view, with that day's all-day items under it. */}
                   <div data-day-head className="sticky top-0 z-40 border-b bg-card">
-                    <div className="flex items-baseline gap-2 px-4 pt-2.5 pb-2">
-                      <span className={cn("text-sm font-semibold", isToday && "text-primary")}>{fmtDate(day, { weekday: "long", month: "short", day: "numeric" })}</span>
-                      {isToday && <span className="text-xs font-medium text-primary">Today</span>}
-                    </div>
+                    <div className="px-4 pt-2 pb-1.5"><DayHeading day={day} /></div>
                     {allDay.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 px-3 pb-2" aria-label="All-day">
                         {allDay.map((i) => (

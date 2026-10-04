@@ -36,6 +36,17 @@ export function AgendaItem({ e, settings, compact = false }: { e: Entry; setting
   );
 }
 
+/** A day's date as the agenda and timeline views head it: the day of the month in bold, then the weekday, lighter. */
+export function DayHeading({ day }: { day: string }) {
+  const isToday = day === todayStr();
+  return (
+    <div className={cn("flex items-baseline gap-2", isToday && "text-primary")}>
+      <span className="text-xl font-semibold leading-tight tnum">{Number(day.slice(8))}</span>
+      <span className={cn("text-sm", isToday ? "font-medium" : "text-muted-foreground")}>{fmtDate(day, { weekday: "long" })}{isToday && " · Today"}</span>
+    </div>
+  );
+}
+
 /** Where "now" falls in today's list: a line in the color theme with a dot at its start. */
 function NowMarker() {
   return (
@@ -96,9 +107,8 @@ export function AgendaList({ list, from, days, limit, compact = false, emptyToda
           <div key={day} data-day={day}>
             {/* The date above the day's items, pinned while they're in view (as in the timeline view). */}
             {dates && (
-              <div className="sticky top-0 z-10 flex items-baseline gap-2 border-b bg-card px-4 pt-2.5 pb-2" data-testid={`agenda-date-${day}`}>
-                <span className={cn("text-sm font-semibold", isToday && "text-primary")}>{fmtDate(day, { weekday: "long", month: "short", day: "numeric" })}</span>
-                {isToday && <span className="text-xs font-medium text-primary">Today</span>}
+              <div className="sticky top-0 z-10 border-b bg-card px-4 pt-2 pb-1.5" data-testid={`agenda-date-${day}`}>
+                <DayHeading day={day} />
               </div>
             )}
             <div className={cn("grid min-w-0 gap-1.5", dates && "px-4 pt-3 pb-4")} data-testid={`agenda-day-${day}`}>
