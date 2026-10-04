@@ -77,7 +77,7 @@ final class PanelWidgets {
         refreshAll(context, true);
     }
 
-    static final Class<?>[] PROVIDERS = { Now.class, Day.class, Schedule.class, Agenda.class, Tasks.class, Habits.class };
+    static final Class<?>[] PROVIDERS = { Now.class, Day.class, Schedule.class, Agenda.class, Tasks.class, Habits.class, Journal.class };
 
     /** Redraws every widget. `full` also re-sends list data and scrolls the schedule to the current hour. */
     static void refreshAll(Context context, boolean full) {
@@ -152,6 +152,7 @@ final class PanelWidgets {
         else if (provider == Day.class) views = renderDay(context, manager, id, theme, day);
         else if (provider == Schedule.class) views = renderSchedule(context, id, theme, day, full);
         else if (provider == Agenda.class) views = renderAgenda(context, id, theme, snapshot);
+        else if (provider == Journal.class) views = renderJournal(context, theme);
         else views = renderList(context, id, provider == Tasks.class, theme, day);
         manager.updateAppWidget(id, views);
     }
@@ -291,6 +292,17 @@ final class PanelWidgets {
             v.setScrollPosition(R.id.schedule_list, Math.max(0, LocalTime.now().getHour()));
             prefs.edit().putString(key, today).apply();
         }
+        return v;
+    }
+
+    // ---- Journal ----
+
+    /** A one-cell button: the journal icon on the card, in the theme's color; tapping it opens the journal. */
+    private static RemoteViews renderJournal(Context context, WidgetTheme theme) {
+        RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_journal);
+        paintCard(v, theme, theme.primary);
+        v.setInt(R.id.journal_icon, "setColorFilter", theme.primary);
+        v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800050, "open:/journal"));
         return v;
     }
 
@@ -723,6 +735,7 @@ final class PanelWidgets {
     public static class Day extends Base {}
     public static class Schedule extends Base {}
     public static class Agenda extends Base {}
+    public static class Journal extends Base {}
     public static class Tasks extends Base {}
     public static class Habits extends Base {}
 }

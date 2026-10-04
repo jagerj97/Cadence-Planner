@@ -1,0 +1,11 @@
+<!-- The journal button: a card with the journal icon; tapping it opens the Journal page. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:contentDescription="Open the journal">
+    <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/card_tint" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card_tint" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/journal_icon" android:layout_width="28dp" android:layout_height="28dp"
+        android:layout_gravity="center" android:src="@drawable/ic_journal" android:importantForAccessibility="no" />
+</FrameLayout>
