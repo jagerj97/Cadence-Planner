@@ -41,7 +41,6 @@ import {
   isTimed,
   shiftedToToday,
   sunTimes,
-  routineDaysLabel,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { WeekdayPills, choicePill } from "@/components/pills";
@@ -532,8 +531,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           if (!details) return;
           const { target, occDate } = details;
           setDetails(null);
-          if (target.source === "routine") window.location.hash = "#/settings";
-          else openEditor(target, occDate);
+          openEditor(target, occDate);
         }}
       />
       <ItemEditor editing={editing} onClose={() => setEditing(null)} />
@@ -612,15 +610,12 @@ function ItemDetails({ details, onClose, onEdit }: {
   const { settings } = useSettings();
   // The live copy, so the journal checkbox and check marks reflect what was just saved.
   const i = details && (items?.find((x) => x.id === details.target.id) ?? details.target);
-  const routine = i?.source === "routine";
-  // A routine on some days repeats weekly on them (routineSchedules).
-  const routineDays = routine && i ? routineDaysLabel(recOf(i).freq === "weekly" ? recOf(i).days : undefined) : "";
   // Tasks and habits can be checked off from here, for the day they were opened from.
   // A deadline task is checked off (and shown) for the due date it's open for.
   const deadline = !!i && isDeadlineTask(i);
   const dueDay = i && deadline ? dueDateFor(i, details?.occDate || todayStr()) ?? details?.occDate ?? i.date : null;
   const checkDay = i ? (dueDay ?? (details?.occDate || (i.kind === "habit" ? todayStr() : i.date))) : "";
-  const checkable = !!i && !routine && i.id > 0 && (i.kind === "task" || i.kind === "habit") && occursOn(i, checkDay);
+  const checkable = !!i && i.id > 0 && (i.kind === "task" || i.kind === "habit") && occursOn(i, checkDay);
   const tags = i?.kind === "task" ? itemTags(i, settings).slice(0, 1) : [];
   // A deadline task shows its due date, whichever day it was opened from.
   const d = dueDay ?? (details?.occDate || i?.date || "");
@@ -633,7 +628,7 @@ function ItemDetails({ details, onClose, onEdit }: {
             {checkable && <DetailCheck item={i} day={checkDay} />}
             <DialogHeader className="min-w-0 flex-1 text-left">
               <DialogTitle className="min-w-0 text-lg leading-snug">{i.title}</DialogTitle>
-              <DialogDescription>{routine ? `Routine · ${routineDays}` : KIND_META[kindOf(i)].label}</DialogDescription>
+              <DialogDescription>{KIND_META[kindOf(i)].label}</DialogDescription>
             </DialogHeader>
           </div>
           {tags.length > 0 && (
@@ -645,32 +640,32 @@ function ItemDetails({ details, onClose, onEdit }: {
           <div className="grid grid-cols-1 gap-3 text-sm">
             {/* A habit has no start date to show, only the day it was opened from. */}
             {(i.kind !== "habit" || details?.occDate) && <div>
-              <div className="text-xs text-muted-foreground">{routine ? "Repeats" : deadline ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
-              <div>{routine ? `${routineDays[0].toUpperCase()}${routineDays.slice(1)}` : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
+              <div className="text-xs text-muted-foreground">{deadline ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
+              <div>{fmtDate(d)}{i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}</div>
             </div>}
             {i.startTime && <div>
               <div className="text-xs text-muted-foreground">Time</div>
-              <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date && !routine ? " (ends later)" : ""}</div>
+              <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date ? " (ends later)" : ""}</div>
             </div>}
-            {!routine && i.startTime && remindersOf(i).length > 0 && <div>
+            {i.startTime && remindersOf(i).length > 0 && <div>
               <div className="text-xs text-muted-foreground">{remindersOf(i).length > 1 ? "Reminders" : "Reminder"}</div>
               <div className="first-letter:uppercase">{remindersOf(i).map((m) => (REMINDERS.find((r) => r.v === String(m))?.l ?? `${fmtDur(m)} before`).toLowerCase()).join(", ")}</div>
             </div>}
-            {!routine && recOf(i).freq !== "none" && <div>
+            {recOf(i).freq !== "none" && <div>
               <div className="text-xs text-muted-foreground">Repeats</div>
               <div>{recLabel(i)}</div>
             </div>}
             {/* A place opens the maps app, a link opens in the browser. */}
             {i.location && <div><LocationLink location={i.location} /></div>}
             {i.notes && <p className="whitespace-pre-wrap break-words text-muted-foreground"><Linked text={i.notes} /></p>}
-            {i.notes?.trim() && !routine && i.kind !== "habit" && i.id > 0 && (
+            {i.notes?.trim() && i.kind !== "habit" && i.id > 0 && (
               <JournalNotesCheckbox id="checkbox-notes-journal" checked={!i.journalOff && i.journalId != null}
                 onChange={(on) => update.mutate({ id: i.id, journalOff: !on })} />
             )}
           </div>
           <div className="flex justify-center">
             <Button variant="outline" size="sm" className="h-8 rounded-full px-5 text-xs" onClick={onEdit} data-testid="button-detail-edit">
-              {routine ? "Edit routine" : "Edit"}
+              Edit
             </Button>
           </div>
         </>}
@@ -891,7 +886,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
         {isFeed && (
           <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
             <Link2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            Synced from a subscribed calendar. The name, times, and notes cannot be changed!
+            Synced from a subscribed calendar. The name, times, repeat, color, location, and notes cannot be changed!
           </div>
         )}
         <form onSubmit={onSubmit} className="grid gap-4">
@@ -941,7 +936,8 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
 
           {/* Laid out like Google Calendar's: a row per part, its icon on the left, dates and times as pills. */}
           <div className="grid gap-3">
-            {/* A synced item's times come from its calendar (each sync would put them back). */}
+            {/* A synced item's name, times, repeat, color, location and notes come from its calendar (each sync
+                would put them back), so they're locked. */}
             <EditorRow icon={Clock} locked={isFeed}>
               <label className="flex min-h-9 cursor-pointer items-center justify-between gap-3">
                 <span className="text-sm">{v.kind === "task" ? "Any time" : "All-day"}</span>
@@ -1150,13 +1146,13 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
             )}
 
             {v.kind !== "task" && v.kind !== "sleep" && (
-              <EditorRow icon={Palette}>
+              <EditorRow icon={Palette} locked={isFeed}>
                 <ItemColorPicker kind={v.kind} value={v.color} onChange={(c) => setValue("color", c)} />
               </EditorRow>
             )}
 
-            <EditorRow icon={MapPin}>
-              <Input placeholder="Location or link" className="h-9" {...register("location")} data-testid="input-location" />
+            <EditorRow icon={MapPin} locked={isFeed}>
+              <Input placeholder="Location or link" className="h-9" readOnly={isFeed} {...register("location")} data-testid="input-location" />
             </EditorRow>
             <EditorRow icon={AlignLeft}>
               <Textarea placeholder="Notes" rows={3} readOnly={isFeed} className={cn(isFeed && "opacity-60")} {...register("notes")} data-testid="input-notes" />
