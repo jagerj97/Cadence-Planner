@@ -130,7 +130,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
 
   return (
     <>
-      <PageHeader title={<WeekPicker title={title} start={start} weekStartsOn={settings.weekStartsOn} onPick={setAnchor} />} sub={`Week of ${fmtDate(start, { month: "short", day: "numeric" })}`}>
+      <PageHeader title={<WeekPicker title={title} start={start} weekStartsOn={settings.weekStartsOn} onPick={setAnchor} />}>
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Previous week" data-testid="button-prev-week">
             <ChevronLeft className="h-4 w-4" />

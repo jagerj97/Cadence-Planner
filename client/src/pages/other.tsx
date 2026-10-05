@@ -174,7 +174,6 @@ export function HabitsPage() {
             <section className="card-md" aria-label="Habit tracker">
               <div className="flex items-baseline justify-between gap-2 px-4 pt-4 pb-2">
                 <h2 className="text-base font-semibold tracking-tight">Tracker</h2>
-                <span className="text-xs text-muted-foreground">Tap once for half, twice for full</span>
               </div>
               {/* Each habit column is at least 36px wide; with more habits than fit, the tracker scrolls
                   sideways while the dates stay put and habits fade out as they slide under them. The habit
@@ -450,7 +449,7 @@ export function FocusPage() {
             <div className="card-md">
               <h2 className="text-sm font-semibold px-4 pt-3 pb-2">Today's sessions</h2>
               {todays.length === 0 ? (
-                <p className="px-4 pb-4 text-sm text-muted-foreground">Finished sessions show up here.</p>
+                <p className="px-4 pb-4 text-sm text-muted-foreground" data-testid="text-no-sessions">There's nothing here yet! Got anything you want to focus on?</p>
               ) : (
                 <ul className="pb-2">
                   {todays.map((s) => (
