@@ -770,6 +770,8 @@ export function CalendarLinks() {
 }
 
 /** keeps feeds fresh while the app is open */
+/** Calendar links sync once when the app starts, then every 15 minutes while it's open. */
+let syncedAtStart = false;
 export function useAutoSync() {
   const { data: feeds } = useFeeds();
   useEffect(() => {
@@ -785,6 +787,10 @@ export function useAutoSync() {
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
     };
+    if (!syncedAtStart) {
+      syncedAtStart = true;
+      void run();
+    }
     const t = setInterval(run, 15 * 60 * 1000);
     return () => clearInterval(t);
   }, [feeds?.length]); // eslint-disable-line
