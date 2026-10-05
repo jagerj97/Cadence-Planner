@@ -886,7 +886,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
         {isFeed && (
           <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
             <Link2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            Synced from a subscribed calendar. The name, times, repeat, color, location, and notes cannot be changed!
+            Synced from a subscribed calendar. The name, times, location, and notes cannot be changed!
           </div>
         )}
         <form onSubmit={onSubmit} className="grid gap-4">
@@ -936,8 +936,8 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
 
           {/* Laid out like Google Calendar's: a row per part, its icon on the left, dates and times as pills. */}
           <div className="grid gap-3">
-            {/* A synced item's name, times, repeat, color, location and notes come from its calendar (each sync
-                would put them back), so they're locked. */}
+            {/* A synced item's name, times (with its repeat), location and notes come from its calendar (each
+                sync would put them back), so they're locked. */}
             <EditorRow icon={Clock} locked={isFeed}>
               <label className="flex min-h-9 cursor-pointer items-center justify-between gap-3">
                 <span className="text-sm">{v.kind === "task" ? "Any time" : "All-day"}</span>
@@ -1146,7 +1146,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
             )}
 
             {v.kind !== "task" && v.kind !== "sleep" && (
-              <EditorRow icon={Palette} locked={isFeed}>
+              <EditorRow icon={Palette}>
                 <ItemColorPicker kind={v.kind} value={v.color} onChange={(c) => setValue("color", c)} />
               </EditorRow>
             )}

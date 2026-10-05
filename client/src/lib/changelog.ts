@@ -61,7 +61,7 @@ export const CHANGELOG: Record<string, ReleaseNotes> = {
     ],
     changes: [
       "Reminders and timers sound through your notifications: a little bell jingle, or the chime with Cadence outside",
-      "Display mode: dark, light, your phone's setting, or sunrise/sunset",
+      "Display mode: dark, light, your device's setting, or sunrise/sunset",
       "A new schedule view in the calendar, and a Schedule card for Today",
       "A new layout for adding and editing items. Tasks are due at a time and can open days before",
       "Items over several days are one bar in the week and month views, and overlapping items nest",

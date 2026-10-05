@@ -70,6 +70,8 @@ export type Feed = {
   useColor?: boolean;
   /** Set when "Import items as" changed, so the next sync re-applies it to existing items. */
   resetKinds?: boolean;
+  /** Its color setting changed since the last sync, so the next one recolors every item (otherwise items keep their own). */
+  resetColors?: boolean;
 };
 
 export type Session = {

@@ -821,7 +821,7 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
       if (data?.format !== "cadence-android-backup" || data.version !== 1 ||
           !data.tables || !["items", "feeds", "journal", "sessions", "settings"]
             .every((key) => Array.isArray(data.tables[key]))) {
-        throw new Error("This is not a supported Cadence Android backup");
+        throw new Error("This is not a supported Cadence backup");
       }
       const { items, feeds, journal, sessions } = data.tables;
       setCandidate({
@@ -872,9 +872,9 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
       <Dialog open={!!candidate} onOpenChange={(open) => { if (!open && !busy) setCandidate(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Replace data on this phone?</DialogTitle>
+            <DialogTitle>Replace data on this device?</DialogTitle>
             <DialogDescription>
-              Restoring {candidate?.name} will remove the current planner data from this phone and replace it
+              Restoring {candidate?.name} will remove the current planner data from this device and replace it
               with the contents of the backup. This cannot be undone unless you saved another backup
             </DialogDescription>
           </DialogHeader>
@@ -883,7 +883,7 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
             <Button variant="outline" onClick={() => setCandidate(null)} disabled={busy}
               data-testid="button-backup-cancel">Cancel</Button>
             <Button variant="destructive" onClick={restore} disabled={busy}
-              data-testid="button-backup-confirm">{busy ? "Restoring…" : "Replace phone data"}</Button>
+              data-testid="button-backup-confirm">{busy ? "Restoring…" : "Replace device data"}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1099,7 +1099,7 @@ export function SettingsPage() {
                 setDraft((d) => ({ ...d, haptics: v }));
               }} data-testid="switch-haptics" />
             </Row>
-            <Row label="Phone notifications">
+            <Row label="Device notifications">
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={askPermission} disabled={perm === "granted"} data-testid="button-notify-permission">
                   <Bell className="h-3.5 w-3.5 mr-1.5" />
@@ -1295,7 +1295,7 @@ function SunPreview({ lat, lng }: { lat: number; lng: number }) {
 }
 
 const LOCATION_ERRORS: Record<string, string> = {
-  denied: "Location permission was denied. You can allow it in Android Settings › Apps › Cadence › Permissions.",
+  denied: "Location permission was denied. You can allow it in your device's settings.",
   disabled: "Location is turned off on this device.",
   timeout: "Finding your location took too long.",
   unavailable: "Your location isn't available right now.",
