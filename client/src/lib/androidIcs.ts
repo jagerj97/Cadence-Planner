@@ -1,15 +1,9 @@
 import ICAL from "ical.js";
 import type { InsertItem, Item, Recurrence } from "@shared/schema";
-import { remindersOf } from "./cal";
+import { addDays, listOf, pad, parseYmd, recOf, remindersOf, ymd } from "./cal";
 
 const days = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-const pad = (n: number) => String(n).padStart(2, "0");
-const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const dayAfter = (date: string) => {
-  const d = new Date(date + "T12:00:00");
-  d.setDate(d.getDate() + 1);
-  return ymd(d);
-};
+const dayAfter = (date: string) => addDays(date, 1);
 const dateOf = (t: ICAL.Time, tz: string) => {
   if (t.isDate) return `${t.year}-${pad(t.month)}-${pad(t.day)}`;
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -72,11 +66,7 @@ function row(component: ICAL.Component, start: ICAL.Time, end: ICAL.Time, tz: st
     uid: value(component, "uid") || null,
   };
 }
-const previousDay = (date: string) => {
-  const d = new Date(date + "T12:00:00");
-  d.setDate(d.getDate() - 1);
-  return ymd(d);
-};
+const previousDay = (date: string) => addDays(date, -1);
 
 /**
  * A repeat rule as Cadence keeps it, or null when it says more than Cadence's repeats can (several
@@ -102,7 +92,8 @@ function recurrence(component: ICAL.Component, event: ICAL.Event, tz: string): R
     rec = { freq: "yearly", interval: rrule.interval || 1 };
   }
   if (!rec) return null;
-  if (rrule.until) return { ...rec, until: dateOf(rrule.until, "UTC") };
+  // The last day it can start, in the calendar's time (an UNTIL in UTC can fall on the next day there).
+  if (rrule.until) return { ...rec, until: dateOf(rrule.until, tz) };
   if (rrule.count) {
     const iterator = event.iterator();
     let last: ICAL.Time | null = null;
@@ -221,14 +212,23 @@ export function exportAndroidIcs(items: Item[], tz: string): string {
     } else {
       lines.push(`DTSTART;VALUE=DATE:${compact(it.date)}`, `DTEND;VALUE=DATE:${compact(dayAfter(it.endDate || it.date))}`);
     }
-    const recurrence: Recurrence = JSON.parse(it.recurrence || '{"freq":"none"}');
+    const recurrence: Recurrence = recOf(it);
     if (recurrence.freq !== "none") {
       let rule = recurrence.freq === "weekdays" ? "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" : `FREQ=${recurrence.freq.toUpperCase()}`;
       if (recurrence.interval && recurrence.interval > 1) rule += `;INTERVAL=${recurrence.interval}`;
       if (recurrence.freq === "weekly" && recurrence.days?.length) rule += `;BYDAY=${recurrence.days.map((d) => days[d]).join(",")}`;
-      if (recurrence.until) rule += `;UNTIL=${compact(recurrence.until)}T235959Z`;
+      // Weeks count from Sunday, as in Cadence (calendars default to Monday).
+      if (recurrence.freq === "weekly" && (recurrence.interval ?? 1) > 1) rule += ";WKST=SU";
+      // The end of its last day: a date for all-day items, else that day's local midnight in UTC.
+      if (recurrence.until) {
+        if (!it.startTime || it.allDay) rule += `;UNTIL=${compact(recurrence.until)}`;
+        else {
+          const d = parseYmd(recurrence.until);
+          rule += `;UNTIL=${new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`;
+        }
+      }
       lines.push(`RRULE:${rule}`);
-      for (const date of JSON.parse(it.exceptions || "[]") as string[]) {
+      for (const date of listOf(it.exceptions)) {
         lines.push(it.startTime && !it.allDay
           ? `EXDATE;TZID=${tz}:${compact(date)}T${compact(it.startTime)}00`
           : `EXDATE;VALUE=DATE:${compact(date)}`);

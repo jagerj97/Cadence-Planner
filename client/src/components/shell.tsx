@@ -4,10 +4,6 @@ import {
   Home,
   CalendarRange,
   NotebookPen,
-  CheckSquare as TaskIcon,
-  Calendar as EventIcon,
-  Users,
-  Target,
   Repeat,
   Timer,
   CheckSquare,
@@ -15,8 +11,8 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { usePlanner, clock } from "./planner";
-import { fromMin, todayStr } from "@/lib/cal";
+import { usePlanner, useFocusElapsed, clock, requestJournalCompose } from "./planner";
+import { KIND_META, fromMin, todayStr } from "@/lib/cal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Kind } from "@shared/schema";
 import { useSettings } from "@/lib/data";
@@ -47,7 +43,8 @@ const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: SettingsIcon,
 function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
   const [loc] = useLocation();
   const nav = useNav();
-  const { focus, elapsed } = usePlanner();
+  const { focus } = usePlanner();
+  const elapsed = useFocusElapsed();
   const row = (n: (typeof NAV)[number]) => {
     const on = n.match(loc);
     return (
@@ -77,13 +74,13 @@ function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-const ADD_KINDS: { kind: Kind | "journal"; label: string; icon: typeof Home; color: string }[] = [
-  { kind: "task", label: "Task", icon: TaskIcon, color: "hsl(var(--k-task))" },
-  { kind: "event", label: "Event", icon: EventIcon, color: "hsl(var(--k-event))" },
-  { kind: "meeting", label: "Meeting", icon: Users, color: "hsl(var(--k-meeting))" },
-  { kind: "habit", label: "Habit", icon: Repeat, color: "hsl(var(--k-habit))" },
-  { kind: "focus", label: "Focus", icon: Target, color: "hsl(var(--k-focus))" },
-];
+/** The kinds the + menu adds, with their names, icons and colors from KIND_META. */
+const ADD_KINDS = (["task", "event", "meeting", "habit", "focus"] as const).map((kind) => ({
+  kind, label: KIND_META[kind].label, icon: KIND_META[kind].icon, color: `hsl(var(${KIND_META[kind].cssVar}))`,
+}));
+
+/** The app bar's round icon buttons (settings and +). */
+const APPBAR_BUTTON = "grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10";
 
 /** Away from Today, the + opens the new item window set to the kind that fits the page. */
 function kindForPage(loc: string): Kind | "journal" {
@@ -105,7 +102,7 @@ function AddMenu() {
     setOpen(false);
     if (kind === "journal") {
       if (!loc.startsWith("/journal")) nav("/journal");
-      setTimeout(() => window.dispatchEvent(new Event("cadence:journal-compose")), 80);
+      requestJournalCompose();
       return;
     }
     const d = new Date();
@@ -126,7 +123,7 @@ function AddMenu() {
     return (
       <button
         onClick={() => pick(kindForPage(loc))}
-        className="grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        className={cn(APPBAR_BUTTON, "transition-colors")}
         aria-label="Add something"
         data-testid="button-add"
       >
@@ -139,7 +136,7 @@ function AddMenu() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-colors", open && "bg-black/10 dark:bg-white/15")}
+          className={cn(APPBAR_BUTTON, "transition-colors", open && "bg-black/10 dark:bg-white/15")}
           aria-label="Add something"
           aria-expanded={open}
           data-testid="button-add"
@@ -231,11 +228,13 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typ
     el.addEventListener("touchstart", down, { passive: true });
     el.addEventListener("touchmove", move, { passive: true });
     el.addEventListener("touchend", up, { passive: true });
-    el.addEventListener("touchcancel", () => { start = null; }, { passive: true });
+    const cancel = () => { start = null; };
+    el.addEventListener("touchcancel", cancel, { passive: true });
     return () => {
       el.removeEventListener("touchstart", down);
       el.removeEventListener("touchmove", move);
       el.removeEventListener("touchend", up);
+      el.removeEventListener("touchcancel", cancel);
     };
   }, [main, go]);
 }
@@ -247,14 +246,17 @@ export function Shell({ children }: { children: ReactNode }) {
   const page = pages.findIndex((n) => n.match(loc));
   // The page a swipe brings in slides in from that side.
   const [slide, setSlide] = useState<{ dir: 1 | -1; to: string } | null>(null);
+  const slideTimer = useRef<ReturnType<typeof setTimeout>>();
   const go = useCallback((href: string, dir: 1 | -1) => {
     setSlide({ dir, to: href });
     nav(href);
-    setTimeout(() => setSlide(null), 300);
+    clearTimeout(slideTimer.current);
+    slideTimer.current = setTimeout(() => setSlide(null), 300);
   }, [nav]);
   usePageSwipe(mainRef, loc, pages, go);
   const slid = slide && pages[page]?.href === slide.to ? slide.dir : 0;
-  const { focus, elapsed } = usePlanner();
+  const { focus } = usePlanner();
+  const elapsed = useFocusElapsed();
   const { settings } = useSettings();
   const inSettings = SETTINGS_NAV.match(loc);
   if (!inSettings) lastPage = loc;
@@ -266,7 +268,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <header className="appbar relative z-30 box-content flex h-14 md:h-16 shrink-0 items-center justify-between px-3 md:px-5 pt-[var(--safe-top,env(safe-area-inset-top,0px))]">
         <button
           onClick={() => nav(inSettings ? lastPage : "/settings")}
-          className={cn("grid h-11 w-11 place-items-center rounded-full text-[hsl(var(--appbar-fg))] hover:bg-black/5 dark:hover:bg-white/10 transition-transform duration-300", inSettings && "bg-black/10 dark:bg-white/15 rotate-90")}
+          className={cn(APPBAR_BUTTON, "transition-transform duration-300", inSettings && "bg-black/10 dark:bg-white/15 rotate-90")}
           aria-label={inSettings ? "Close settings" : "Settings"}
           aria-pressed={inSettings}
           data-testid="button-settings"
@@ -289,8 +291,9 @@ export function Shell({ children }: { children: ReactNode }) {
         <aside className="wellness-rail hidden md:flex w-56 shrink-0 flex-col overflow-y-auto bg-sidebar border-r z-20">
           <DrawerLinks />
         </aside>
-        <main ref={mainRef} className="flex-1 min-w-0 flex flex-col overflow-hidden pb-14 md:pb-0">
-          <div key={page}
+        <main ref={mainRef} className="flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
+          {/* Keyed by the page (not its place in the bar, which reordering the bar changes). */}
+          <div key={pages[page]?.href ?? (inSettings ? "/settings" : "other")}
             className={cn("flex flex-1 min-h-0 flex-col", slid !== 0 && "animate-in fade-in duration-200", slid > 0 ? "slide-in-from-right-8" : slid < 0 && "slide-in-from-left-8")}>
             {children}
           </div>
@@ -298,7 +301,8 @@ export function Shell({ children }: { children: ReactNode }) {
       </div>
 
       {/* bottom bar (phones) */}
-      <nav className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Main">
+      {/* Runs down behind the phone's navigation bar (--safe-bottom), its color filling that strip. */}
+      <nav className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[var(--safe-bottom,env(safe-area-inset-bottom,0px))]" aria-label="Main">
         {pages.map((n) => {
           const on = n.match(loc);
           const timer = n.href === "/focus" && focus;

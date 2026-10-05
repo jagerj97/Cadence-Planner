@@ -1,0 +1,16 @@
+<resources>
+    <!-- The widget previews in the widget picker, in dark mode. -->
+    <color name="wp_card">#2C2826</color>
+    <color name="wp_fg">#EDEDED</color>
+    <color name="wp_muted">#A8A8A8</color>
+    <color name="wp_line">#383838</color>
+    <color name="wp_soft">#303030</color>
+    <color name="wp_primary">#FF7D1A</color>
+    <color name="wp_task">#F0C142</color>
+    <color name="wp_event">#2F85DA</color>
+    <color name="wp_habit">#5CC18F</color>
+    <color name="wp_sleep">#6472C4</color>
+    <color name="wp_primary_chip">#4C3524</color>
+    <color name="wp_task_chip">#493F2A</color>
+    <color name="wp_event_chip">#2C3641</color>
+</resources>

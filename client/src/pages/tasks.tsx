@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
-import { usePlanner } from "@/components/planner";
+import { usePlanner, useToday } from "@/components/planner";
 import { TagManager, tagTint, taskColor, taskTagsOf } from "@/components/taskTags";
 import { TwoRows } from "@/components/twoRows";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
@@ -20,13 +20,13 @@ import {
   recLabel,
   recOf,
   toMin,
+  priorityRank,
   todayStr,
   taskAvailableFrom,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Plus, Check, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag, Hash, Settings2 } from "lucide-react";
 
@@ -52,8 +52,9 @@ export default function TasksPage() {
   const allTags = tagSettings.taskTags ?? [];
   // Several tags can be picked; tasks with any of them show. A tag that was deleted stops filtering.
   const activeTags = tagFilter.filter((n) => allTags.some((t) => t.name === n));
-  const today = todayStr();
-  const tasks = (items ?? []).filter((i) => kindOf(i) === "task" && (activeTags.length === 0 || activeTags.some((n) => taskTagsOf(i).includes(n))));
+  const today = useToday();
+  const tasks = useMemo(() => (items ?? []).filter((i) => kindOf(i) === "task" && (activeTags.length === 0 || activeTags.some((n) => taskTagsOf(i).includes(n)))),
+    [items, activeTags.join("\n")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = useMemo(() => {
     const open: Row[] = [];
@@ -72,8 +73,7 @@ export default function TasksPage() {
         if (n) open.push({ i, occ: n, done: false });
       }
     }
-    const pr = (x: Item) => (x.priority === "high" ? 0 : x.priority === "normal" ? 1 : 2);
-    open.sort((a, b) => a.occ.localeCompare(b.occ) || pr(a.i) - pr(b.i) || (a.i.startTime || "99").localeCompare(b.i.startTime || "99"));
+    open.sort((a, b) => a.occ.localeCompare(b.occ) || priorityRank(a.i) - priorityRank(b.i) || (a.i.startTime || "99").localeCompare(b.i.startTime || "99"));
     done.sort((a, b) => b.occ.localeCompare(a.occ));
     return { open, done };
   }, [tasks, today]);
@@ -298,7 +298,6 @@ function TaskQuickAdd() {
   const [text, setText] = useState("");
   const { create } = useItemMutations();
   const { settings } = useSettings();
-  const { toast } = useToast();
   const p = text.trim() ? parseQuick(text, todayStr()) : null;
   const submit = async () => {
     if (!p) return;

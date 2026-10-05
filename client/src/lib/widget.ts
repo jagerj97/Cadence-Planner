@@ -1,9 +1,9 @@
-import type { Item, Settings } from "@shared/schema";
+import type { Item, JournalEntry, Settings } from "@shared/schema";
 import {
-  KIND_META, addDays, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
+  KIND_META, addDays, colorOf, setTagColors, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
   routineSchedules, sunTimes, todayStr,
 } from "./cal";
-import { agendaFor, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
+import { agendaFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
 import { firstTagColor } from "@/components/taskTags";
 
 /**
@@ -32,7 +32,10 @@ const hslToHex = (hsl: string) => {
   return `#${alpha}${f(0)}${f(8)}${f(4)}`;
 };
 const cssVarHex = (name: string) => hslToHex(getComputedStyle(document.documentElement).getPropertyValue(name));
-const hexOf = (i: Item) => (i.color && /^#[0-9a-f]{6}$/i.test(i.color) ? i.color : cssVarHex(KIND_META[kindOf(i)].cssVar));
+/** An item's own color as hex: a tagged task's tag color, a picked color, or its kind's (as colorOf). */
+const hexOf = (i: Item) => { const c = colorOf(i); return /^#[0-9a-f]{6}$/i.test(c) ? c : cssVarHex(KIND_META[kindOf(i)].cssVar); };
+/** The kind's color, for the bar down an item's left edge. */
+const kindHexOf = (i: Item) => cssVarHex(KIND_META[kindOf(i)].cssVar);
 
 /** Blends two "#rrggbb" colors: t of the first over the second. */
 const mixHex = (a: string, b: string, t: number) => "#" + [1, 3, 5].map((i) =>
@@ -61,12 +64,43 @@ function readTheme(dark: boolean) {
     card: v("card"), border: v("border"), foreground: v("foreground"), muted: v("muted"), mutedForeground: v("muted-foreground"),
     primary: v("primary"), destructive: v("destructive"), task: v("k-task"), habit: v("k-habit"), sleep: v("k-sleep"),
     skyNight: v("sky-night"), skyDawn: v("sky-dawn"), skyDay: v("sky-day"), skyDusk: v("sky-dusk"),
-    // The Right now card's tint of the color theme (.wellness-now in index.css).
-    nowCard: mixHex(v("primary"), v("card"), .16), nowBorder: mixHex(v("primary"), v("card"), dark ? .25 : .35),
+    // Right now's divider: a tint of the color theme (.wellness-now in index.css).
+    nowBorder: mixHex(v("primary"), v("card"), dark ? .25 : .35),
   };
 }
 
-export function widgetSnapshot(items: Item[], settings: Settings) {
+/** The journal widget gets this many of the latest entries, and picks today's from them itself. */
+export const WIDGET_JOURNAL = 12;
+
+/** An entry's text as one plain line: no **bold** or similar marks, no line breaks. */
+const plainLine = (text: string) => text.replace(/(\*\*|__|\*)(.+?)\1/g, "$2").replace(/\s+/g, " ").trim();
+
+/** The latest entries (not archived) for the journal widget: a title (the entry's, its item's, or its first line) and a snippet. */
+function journalFor(entries: JournalEntry[], items: Item[]) {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return entries
+    .filter((e) => !e.archived)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, WIDGET_JOURNAL)
+    .map((e) => {
+      const item = e.itemId ? byId.get(e.itemId) : undefined;
+      const lines = e.body.split("\n").map(plainLine).filter(Boolean);
+      const named = item?.title || e.title?.trim() || "";
+      const created = new Date(e.createdAt);
+      return {
+        date: e.date,
+        title: named || lines[0] || "",
+        text: (named ? lines : lines.slice(1)).join(" ").slice(0, 200),
+        // When it was written, for today's entries ("8:12 AM").
+        time: Number.isNaN(created.getTime()) ? "" : fmtTime(created.getHours() * 60 + created.getMinutes(), true),
+        weekday: fmtDate(e.date, { weekday: "short" }),
+        short: fmtDate(e.date, { month: "short", day: "numeric" }),
+      };
+    });
+}
+
+export function widgetSnapshot(items: Item[], settings: Settings, journal: JournalEntry[] = []) {
+  setTagColors(settings.taskTags); // tagged tasks take their tag's color (colorOf)
   const today = todayStr();
   const days: Record<string, unknown> = {};
   for (let offset = 0; offset < WIDGET_DAYS; offset++) {
@@ -74,7 +108,6 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
     const { totals, spans } = dayBreakdown(items, settings, day);
     const sun = sunTimes(day, settings.lat, settings.lng);
     days[day] = {
-      label: fmtDate(day, { weekday: "short", month: "short", day: "numeric" }),
       totals, // minutes free, routine, planned
       spans: spans.map((s) => [s.category, s.length]),
       // No sky or sunrise and sunset marks when they're turned off in Settings.
@@ -83,8 +116,10 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       // Laid out like the app's timeline (items well into another nest on top of it, indented).
       blocks: arrangeBlocks(blocksForDay(items, day), 45).map(({ b, col, cols, depth }) => ({
         title: b.item.title, start: b.start, end: b.end, fullStart: b.fullStart, fullEnd: b.fullEnd,
+        // The occurrence, so ticking a task off in the Tasks widget ticks it here too.
+        id: b.item.id, occ: b.occDate,
         continues: b.continues ?? "", col, cols, depth, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),
-        accent: firstTagColor(b.item, settings) ?? "",
+        accent: kindHexOf(b.item),
         // The line under the title, as the timeline shows it.
         sub: (b.continues === "before" || b.continues === "through"
           ? b.continues === "through" ? "continues" : "until " + fmtTime(b.item.endTime, true)
@@ -95,7 +130,6 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
       routines: blocksForDay(routineSchedules(settings), day).map((b) => ({
         title: b.item.title, start: b.start, end: b.end, color: hexOf(b.item),
       })),
-      allDay: allDayFor(items, day).map((i) => ({ title: i.title, color: hexOf(i) })),
       tasks: taskRowsFor(items, day, true).map(({ i, occ, overdue, done }) => ({
         id: i.id, occ, title: i.title, done, overdue,
         due: isDeadlineTask(i) ? `Due ${fmtDate(occ, { month: "short", day: "numeric" })}` : "",
@@ -121,15 +155,12 @@ export function widgetSnapshot(items: Item[], settings: Settings) {
     if (!entries.length && offset > 0) continue;
     agenda.push({
       day,
-      num: String(Number(day.slice(8))),
-      weekday: fmtDate(day, { weekday: "short" }),
-      month: fmtDate(day, { month: "long" }),
       entries: entries.map((e) => ({
-        title: e.i.title, kind: kindOf(e.i), done: e.done, color: hexOf(e.i),
-        accent: firstTagColor(e.i, settings) ?? "",
+        id: e.i.id, occ: e.occ, title: e.i.title, kind: kindOf(e.i), done: e.done, color: hexOf(e.i),
+        accent: kindHexOf(e.i),
         sub: [e.time, e.i.location].filter(Boolean).join(" · "),
       })),
     });
   }
-  return { version: 2, generatedAt: Date.now(), themes: { light: themeFor(false), dark: themeFor(true) }, days, agenda };
+  return { version: 2, generatedAt: Date.now(), themes: { light: themeFor(false), dark: themeFor(true) }, days, agenda, journal: journalFor(journal, items) };
 }

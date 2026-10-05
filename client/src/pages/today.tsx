@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import type { Item } from "@shared/schema";
-import { PageHeader, orderNav } from "@/components/shell";
+import { PageHeader } from "@/components/shell";
+import { NavOrderEditor } from "@/components/navOrder";
 import { DayPicker } from "@/pages/calendar";
 import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
@@ -22,6 +23,7 @@ import {
   parseQuick,
   recLabel,
   recOf,
+  routineSchedules,
   toMin,
   todayStr,
   taskAvailableFrom,
@@ -76,6 +78,7 @@ export default function Today() {
   }, [day, isLoading, shows("schedule"), agenda, wholeDay]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
+  const agendaItems = useMemo(() => list.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep"), [list]);
 
   const allDay = allDayFor(list, day);
 
@@ -109,7 +112,7 @@ export default function Today() {
               <div className="card-md" style={at("schedule")} data-testid="card-day">
                 <DayViewToggle view={view} onPick={pickView} />
                 <div className="px-4 pb-4">
-                  <AgendaList list={list.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep")} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
+                  <AgendaList list={agendaItems} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
                 </div>
               </div>
             ) : (
@@ -181,7 +184,6 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
   const save = useSaveSettings();
   const { settings } = useSettings();
   const toggle = (panel: TodayPanel, shown: boolean) => save.mutate(panelToggle(settings, panel, shown));
-  const pages = orderNav(settings.navOrder);
   return (
     <>
       <div className="flex justify-center">
@@ -216,23 +218,7 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
           {/* Drawn like the bar itself; hold a page and drag it along. The app still opens on Today, wherever it sits. */}
           <section className="grid gap-2" aria-label="Bottom bar">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bottom bar</h3>
-            <SortableList
-              horizontal
-              items={pages.map((n) => n.href)}
-              onReorder={(next) => save.mutate({ navOrder: next })}
-              className="flex rounded-[20px] border bg-muted/40 p-0.5"
-              itemClassName="min-w-0 flex-1"
-              render={(href, lifted) => {
-                const n = pages.find((page) => page.href === href)!;
-                return (
-                  <div className={cn("flex flex-col items-center gap-0.5 rounded-2xl py-2 text-muted-foreground", lifted && "text-primary")}
-                    data-testid={`row-nav-${n.label.toLowerCase()}`}>
-                    <n.icon className="h-5 w-5" aria-hidden />
-                    <span className="max-w-full truncate text-[10px] tracking-tight">{n.label}</span>
-                  </div>
-                );
-              }}
-            />
+            <NavOrderEditor order={settings.navOrder} onReorder={(next) => save.mutate({ navOrder: next })} />
           </section>
         </DialogContent>
       </Dialog>
@@ -369,11 +355,20 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
   const { focus, openDetails } = usePlanner();
   const nm = now.getHours() * 60 + now.getMinutes();
   const today = todayStr();
-  // Tasks that are already checked off don't need doing now.
-  const blocks = blocksForDay(items, today).filter((b) => !(b.done && kindOf(b.item) === "task"));
+  const { settings } = useSettings();
+  // The day's work, done once per change rather than on every clock tick.
+  const { blocks, tasksLeft, routines } = useMemo(() => ({
+    // Tasks that are already checked off don't need doing now.
+    blocks: blocksForDay(items, today).filter((b) => !(b.done && kindOf(b.item) === "task")),
+    // With nothing on, it nudges toward a task if any are left today.
+    tasksLeft: taskRowsFor(items, today, true).some((r) => !r.done),
+    routines: blocksForDay(routineSchedules(settings), today),
+  }), [items, today, settings]);
   // A task is due at its time rather than taking up the half hour it's drawn as: it can be next, not current.
   const current = blocks.find((b) => nm >= b.start && nm < b.end && kindOf(b.item) !== "task");
   const next = blocks.find((b) => b.start > nm && b.continues !== "before");
+  // With nothing else on, a routine from Settings is named (no ring, and it's never "next").
+  const routine = routines.find((b) => nm >= b.start && nm < b.end);
   return (
     <div className="card-md wellness-now p-4 md:p-5 grid gap-3" data-testid="card-now">
       <div className="flex items-center justify-between">
@@ -416,7 +411,10 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
           )}
         </div>
       ) : (
-        <div className="text-sm text-muted-foreground">Nothing scheduled right now — a good moment for a task below.</div>
+        <div className="text-sm text-muted-foreground" data-testid="text-now-empty">
+          {routine ? `Looks like you've got a routine now — ${routine.item.title}`
+            : tasksLeft ? "Nothing's happening right now... Maybe there's time for a task!" : "Looks like you've got some free time!"}
+        </div>
       )}
       {next && (
         <button type="button" onClick={() => openDetails(next.item, next.occDate)}

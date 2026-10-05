@@ -1,0 +1,20 @@
+<!-- The journal widget: today's entries, or a note that there are none yet and the latest two. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <include layout="@layout/widget_card_layers" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+        <LinearLayout android:id="@+id/journal_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical"
+            android:paddingStart="16dp" android:paddingEnd="10dp" android:paddingTop="10dp" android:paddingBottom="4dp">
+            <TextView android:id="@+id/journal_heading" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:text="Journal" android:textSize="15sp" android:textStyle="bold" />
+            <TextView android:id="@+id/journal_count" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp" android:textSize="13sp" />
+            <ImageView android:id="@+id/journal_add" android:layout_width="30dp" android:layout_height="30dp" android:padding="6dp"
+                android:src="@drawable/ic_plus" android:contentDescription="New entry" />
+        </LinearLayout>
+        <ListView android:id="@+id/journal_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+            android:paddingBottom="8dp" android:clipToPadding="false"
+            android:divider="@null" android:dividerHeight="0dp" android:scrollbars="none" />
+    </LinearLayout>
+</FrameLayout>

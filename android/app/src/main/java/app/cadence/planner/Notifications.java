@@ -71,7 +71,9 @@ final class Notifications {
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         createChannel(context);
-        Intent launch = new Intent(context, AppActivity.class);
+        // Back to the app as it is, rather than a second copy of it.
+        Intent launch = new Intent(context, AppActivity.class)
+            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pending = PendingIntent.getActivity(context, 0, launch,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channel(AppActivity.plain(context), id == FOCUS_CODE))
@@ -224,6 +226,8 @@ final class Notifications {
             SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             scheduleItems(context, prefs.getString("items", "[]"));
             FocusTimer.update(context);
+            // Widgets pick up again too (their minute alarm doesn't survive a restart or update).
+            PanelWidgets.refreshAll(context, true);
             long focusAt = prefs.getLong("focusAt", 0);
             if (focusAt > System.currentTimeMillis()) set(context, FOCUS_CODE, focusAt,
                 prefs.getString("focusTitle", "Focus session complete"),

@@ -2,16 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { KIND_TAGS, canonicalTag, tagSpellings, type Item, type JournalEntry, type Kind, type Settings } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
-import { hashtagsIn, tagsOf, useItems, useJournal, useJournalMutations, useSettings } from "@/lib/data";
-import { DAY_SHORT, KIND_META, addDays, colorOf, fmtDate, kindOf, parseYmd, startOfWeek, todayStr, ymd } from "@/lib/cal";
+import { hashtagsIn, useItems, useJournal, useJournalMutations, useSettings } from "@/lib/data";
+import { KIND_META, addDays, colorOf, fmtDate, kindOf, listOf, todayStr } from "@/lib/cal";
 import { DayPicker } from "@/pages/calendar";
-import { usePlanner } from "@/components/planner";
-import { TaskTagList, accentOf, cleanTag, itemTags, tagTint } from "@/components/taskTags";
+import { takeJournalCompose, usePlanner, useToday } from "@/components/planner";
+import { TaskTagList, cleanTag, itemTags, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { TwoRows } from "@/components/twoRows";
 import { Linked } from "@/components/links";
@@ -44,7 +43,7 @@ function tagColor(t: string, settings: Settings, item?: Item): string | undefine
  * the task, so changing, renaming or deleting it there shows here too.
  */
 function entryTags(e: JournalEntry, item: Item | undefined, settings: Settings): string[] {
-  const own = tagsOf(e);
+  const own = listOf(e.tags);
   if (!item || kindOf(item) !== "task") return own;
   return [...new Set([...own, ...itemTags(item, settings).map((t) => t.name)])];
 }
@@ -128,7 +127,7 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
   const { data: entries } = useJournal();
   const counts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const e of entries ?? []) if (!e.archived) for (const t of tagsOf(e)) m.set(t, (m.get(t) ?? 0) + 1);
+    for (const e of entries ?? []) if (!e.archived) for (const t of listOf(e.tags)) m.set(t, (m.get(t) ?? 0) + 1);
     return m;
   }, [entries]);
   const typed = canonicalTag(cleanTag(q));
@@ -436,7 +435,6 @@ function Composer({
 function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
   e: JournalEntry; onTag: (t: string) => void; showDate?: boolean; item?: Item; openDetails: (i: Item) => void; onEdit: (e: JournalEntry) => void;
 }) {
-  const { toast } = useToast();
   const { settings } = useSettings();
   const [, nav] = useLocation();
   const tags = entryTags(e, item, settings);
@@ -466,7 +464,7 @@ function EntryCard({ e, onTag, showDate, item, openDetails, onEdit }: {
       </div>
       {/* The title (the item's, for an item's notes) on its own line under the time. */}
       {item ? (
-        <button onClick={() => openDetails(item)} className="mt-1 block max-w-full truncate text-left text-sm font-semibold hover:underline" style={{ color: accentOf(item, settings) }} data-testid={`button-entry-item-${e.id}`}>
+        <button onClick={() => openDetails(item)} className="mt-1 block max-w-full truncate text-left text-sm font-semibold hover:underline" style={{ color: colorOf(item) }} data-testid={`button-entry-item-${e.id}`}>
           {item.title}
         </button>
       ) : e.title ? (
@@ -590,8 +588,9 @@ function JournalTagManager({ open, onOpenChange, tags, counts, onRenamed }: {
 export default function JournalPage() {
   const [, params] = useRoute("/journal/:date");
   const [, nav] = useLocation();
-  const day = params?.date ?? todayStr();
-  const isToday = day === todayStr();
+  const today = useToday();
+  const day = params?.date ?? today;
+  const isToday = day === today;
   const { data: entries, isLoading } = useJournal();
   const { create, update, remove } = useJournalMutations();
   const [q, setQ] = useState("");
@@ -608,7 +607,8 @@ export default function JournalPage() {
   const itemOf = (e: JournalEntry) => (e.itemId ? itemsById.get(e.itemId) : undefined);
   // The app bar's + opens the entry window here.
   useEffect(() => {
-    const f = () => { setQ(""); setCompose({}); };
+    const f = () => { if (takeJournalCompose()) { setQ(""); setCompose({}); } };
+    f(); // asked for before the journal opened
     window.addEventListener("cadence:journal-compose", f);
     return () => window.removeEventListener("cadence:journal-compose", f);
   }, []);
@@ -630,7 +630,7 @@ export default function JournalPage() {
   // Every tag to find entries by (task tags included), and the ones saved on entries themselves.
   const tagCounts = useMemo(() => count(tagsOfEntry), [live, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
   // Manage lists tags on archived entries too, so they can still be renamed or removed.
-  const savedTagCounts = useMemo(() => count(tagsOf, all), [all]); // eslint-disable-line react-hooks/exhaustive-deps
+  const savedTagCounts = useMemo(() => count((e) => listOf(e.tags), all), [all]); // eslint-disable-line react-hooks/exhaustive-deps
   const recentDays = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of all) m.set(e.date, (m.get(e.date) ?? 0) + 1);
@@ -776,7 +776,7 @@ export default function JournalPage() {
                   key={compose.entry?.id ?? "new"}
                   initialTitle={compose.entry?.title ?? ""}
                   initial={compose.entry?.body}
-                  initialTags={compose.entry ? tagsOf(compose.entry) : []}
+                  initialTags={compose.entry ? listOf(compose.entry.tags) : []}
                   initialHashtags={compose.entry?.hashtags !== false}
                   submitLabel={compose.entry ? "Save" : "Add entry"}
                   busy={create.isPending || update.isPending}
@@ -881,7 +881,7 @@ export default function JournalPage() {
                     <div className="h-12 w-12 rounded-full bg-accent grid place-items-center text-primary">
                       <NotebookPen className="h-5 w-5" />
                     </div>
-                    <div className="font-medium">There's nothing here yet...</div>
+                    <div className="font-medium">{isToday ? "What's on your mind today?" : "There's nothing here..."}</div>
                   </div>
                 ) : (
                   dayEntries.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} item={itemOf(e)} openDetails={openDetails} onEdit={(entry) => setCompose({ entry })} />)

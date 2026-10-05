@@ -29,12 +29,28 @@ export function orderHabits(habits: Item[], settings: Settings): Item[] {
 }
 
 /** returns a CSS color string for an item */
-export function colorOf(i: Item): string {
-  if (i.color) return i.color;
-  return `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
+/**
+ * Task tag colors by name, kept current from Settings (useSettings), so a tagged task is drawn in its
+ * tag's color everywhere without every caller passing Settings around.
+ */
+let tagColors = new Map<string, string>();
+let tagColorsFrom: unknown = null;
+export function setTagColors(tags: { name: string; color: string }[] | undefined) {
+  if (tags === tagColorsFrom) return;
+  tagColorsFrom = tags;
+  tagColors = new Map((tags ?? []).map((t) => [t.name, t.color]));
 }
+const tagColorOf = (i: Item) => (kindOf(i) === "task" ? tagColors.get(String(listOf(i.tags)[0] ?? "")) : undefined);
+
+/** An item's own color: a tagged task's tag color, a color picked for the item, or its kind's color. */
+export function colorOf(i: Item): string {
+  return tagColorOf(i) ?? i.color ?? `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
+}
+/** The kind's color, for the bar down an item's left edge (the item itself takes colorOf). */
+export const kindColorOf = (i: Item) => `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
 export function tint(i: Item, alpha: number): string {
-  if (i.color) return hexAlpha(i.color, alpha);
+  const own = tagColorOf(i) ?? i.color;
+  if (own) return hexAlpha(own, alpha);
   return `hsl(var(${KIND_META[kindOf(i)].cssVar}) / ${alpha})`;
 }
 function hexAlpha(hex: string, a: number) {
@@ -108,7 +124,8 @@ export const recOf = (i: Item): Recurrence => {
 /** A JSON list stored on a record (completions, exceptions, tags...), or [] if it's missing or broken. */
 export const listOf = (s: string | null | undefined): string[] => {
   try {
-    return JSON.parse(s || "[]");
+    const v = JSON.parse(s || "[]");
+    return Array.isArray(v) ? v : [];
   } catch {
     return [];
   }
@@ -132,8 +149,28 @@ const touchedOf = (i: Item) => new Set([...completionsOf(i), ...partialsOf(i)]);
 export const exceptionsOf = (i: Item) => new Set(listOf(i.exceptions));
 
 
-/** Background routines are virtual daily overlays, not stored calendar events. */
+/** Background routines are virtual overlays (daily, or on their days), not stored calendar events. */
+/** For sorting by priority: high first, then normal, then low. */
+export const priorityRank = (i: Item) => (i.priority === "high" ? 0 : i.priority === "normal" ? 1 : 2);
+
+/** A routine's days: "every day", "weekdays", "weekends", or "Mon, Wed, Fri". */
+export function routineDaysLabel(days?: number[]) {
+  const set = [...new Set(days ?? [0, 1, 2, 3, 4, 5, 6])].sort();
+  const key = set.join("");
+  if (key === "0123456") return "every day";
+  if (key === "12345") return "weekdays";
+  if (key === "06") return "weekends";
+  return set.map((d) => DAY_SHORT[d]).join(", ");
+}
+
+const routineCache = new WeakMap<Settings["routines"], Item[]>();
 export function routineSchedules(settings: Settings): Item[] {
+  // The same items for the same routines, so the per-item caches (rulesOf) keep working.
+  let cached = routineCache.get(settings.routines);
+  if (!cached) routineCache.set(settings.routines, (cached = buildRoutines(settings)));
+  return cached;
+}
+function buildRoutines(settings: Settings): Item[] {
   return settings.routines.map((routine, index) => ({
     id: -1000 - index,
     uid: `cadence:routine:${routine.id}`,
@@ -149,7 +186,7 @@ export function routineSchedules(settings: Settings): Item[] {
     notes: "",
     location: "",
     color: routine.color,
-    recurrence: '{"freq":"daily"}',
+    recurrence: routine.days && routine.days.length < 7 ? JSON.stringify({ freq: "weekly", days: routine.days }) : '{"freq":"daily"}',
     exceptions: "[]",
     completions: "[]",
     reminder: null,
@@ -162,10 +199,10 @@ export function routineSchedules(settings: Settings): Item[] {
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
 /** Each item's repeat rule and skipped dates, read once (items are replaced, never changed, on save). */
-const parsed = new WeakMap<Item, { r: Recurrence; ex: Set<string> }>();
+const parsed = new WeakMap<Item, { r: Recurrence; ex: Set<string>; done: Set<string> }>();
 function rulesOf(i: Item) {
   let p = parsed.get(i);
-  if (!p) parsed.set(i, (p = { r: recOf(i), ex: exceptionsOf(i) }));
+  if (!p) parsed.set(i, (p = { r: recOf(i), ex: exceptionsOf(i), done: completionsOf(i) }));
   return p;
 }
 
@@ -285,7 +322,8 @@ export function fillOf(mk: 0 | 1 | 2, color: string) {
 export function canDoTaskOn(i: Item, day: string) {
   return dueDateFor(i, day) !== null;
 }
-function span(i: Item) {
+/** A timed item's start and end in minutes from midnight of the day it starts (the end can run into later days). */
+export function span(i: Item) {
   const s = toMin(i.startTime);
   const days = i.endDate && i.endDate >= i.date ? Math.min(366, dayDiff(i.date, i.endDate)) : 0;
   let e = days * 1440 + (i.endTime ? toMin(i.endTime) : s + 30);
@@ -368,7 +406,7 @@ export function blocksForDay(list: Item[], day: string): Block[] {
         continues: offset ? (e > (offset + 1) * 1440 ? "through" : "before") : e > 1440 ? "after" : undefined,
         fullStart: s - offset * 1440,
         fullEnd: e - offset * 1440,
-        done: completionsOf(i).has(occ),
+        done: rulesOf(i).done.has(occ),
       });
     }
   }
@@ -496,23 +534,6 @@ export function bestStreak(i: Item, today: string) {
   }
   return best;
 }
-export function rateOf(i: Item, today: string, days = 30) {
-  const done = completionsOf(i);
-  const half = partialsOf(i);
-  let due = 0, hit = 0;
-  const start = historyStart(i);
-  for (let n = 0; n < days; n++) {
-    const d = addDays(today, -n);
-    if (d < start) break;
-    if (occursOn(i, d)) {
-      due++;
-      if (done.has(d)) hit++;
-      else if (half.has(d)) hit += 0.5;
-    }
-  }
-  return due ? hit / due : 0;
-}
-
 /* ---------- quick add parser ---------- */
 const DAY_WORDS: Record<string, number> = { sun: 0, mon: 1, tue: 2, tues: 2, wed: 3, thu: 4, thur: 4, thurs: 4, fri: 5, sat: 6 };
 
@@ -616,10 +637,6 @@ export function parseQuick(input: string, baseDay: string): Parsed {
   s = s.replace(/\sfor\s+(\d+(?:\.\d+)?)\s*(m|min|mins|minutes|h|hr|hrs|hour|hours)\b/i, (_m, n, u) => {
     const mins = /^h/i.test(u) ? Number(n) * 60 : Number(n);
     if (start != null) end = start + mins;
-    else {
-      start = null;
-      (s as any)._dur = mins;
-    }
     return " ";
   });
   if (start != null && end == null) end = start + 60;

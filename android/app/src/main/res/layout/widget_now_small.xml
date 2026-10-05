@@ -1,10 +1,7 @@
 <!-- Right now at its narrowest (one column): the ring above the title, centered. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
-    <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
-    <ImageView android:id="@+id/card_tint" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:src="@drawable/widget_card_tint" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <include layout="@layout/widget_card_layers" />
     <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
         android:orientation="vertical" android:gravity="center" android:padding="8dp">
         <ImageView android:id="@+id/now_ring" android:layout_width="40dp" android:layout_height="40dp"

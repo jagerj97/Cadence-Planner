@@ -8,6 +8,9 @@ export const KIND_TAGS: Record<Kind, string> = { task: "tasks", event: "events",
 const TAG_ALIASES: Record<string, string> = { task: "tasks", event: "events", meeting: "meetings", habit: "habits" };
 export const canonicalTag = (tag: string) => TAG_ALIASES[tag] ?? tag;
 /** Every way a tag can be written as a #hashtag (#meetings and #meeting). */
+/** The tags a text's #hashtags make, in order, each once (#meeting counts as #meetings). */
+export const hashtagsIn = (body: string) =>
+  [...new Set([...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => canonicalTag(m[2].toLowerCase())))];
 export const tagSpellings = (tag: string) => [tag, ...Object.keys(TAG_ALIASES).filter((alias) => TAG_ALIASES[alias] === tag)];
 export const IMPORT_KINDS = ["event", "task", "meeting", "habit", "focus"] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
@@ -104,7 +107,11 @@ export type JournalEntry = {
 /** 0 = Sunday … 6 = Saturday. */
 export type WeekDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskTag = { name: string; color: string };
-export type Routine = { id: string; name: string; startTime: string; endTime: string; color: string };
+export type Routine = {
+  id: string; name: string; startTime: string; endTime: string; color: string;
+  /** The days it starts on (0 is Sunday); missing means every day. One crossing midnight ends the next morning. */
+  days?: number[];
+};
 // Red, orange, yellow, green, blue, violet and grey.
 export const COLOR_THEMES = ["ribbon", "carrot", "butter", "grass", "denim", "plum", "mouse"] as const;
 /** What the color themes are called with the cat stuff hidden (Settings.plain). */

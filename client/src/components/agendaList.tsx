@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Item, Settings } from "@shared/schema";
-import { usePlanner } from "@/components/planner";
+import { usePlanner, useToday } from "@/components/planner";
 import { accentOf } from "@/components/taskTags";
 import { useSettings } from "@/lib/data";
 import { KIND_META, addDays, colorOf, fmtDate, kindOf, tint, todayStr } from "@/lib/cal";
@@ -83,7 +83,7 @@ export function AgendaList({ list, from, days, limit, compact = false, emptyToda
   now?: boolean;
 }) {
   const { settings } = useSettings();
-  const today = todayStr();
+  const today = useToday();
   const rows = useMemo(() => {
     const out: { day: string; entries: Entry[] }[] = [];
     let count = 0;

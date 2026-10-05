@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DisplayMode, Item, InsertItem, Kind, Recurrence, Session } from "@shared/schema";
 import { DEFAULT_SETTINGS, KINDS } from "@shared/schema";
@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToastAction } from "@/components/ui/toast";
@@ -16,7 +15,6 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
 import {
   KIND_META,
-  DAY_SHORT,
   addDays,
   dueDateFor,
   isDeadlineTask,
@@ -43,13 +41,15 @@ import {
   isTimed,
   shiftedToToday,
   sunTimes,
+  routineDaysLabel,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
+import { WeekdayPills, choicePill } from "@/components/pills";
 import { TwoRows } from "@/components/twoRows";
 import { Linked, LocationLink } from "@/components/links";
 import { WhatsNew } from "@/components/whatsNew";
-import { TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
-import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
+import { TAG_COLORS, TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
+import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Palette, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
 
 /* ============ sound ============ */
 let audioCtx: AudioContext | null = null;
@@ -134,7 +134,6 @@ type Ctx = {
   openEditor: (target: Item | Partial<InsertItem>, occDate?: string, onCreated?: (item: Item) => void) => void;
   openDetails: (target: Item, occDate?: string) => void;
   focus: FocusState | null;
-  elapsed: number;
   startFocus: (opts: { title: string; itemId?: number | null; minutes: number }) => void;
   pauseFocus: () => void;
   resumeFocus: () => void;
@@ -145,6 +144,21 @@ type Ctx = {
 };
 type RepeatScope = "one" | "all";
 const PlannerCtx = createContext<Ctx | null>(null);
+
+/** Seconds a focus session has run, counting the current run. */
+export const focusElapsed = (f: FocusState) => f.accSec + (f.runStart ? (Date.now() - f.runStart) / 1000 : 0);
+
+/** The running focus session's seconds so far, ticking twice a second (only where it's shown). */
+export function useFocusElapsed() {
+  const { focus } = usePlanner();
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!focus?.runStart) return;
+    const t = setInterval(() => setTick((x) => x + 1), 500);
+    return () => clearInterval(t);
+  }, [focus?.runStart]);
+  return focus ? focusElapsed(focus) : 0;
+}
 export const usePlanner = () => {
   const c = useContext(PlannerCtx);
   if (!c) throw new Error("PlannerProvider missing");
@@ -278,14 +292,6 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       window.CadenceAndroid.scheduleFocus(focus.runStart + remaining, "Focus session complete", focus.title);
     } else window.CadenceAndroid.cancelFocus();
   }, [focus]);
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (!focus?.runStart) return;
-    const t = setInterval(() => setTick((x) => x + 1), 500);
-    return () => clearInterval(t);
-  }, [focus?.runStart]);
-  const elapsed = focus ? focus.accSec + (focus.runStart ? (Date.now() - focus.runStart) / 1000 : 0) : 0;
-  void tick;
 
   const logSession = useCallback(async (f: FocusState, sec: number, completed: boolean): Promise<Session | null> => {
     if (sec < 30) return null;
@@ -349,25 +355,31 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     },
     [logSession],
   );
-  const pauseFocus = () =>
-    setFocus((f) => (f && f.runStart ? { ...f, accSec: f.accSec + (Date.now() - f.runStart) / 1000, runStart: null } : f));
-  const resumeFocus = () => setFocus((f) => (f && !f.runStart ? { ...f, runStart: Date.now() } : f));
-  const stopFocus = (completed = false) => {
+  const pauseFocus = useCallback(() =>
+    setFocus((f) => (f && f.runStart ? { ...f, accSec: f.accSec + (Date.now() - f.runStart) / 1000, runStart: null } : f)), []);
+  const resumeFocus = useCallback(() => setFocus((f) => (f && !f.runStart ? { ...f, runStart: Date.now() } : f)), []);
+  const stopFocus = useCallback((completed = false) => {
     if (focus) {
+      const elapsed = focusElapsed(focus);
       const saved = logSession(focus, elapsed, completed);
       if (completed) offerCalendar(focus, elapsed, Date.now(), saved);
     }
     setFocus(null);
-  };
-  const addFocusTime = (min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f));
+  }, [focus, logSession, offerCalendar]);
+  const addFocusTime = useCallback((min: number) => setFocus((f) => (f ? { ...f, plannedSec: f.plannedSec + min * 60 } : f)), []);
 
-  // A widget's + button opens the app to add a task, habit or event; tapping a widget opens its page.
+  // A widget's + button opens the app to add a task, habit, event or journal entry; tapping a widget opens its page.
   useEffect(() => {
     const run = () => {
       const action = window.CadenceAndroid?.takeLaunchAction?.() || "";
       if (action === "add-task") openEditor({ date: todayStr(), kind: "task" });
       if (action === "add-habit") openEditor({ date: todayStr(), kind: "habit", recurrence: '{"freq":"daily"}' });
       if (action === "add-event") openEditor({ date: todayStr(), kind: "event" });
+      // The journal widget's +: the journal, with a new entry open.
+      if (action === "add-journal") {
+        window.location.hash = "#/journal";
+        requestJournalCompose();
+      }
       // Each widget opens its own page ("open:/tasks").
       if (/^open:\/[a-z]*$/.test(action)) window.location.hash = `#${action.slice(5)}`;
     };
@@ -408,10 +420,12 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   }, [logSession, offerCalendar]);
 
   // completion
+  // Checked on its own clock, so the whole app doesn't re-render with the timer.
   const doneRef = useRef<string | null>(null);
   useEffect(() => {
     if (!focus || !focus.runStart) return;
-    if (elapsed >= focus.plannedSec && doneRef.current !== focus.startedAt) {
+    const check = () => {
+      if (focusElapsed(focus) < focus.plannedSec || doneRef.current === focus.startedAt) return;
       doneRef.current = focus.startedAt;
       const f = focus;
       const saved = logSession(f, f.plannedSec, true);
@@ -420,8 +434,11 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
       window.CadenceAndroid?.finishFocus("Focus session complete", `${f.title} · ${fmtDur(f.plannedSec / 60)}`);
       if (f.plannedSec > 300) offerCalendar(f, f.plannedSec, Date.now(), saved);
       else toast({ title: "Nice work — session complete", description: `${f.title} · ${fmtDur(f.plannedSec / 60)} focused` });
-    }
-  }, [elapsed, focus, logSession, offerCalendar, settings, startFocus, toast]);
+    };
+    check();
+    const t = setInterval(check, 500);
+    return () => clearInterval(t);
+  }, [focus, logSession, offerCalendar, settings.sound, toast]);
 
   /* reminders */
   const { data: items } = useItems();
@@ -491,20 +508,19 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [items, settings.sound, settings.inAppPopups, toast]);
 
-  const value: Ctx = {
+  const value: Ctx = useMemo(() => ({
     theme,
     setDisplayMode,
     openEditor,
     openDetails,
     focus,
-    elapsed,
     startFocus,
     pauseFocus,
     resumeFocus,
     stopFocus,
     addFocusTime,
     askRepeatScope,
-  };
+  }), [theme, openEditor, openDetails, focus, startFocus, pauseFocus, resumeFocus, stopFocus, addFocusTime, askRepeatScope]);
 
   return (
     <PlannerCtx.Provider value={value}>
@@ -597,6 +613,8 @@ function ItemDetails({ details, onClose, onEdit }: {
   // The live copy, so the journal checkbox and check marks reflect what was just saved.
   const i = details && (items?.find((x) => x.id === details.target.id) ?? details.target);
   const routine = i?.source === "routine";
+  // A routine on some days repeats weekly on them (routineSchedules).
+  const routineDays = routine && i ? routineDaysLabel(recOf(i).freq === "weekly" ? recOf(i).days : undefined) : "";
   // Tasks and habits can be checked off from here, for the day they were opened from.
   // A deadline task is checked off (and shown) for the due date it's open for.
   const deadline = !!i && isDeadlineTask(i);
@@ -615,7 +633,7 @@ function ItemDetails({ details, onClose, onEdit }: {
             {checkable && <DetailCheck item={i} day={checkDay} />}
             <DialogHeader className="min-w-0 flex-1 text-left">
               <DialogTitle className="min-w-0 text-lg leading-snug">{i.title}</DialogTitle>
-              <DialogDescription>{routine ? "Background routine · every day" : KIND_META[kindOf(i)].label}</DialogDescription>
+              <DialogDescription>{routine ? `Background routine · ${routineDays}` : KIND_META[kindOf(i)].label}</DialogDescription>
             </DialogHeader>
           </div>
           {tags.length > 0 && (
@@ -627,8 +645,8 @@ function ItemDetails({ details, onClose, onEdit }: {
           <div className="grid grid-cols-1 gap-3 text-sm">
             {/* A habit has no start date to show, only the day it was opened from. */}
             {(i.kind !== "habit" || details?.occDate) && <div>
-              <div className="text-xs text-muted-foreground">{routine ? "Every day" : deadline ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
-              <div>{routine ? "Repeats daily, including past days" : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
+              <div className="text-xs text-muted-foreground">{routine ? "Repeats" : deadline ? "Due" : recOf(i).freq !== "none" && !details?.occDate ? "Starts" : "Date"}</div>
+              <div>{routine ? `${routineDays[0].toUpperCase()}${routineDays.slice(1)}, including past days` : `${fmtDate(d)}${i.endDate && i.endDate > i.date ? ` – ${fmtDate(i.endDate)}` : ""}`}</div>
             </div>}
             {i.startTime && <div>
               <div className="text-xs text-muted-foreground">Time</div>
@@ -749,12 +767,15 @@ type FormVals = {
   autoTimer: boolean;
   location: string;
   notes: string;
+  /** The item's own color ("" for its kind's); a task takes its tag's instead. */
+  color: string;
 };
 
 /** "Any day before" is stored as a year's window: a year before a one-off's due date, or 365 days' lead. */
 const ANY_DAY_BEFORE = 365;
 
-const REMINDERS = [
+/** The reminder choices, for items and the default for new ones. */
+export const REMINDERS = [
   { v: "none", l: "No reminder" },
   { v: "0", l: "At start time" },
   { v: "5", l: "5 min before" },
@@ -823,7 +844,8 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
       date: f.date,
       availableFrom: avail !== "day" && oneOff ? addDays(f.date, -before) : null,
       leadDays: avail !== "day" && !oneOff ? before : null,
-      color: existing?.source.startsWith("feed:") && f.kind !== existing.kind ? null : existing?.color ?? null,
+      // A task's color comes from its tag; other items keep the color picked for them, if any.
+      color: existing?.source.startsWith("feed:") && f.kind !== existing.kind ? null : task ? existing?.color ?? null : f.color || null,
       // A task is due at its time (no end); others end at their end time, the next day if that's earlier.
       endDate: task ? null : timed && f.endDate === f.date && toMin(f.endTime) <= toMin(start) ? addDays(f.date, 1) : f.endDate,
       allDay: !task && !timed,
@@ -907,11 +929,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                     }
                   }}
                   // Round pills like the rest of the window; the chosen kind is tinted and ringed in its color.
-                  className={cn(
-                    "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
-                    on ? "border-transparent text-foreground" : "text-muted-foreground hover-elevate",
-                  )}
-                  style={on ? { background: `hsl(var(${M.cssVar}) / .16)`, boxShadow: `inset 0 0 0 1.5px hsl(var(${M.cssVar}))` } : undefined}
+                  {...choicePill(on, M.cssVar, "inline-flex items-center gap-1.5 px-3")}
                   data-testid={`button-kind-${k}`}
                 >
                   <M.icon className="h-4 w-4" style={{ color: `hsl(var(${M.cssVar}))` }} />
@@ -1014,20 +1032,8 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                 </SelectContent>
               </Select>
               {v.freq === "weekly" && (
-                <div className="flex gap-1.5" aria-label="Days of week">
-                  {DAY_SHORT.map((d, i) => {
-                    const on = v.days.includes(i);
-                    return (
-                      <button type="button" key={d} aria-pressed={on}
-                        onClick={() => setValue("days", on ? v.days.filter((x) => x !== i) : [...v.days, i])}
-                        className={cn("h-9 flex-1 rounded-full border text-xs font-medium",
-                          on ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground hover-elevate")}
-                        data-testid={`button-day-${i}`}>
-                        {d.slice(0, 2)}
-                      </button>
-                    );
-                  })}
-                </div>
+                <WeekdayPills value={v.days} onChange={(days) => setValue("days", days)} weekStartsOn={settings.weekStartsOn}
+                  label="Days of week" testId="button-day-" />
               )}
               {v.freq !== "none" && (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -1142,6 +1148,12 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
               </EditorRow>
             )}
 
+            {v.kind !== "task" && v.kind !== "sleep" && (
+              <EditorRow icon={Palette}>
+                <ItemColorPicker kind={v.kind} value={v.color} onChange={(c) => setValue("color", c)} />
+              </EditorRow>
+            )}
+
             <EditorRow icon={MapPin}>
               <Input placeholder="Location or link" className="h-9" {...register("location")} data-testid="input-location" />
             </EditorRow>
@@ -1235,6 +1247,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
     notes: i.notes || "",
+    color: i.color || "",
   };
 }
 
@@ -1293,8 +1306,68 @@ export function useNow(intervalMs = 30000) {
   const [n, setN] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setN(new Date()), intervalMs);
-    return () => clearInterval(t);
+    // Timers pause while the app is in the background, so catch up when it comes back.
+    const back = () => { if (!document.hidden) setN(new Date()); };
+    document.addEventListener("visibilitychange", back);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", back); };
   }, [intervalMs]);
   return n;
 }
 
+/**
+ * Asks the journal for a new entry. The journal may still be opening, so the ask waits until it
+ * takes it (on opening, or right away if it's already open).
+ */
+let journalComposeWanted = false;
+export function requestJournalCompose() {
+  journalComposeWanted = true;
+  window.dispatchEvent(new Event("cadence:journal-compose"));
+}
+export function takeJournalCompose() {
+  const wanted = journalComposeWanted;
+  journalComposeWanted = false;
+  return wanted;
+}
+
+/** Today's date, kept current past midnight and when the app comes back from the background. */
+export function useToday() {
+  const [today, setToday] = useState(todayStr);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const update = () => {
+      setToday(todayStr());
+      clearTimeout(timer);
+      const now = new Date();
+      timer = setTimeout(update, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime() + 1000);
+    };
+    update();
+    const back = () => { if (!document.hidden) update(); };
+    document.addEventListener("visibilitychange", back);
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", back); };
+  }, []);
+  return today;
+}
+
+/**
+ * An item's color: its kind's (the first choice) or one of the tag colors. The item is drawn in it,
+ * with its kind's color kept as the bar down its left edge.
+ */
+function ItemColorPicker({ kind, value, onChange }: { kind: Kind; value: string; onChange: (color: string) => void }) {
+  const kindColor = `hsl(var(${KIND_META[kind].cssVar}))`;
+  const choices = ["", ...TAG_COLORS];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Color">
+      {choices.map((c) => {
+        const on = value === c;
+        return (
+          <button key={c || "kind"} type="button" role="radio" aria-checked={on} aria-label={c ? `Color ${c}` : `${KIND_META[kind].label} color`}
+            onClick={() => onChange(c)}
+            className={cn("grid h-7 w-7 place-items-center rounded-full", on && "ring-2 ring-offset-2 ring-offset-background ring-foreground/60")}
+            style={{ background: c || kindColor }} data-testid={`swatch-item-${c ? c.slice(1) : "kind"}`}>
+            {on && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

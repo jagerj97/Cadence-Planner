@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
-import { usePlanner, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
+import { REMINDERS, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { APP_VERSION } from "@/lib/changelog";
@@ -25,8 +25,10 @@ import {
   dayDiff,
   parseYmd,
   recLabel,
+  routineDaysLabel,
   streakOf,
   sunTimes,
+  toMin,
   todayStr,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
@@ -36,11 +38,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { haptic } from "@/lib/haptics";
 import { SortableList } from "@/components/sortable";
+import { NavOrderEditor } from "@/components/navOrder";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COLOR_THEMES, IMPORT_KINDS, PLAIN_THEME_NAMES } from "@shared/schema";
 import type { ColorTheme, DisplayMode, Feed, ImportKind, Routine, Session, Settings, WeekDay } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { WeekdayPills, choicePill } from "@/components/pills";
 import {
   Plus,
   Flame,
@@ -74,7 +78,7 @@ export function HabitsPage() {
   const saveOrder = useSaveSettings();
   const { openDetails } = usePlanner();
   const { settings } = useSettings();
-  const today = todayStr();
+  const today = useToday();
   const [showOlder, setShowOlder] = useState(false);
   const [trackerScrolled, setTrackerScrolled] = useState(false);
   // The tracker's names row and its day rows scroll sideways together.
@@ -132,7 +136,6 @@ export function HabitsPage() {
                 onReorder={reorderToday}
                 render={(id: number) => {
                   const h = habitById.get(id)!;
-                  const due = occursOn(h, today);
                   const mk = markOf(h, today);
                   const hit = mk === 2;
                   const st = streakOf(h, today);
@@ -140,14 +143,10 @@ export function HabitsPage() {
                     <div className={cn("flex items-center gap-3 py-2.5 pr-4", dueNow.length > 1 ? "pl-2" : "pl-4")} data-testid={`row-habit-${h.id}`}>
                       {dueNow.length > 1 && <GripVertical className="-mr-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
                       <button
-                        onClick={() => due && cycle.mutate({ id: h.id, date: today })}
-                        disabled={!due}
-                        className={cn(
-                          "h-7 w-7 shrink-0 rounded-full grid place-items-center border-2 transition-colors",
-                          !due && "border-dashed opacity-40",
-                        )}
+                        onClick={() => cycle.mutate({ id: h.id, date: today })}
+                        className="h-7 w-7 shrink-0 rounded-full grid place-items-center border-2 transition-colors"
                         style={{ borderColor: colorOf(h), background: fillOf(mk, colorOf(h)) }}
-                        aria-label={!due ? `${h.title} isn't scheduled today` : `${h.title}: ${MARK_LABEL[mk]}. Tap for ${MARK_LABEL[((mk + 1) % 3) as 0 | 1 | 2]}`}
+                        aria-label={`${h.title}: ${MARK_LABEL[mk]}. Tap for ${MARK_LABEL[((mk + 1) % 3) as 0 | 1 | 2]}`}
                         data-testid={`button-toggle-habit-${h.id}`}
                       >
                         {hit && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
@@ -155,7 +154,7 @@ export function HabitsPage() {
                       <button onClick={() => openDetails(h)} className="min-w-0 flex-1 text-left">
                         <div className={cn("text-sm font-medium truncate", hit && "text-muted-foreground")}>{h.title}</div>
                         <div className="text-xs text-muted-foreground truncate">
-                          {due ? recLabel(h) : "Not today"}
+                          {recLabel(h)}
                           {h.startTime ? ` · ${fmtTime(h.startTime, true)}` : ""}
                         </div>
                       </button>
@@ -283,24 +282,26 @@ function Empty({ icon, title, body, children }: { icon: React.ReactNode; title: 
 
 /* ====================== FOCUS ====================== */
 export function FocusPage() {
-  const { focus, elapsed, startFocus, pauseFocus, resumeFocus, stopFocus, addFocusTime } = usePlanner();
+  const { focus, startFocus, pauseFocus, resumeFocus, stopFocus, addFocusTime } = usePlanner();
+  const elapsed = useFocusElapsed();
   const { settings } = useSettings();
   const { data: items } = useItems();
   const { data: sessions } = useSessions();
-  const { toast } = useToast();
   const [label, setLabel] = useState("");
   const [duration, setDuration] = useState<number | null>(settings.focusMinutes);
   useEffect(() => setDuration(settings.focusMinutes), [settings.focusMinutes]);
   const minutes = duration ?? 0;
   const validDuration = minutes >= 1 && minutes <= 720;
-  const today = todayStr();
+  const today = useToday();
 
+  // Refreshed each minute, so blocks drop off once they've ended.
+  const clockNow = useNow(60000);
+  const nm = clockNow.getHours() * 60 + clockNow.getMinutes();
   const upcoming = useMemo(() => {
-    const nm = new Date().getHours() * 60 + new Date().getMinutes();
     return blocksForDay(items ?? [], today)
       .filter((b) => b.end > nm && kindOf(b.item) !== "sleep" && b.continues !== "before")
       .slice(0, 6);
-  }, [items, today]);
+  }, [items, today, nm]);
 
   const todays = (sessions ?? []).filter((s) => s.date === today);
   const [openSession, setOpenSession] = useState<Session | null>(null);
@@ -372,8 +373,7 @@ export function FocusPage() {
                         aria-checked={on}
                         onClick={() => setDuration(m)}
                         // Round pills; the chosen one is tinted and ringed in the focus color, like the kinds in the item window.
-                        className={cn("flex-1 h-9 rounded-full border text-[13px] font-medium tnum transition-colors", on ? "border-transparent text-foreground" : "text-muted-foreground hover-elevate")}
-                        style={on ? { background: "hsl(var(--k-focus) / .16)", boxShadow: "inset 0 0 0 1.5px hsl(var(--k-focus))" } : undefined}
+                        {...choicePill(on, "--k-focus", "flex-1 tnum")}
                         data-testid={`button-duration-${m}`}
                       >
                         {fmtDur(m)}
@@ -568,7 +568,12 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
   };
   const removeFeed = async () => {
     if (!existing) return;
-    await apiRequest("DELETE", `/api/feeds/${existing.id}`);
+    try {
+      await apiRequest("DELETE", `/api/feeds/${existing.id}`);
+    } catch {
+      toast({ title: "Couldn't remove calendar", variant: "destructive" });
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
     queryClient.invalidateQueries({ queryKey: ["/api/items"] });
     onClose();
@@ -996,7 +1001,7 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routines" hint={`Background things for every day. Sleeping, eating, ${draft.plain ? "etc" : "grooming"}...`}>
+          <Section title="Routines" hint={`Background things for your days. Sleeping, eating, ${draft.plain ? "etc" : "grooming"}...`}>
             <div className="grid gap-3">
               {draft.routines.map((r) => (
                 <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
@@ -1020,7 +1025,9 @@ export function SettingsPage() {
                         onChange={(e) => updateRoutine(r.id, { endTime: e.target.value })} data-testid={`input-routine-end-${r.id}`} />
                     </Field>
                   </div>
-                  <p className="text-xs text-muted-foreground">{fmtDur((toM(r.endTime) - toM(r.startTime) + 1440) % 1440)} daily{r.endTime < r.startTime ? " · crosses midnight" : ""}</p>
+                  <WeekdayPills value={r.days ?? [0, 1, 2, 3, 4, 5, 6]} weekStartsOn={draft.weekStartsOn} minOne label={`${r.name} days`}
+                    onChange={(days) => updateRoutine(r.id, { days: days.length === 7 ? undefined : days })} testId={`button-routine-day-${r.id}-`} />
+                  <p className="text-xs text-muted-foreground">{fmtDur((toMin(r.endTime) - toMin(r.startTime) + 1440) % 1440)} · {routineDaysLabel(r.days)}{r.endTime < r.startTime ? " · crosses midnight" : ""}</p>
                 </div>
               ))}
               <Button variant="outline" className="justify-self-start" onClick={() => setDraft((d) => ({
@@ -1080,12 +1087,7 @@ export function SettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="0">At start time</SelectItem>
-                  <SelectItem value="5">5 min before</SelectItem>
-                  <SelectItem value="10">10 min before</SelectItem>
-                  <SelectItem value="15">15 min before</SelectItem>
-                  <SelectItem value="30">30 min before</SelectItem>
+                  {REMINDERS.map((r) => <SelectItem key={r.v} value={r.v}>{r.l}</SelectItem>)}
                 </SelectContent>
               </Select>
             </Field>
@@ -1157,7 +1159,7 @@ export function SettingsPage() {
 
             </div>
           </Section>
-          <Section title="Appearance" hint="Choose a color theme and display mode">
+          <Section title="Appearance" hint="Color theme, display mode and the bottom bar">
             <div className="flex flex-wrap gap-2" role="group" aria-label="App color theme">
               {COLOR_THEMES.map((name) => (
                 <button key={name} type="button" aria-pressed={draft.colorTheme === name}
@@ -1165,7 +1167,7 @@ export function SettingsPage() {
                   className={cn("inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-foreground capitalize transition-colors", draft.colorTheme === name ? "border-primary bg-primary/10 font-semibold" : "hover:bg-muted")}
                   data-testid={`button-theme-${name}`}>
                   <span className="h-4 w-4 rounded-full" style={{ background: {
-                    ribbon: "#cf493e", carrot: "#e66b0a", butter: "#e0a80b", grass: "#6a8229",
+                    ribbon: "#cf3517", carrot: "#e66b0a", butter: "#e0a80b", grass: "#6a8229",
                     denim: "#4d60ab", plum: "#95549d", mouse: "#62676b",
                   }[name] }} />
                   {draft.plain ? PLAIN_THEME_NAMES[name] : name}
@@ -1188,6 +1190,11 @@ export function SettingsPage() {
                   <SelectItem value="sun">Sunrise/sunset</SelectItem>
                 </SelectContent>
               </Select>
+            </Field>
+            <Field label="Bottom bar">
+              {/* Saved with the rest of the page's settings; also in Today's Customize window. */}
+              <NavOrderEditor order={draft.navOrder} onReorder={(next) => setDraft((d) => ({ ...d, navOrder: next }))} />
+              <p className="text-xs text-muted-foreground">Hold a page and drag it along. Cadence still opens on Today.</p>
             </Field>
             <SubSection title="Let Cadence outside" hint="Hide the cat stuff">
               <p className="text-sm text-muted-foreground">
@@ -1217,10 +1224,6 @@ export function SettingsPage() {
     </>
   );
 }
-const toM = (t: string) => {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + (m || 0);
-};
 function Section({ title, hint, children, defaultOpen = false }: { title: string; hint?: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const id = `section-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;

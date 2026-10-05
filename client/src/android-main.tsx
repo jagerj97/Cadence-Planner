@@ -15,6 +15,8 @@ installAndroidApi();
 try {
   const top = window.CadenceAndroid?.insetTop?.();
   if (top) document.documentElement.style.setProperty("--safe-top", `${top}px`);
+  const bottom = window.CadenceAndroid?.insetBottom?.();
+  if (bottom) document.documentElement.style.setProperty("--safe-bottom", `${bottom}px`);
 } catch { /* older builds */ }
 if (!window.location.hash) window.location.hash = "#/";
 createRoot(document.getElementById("root")!).render(

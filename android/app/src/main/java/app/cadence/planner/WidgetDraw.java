@@ -117,6 +117,8 @@ final class WidgetDraw {
         return TextUtils.ellipsize(text, paint, Math.max(0, width), TextUtils.TruncateAt.END).toString();
     }
 
+    private static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+
     /**
      * One hour of the Schedule timeline. Each strip draws the whole day shifted up to its hour and
      * lets the bitmap clip it, so blocks, labels, and the now line join seamlessly across strips.
@@ -130,6 +132,8 @@ final class WidgetDraw {
         canvas.translate(0, -hour * hourPx);
         float colLeft = 56 * d, colRight = w - 8 * d, colWidth = colRight - colLeft;
         float dayHeight = 24 * hourPx;
+        // What reaches this strip (with room for labels and the shortest block): the rest is skipped.
+        float seenTop = hour * hourPx - 20 * d, seenBottom = (hour + 1) * hourPx + 20 * d;
 
         Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -168,13 +172,14 @@ final class WidgetDraw {
             if (r == null) continue;
             int color = parse(r.optString("color"), theme.sleep);
             float top = r.optInt("start") / 60f * hourPx, bottom = r.optInt("end") / 60f * hourPx;
+            if (bottom < seenTop || top > seenBottom) continue;
             fill.setColor(alpha(color, 0.12f));
             canvas.drawRect(colLeft, top, colRight, bottom, fill);
             dash.setColor(color);
             canvas.drawLine(colLeft + d, top, colLeft + d, bottom, dash);
             text.setTextSize(12 * d);
             text.setFakeBoldText(false);
-            text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            text.setTypeface(MEDIUM);
             text.setColor(color);
             canvas.drawText(fit(text, r.optString("title"), colWidth - 12 * d), colLeft + 6 * d, top + 4 * d + 12 * d, text);
         }
@@ -195,6 +200,10 @@ final class WidgetDraw {
         for (int i = 0; blocks != null && i < blocks.length(); i++) {
             JSONObject b = blocks.optJSONObject(i);
             if (b == null) continue;
+            String continues = b.optString("continues");
+            float top = "before".equals(continues) || "through".equals(continues) ? 0 : b.optInt("start") / 60f * hourPx;
+            float bottom = Math.max(b.optInt("end") / 60f * hourPx, top + 18 * d) + d;
+            if (bottom < seenTop || top > seenBottom) continue;
             drawBlock(context, canvas, b, theme, colLeft, colWidth, hourPx, d, nowMin);
         }
 
@@ -235,15 +244,20 @@ final class WidgetDraw {
         shape.addRoundRect(rect, radii, Path.Direction.CW);
 
         if (depth > 0) {
+            // A thin card-colored outline only, so the item underneath still shows through.
             Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setStrokeWidth(d);
             edge.setColor(theme.card);
-            RectF outer = new RectF(rect.left - d, rect.top - d, rect.right + d, rect.bottom + d);
-            canvas.drawRoundRect(outer, r + d, r + d, edge);
+            RectF outer = new RectF(rect.left - d / 2, rect.top - d / 2, rect.right + d / 2, rect.bottom + d / 2);
+            canvas.drawRoundRect(outer, r + d / 2, r + d / 2, edge);
         }
-        int layer = canvas.saveLayerAlpha(rect, done ? 140 : 255);
+        // Only a done item needs its own layer (to fade it); the rest just clip.
+        int layer = done ? canvas.saveLayerAlpha(rect, 140) : canvas.save();
         canvas.clipPath(shape);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(theme.card);
+        // On top of another item, only a light veil of the card goes under the tint, so it stays see-through.
+        paint.setColor(depth > 0 ? alpha(theme.card, 0.55f) : theme.card);
         canvas.drawRect(rect, paint);
         paint.setColor(alpha(color, "sleep".equals(kind) ? 0.1f : 0.15f));
         canvas.drawRect(rect, paint);
@@ -279,7 +293,7 @@ final class WidgetDraw {
             x += 14 * d + 4 * d;
         }
         TextPaint title = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setTypeface(MEDIUM);
         title.setTextSize(15 * d);
         title.setColor(theme.foreground);
         title.setStrikeThruText(done);

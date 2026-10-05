@@ -39,11 +39,6 @@
   --destructive-foreground: 0 0% 100%;
   --input: 0 0% 78%;
   --ring: 25 100% 45%;
-  --chart-1: 221 83% 45%;
-  --chart-2: 262 83% 48%;
-  --chart-3: 173 58% 39%;
-  --chart-4: 43 74% 49%;
-  --chart-5: 27 87% 55%;
   --font-sans: 'Roboto', system-ui, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: 'Roboto Mono', ui-monospace, monospace;
@@ -135,9 +130,6 @@
   --sidebar-accent-foreground: 0 0% 93%;
   --sidebar-ring: 26 100% 55%;
   /* Pop-up menus share the cards' colors, so they follow the theme with them. */
-  --popover: var(--card);
-  --popover-foreground: var(--card-foreground);
-  --popover-border: var(--border);
   --primary: 26 100% 55%;
   --primary-foreground: 0 0% 8%;
   --secondary: 0 0% 20%;
@@ -147,61 +139,45 @@
   --accent: 25 40% 20%;
   --accent-foreground: 28 100% 72%;
   --destructive: 4 65% 55%;
-  --destructive-foreground: 0 0% 100%;
   --input: 0 0% 30%;
   --ring: 26 100% 55%;
-  --chart-1: 221 83% 65%;
-  --chart-2: 262 83% 68%;
-  --chart-3: 173 58% 55%;
-  --chart-4: 43 74% 65%;
-  --chart-5: 27 87% 65%;
-  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
-  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
   --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.5);
   --shadow: 0 1px 3px hsl(0 0% 0% / 0.5);
   --shadow-md: 0 3px 6px hsl(0 0% 0% / 0.5);
   --shadow-lg: 0 10px 20px hsl(0 0% 0% / 0.55);
   --shadow-xl: 0 14px 28px hsl(0 0% 0% / 0.6);
-  --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 0% / 0);
 
   /* Fallback for older browsers */
-  --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(
     from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
   );
 
   /* Fallback for older browsers */
-  --sidebar-accent-border: hsl(var(--sidebar-accent));
   --sidebar-accent-border: hsl(
     from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
   );
 
   /* Fallback for older browsers */
-  --primary-border: hsl(var(--primary));
   --primary-border: hsl(
     from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
   );
 
   /* Fallback for older browsers */
-  --secondary-border: hsl(var(--secondary));
   --secondary-border: hsl(
     from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
   );
 
   /* Fallback for older browsers */
-  --muted-border: hsl(var(--muted));
   --muted-border: hsl(
     from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
   );
 
   /* Fallback for older browsers */
-  --accent-border: hsl(var(--accent));
   --accent-border: hsl(
     from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
   );
 
   /* Fallback for older browsers */
-  --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(
     from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
   );
@@ -348,9 +324,6 @@
   background-image: linear-gradient(to bottom, hsl(var(--border) / 0.7) 1px, transparent 1px);
 }
 .scroll-thin { scrollbar-width: thin; }
-@keyframes pulse-dot { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
-.pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .pulse-dot { animation: none; } }
 
 /* sky gradient stops (sunrise/sunset) */
 :root {
@@ -389,7 +362,7 @@
   border-bottom: 1px solid hsl(var(--border));
 }
 .dark .appbar { background: linear-gradient(to top, hsl(var(--primary) / .12), hsl(var(--primary) / 0)), hsl(var(--appbar)); }
-:root[data-color-theme="ribbon"] { --primary: 5 65% 42%; --ring: 5 65% 42%; --sidebar-primary: 5 65% 42%; --sidebar-ring: 5 65% 42%; --accent: 6 72% 94%; --accent-foreground: 5 65% 30%; --sidebar-accent: 6 72% 94%; }
+:root[data-color-theme="ribbon"] { --primary: 7 80% 45%; --ring: 7 80% 45%; --sidebar-primary: 7 80% 45%; --sidebar-ring: 7 80% 45%; --accent: 14 70% 93%; --accent-foreground: 7 78% 32%; --sidebar-accent: 14 70% 93%; }
 :root[data-color-theme="denim"] { --primary: 228 43% 40%; --ring: 228 43% 40%; --sidebar-primary: 228 43% 40%; --sidebar-ring: 228 43% 40%; --accent: 227 57% 94%; --accent-foreground: 228 43% 30%; --sidebar-accent: 227 57% 94%; }
 :root[data-color-theme="butter"] { --primary: 46 96% 46%; --ring: 46 96% 46%; --sidebar-primary: 46 96% 46%; --sidebar-ring: 46 96% 46%; --accent: 48 90% 91%; --accent-foreground: 40 90% 24%; --sidebar-accent: 48 90% 91%; --primary-foreground: 30 20% 10%; --sidebar-primary-foreground: 30 20% 10%; }
 :root[data-color-theme="plum"] { --primary: 291 39% 39%; --ring: 291 39% 39%; --sidebar-primary: 291 39% 39%; --sidebar-ring: 291 39% 39%; --accent: 291 42% 94%; --accent-foreground: 291 39% 29%; --sidebar-accent: 291 42% 94%; }
@@ -399,7 +372,7 @@
   --background: 0 0% 97%; --sidebar: 0 0% 98%; --border: 0 0% 87%; --muted: 0 0% 94%;
   --accent: 0 0% 91%; --accent-foreground: 220 8% 24%; --sidebar-accent: 0 0% 91%;
 }
-.dark[data-color-theme="ribbon"] { --primary: 7 76% 70%; --ring: 7 76% 70%; --sidebar-primary: 7 76% 70%; --sidebar-ring: 7 76% 70%; --accent: 6 29% 23%; --accent-foreground: 6 75% 82%; --sidebar-accent: 6 29% 23%; }
+.dark[data-color-theme="ribbon"] { --primary: 8 82% 59%; --ring: 8 82% 59%; --sidebar-primary: 8 82% 59%; --sidebar-ring: 8 82% 59%; --accent: 12 30% 21%; --accent-foreground: 12 85% 75%; --sidebar-accent: 12 30% 21%; }
 .dark[data-color-theme="denim"] { --primary: 228 66% 75%; --ring: 228 66% 75%; --sidebar-primary: 228 66% 75%; --sidebar-ring: 228 66% 75%; --accent: 228 25% 24%; --accent-foreground: 228 77% 85%; --sidebar-accent: 228 25% 24%; }
 .dark[data-color-theme="butter"] { --primary: 48 92% 62%; --ring: 48 92% 62%; --sidebar-primary: 48 92% 62%; --sidebar-ring: 48 92% 62%; --accent: 46 28% 21%; --accent-foreground: 48 90% 78%; --sidebar-accent: 46 28% 21%; }
 .dark[data-color-theme="plum"] { --primary: 291 55% 73%; --ring: 291 55% 73%; --sidebar-primary: 291 55% 73%; --sidebar-ring: 291 55% 73%; --accent: 291 25% 24%; --accent-foreground: 291 63% 85%; --sidebar-accent: 291 25% 24%; }
@@ -409,13 +382,20 @@
   --background: 0 0% 10%; --card: 0 0% 16%; --sidebar: 0 0% 14%; --border: 0 0% 26%; --muted: 0 0% 19%;
   --accent: 0 0% 24%; --accent-foreground: 0 0% 90%; --sidebar-accent: 0 0% 24%;
 }
+/* Each color theme tints the page's neutrals (background, borders, muted fills, and in dark mode the
+   cards) with its own hue, as lightly as Carrot's warm cream; Mouse keeps them grey. */
+:root[data-color-theme="ribbon"] { --background: 20 22% 97%; --sidebar: 20 22% 98%; --border: 18 15% 88%; --muted: 20 20% 95%; --secondary: 18 10% 93%; }
+:root[data-color-theme="denim"] { --background: 228 28% 97%; --sidebar: 228 29% 98%; --border: 228 19% 88%; --muted: 228 25% 95%; --secondary: 228 12% 93%; }
+:root[data-color-theme="butter"] { --background: 46 28% 97%; --sidebar: 46 29% 98%; --border: 46 19% 88%; --muted: 46 25% 95%; --secondary: 46 12% 93%; }
+:root[data-color-theme="plum"] { --background: 291 28% 97%; --sidebar: 291 29% 98%; --border: 291 19% 88%; --muted: 291 25% 95%; --secondary: 291 12% 93%; }
+:root[data-color-theme="grass"] { --background: 82 28% 97%; --sidebar: 82 29% 98%; --border: 82 19% 88%; --muted: 82 25% 95%; --secondary: 82 12% 93%; }
+.dark[data-color-theme="ribbon"] { --background: 14 9% 11%; --card: 14 7% 16%; --sidebar: 14 7% 14%; --border: 14 5% 22%; --muted: 14 6% 19%; --secondary: 14 6% 20%; }
+.dark[data-color-theme="denim"] { --background: 228 10% 11%; --card: 228 8% 16%; --sidebar: 228 8% 14%; --border: 228 6% 22%; --muted: 228 7% 19%; --secondary: 228 7% 20%; }
+.dark[data-color-theme="butter"] { --background: 46 10% 11%; --card: 46 8% 16%; --sidebar: 46 8% 14%; --border: 46 6% 22%; --muted: 46 7% 19%; --secondary: 46 7% 20%; }
+.dark[data-color-theme="plum"] { --background: 291 10% 11%; --card: 291 8% 16%; --sidebar: 291 8% 14%; --border: 291 6% 22%; --muted: 291 7% 19%; --secondary: 291 7% 20%; }
+.dark[data-color-theme="grass"] { --background: 82 10% 11%; --card: 82 8% 16%; --sidebar: 82 8% 14%; --border: 82 6% 22%; --muted: 82 7% 19%; --secondary: 82 7% 20%; }
 .dark[data-color-theme]:not([data-color-theme="carrot"]) { --primary-foreground: 23 8% 12%; --sidebar-primary-foreground: 23 8% 12%; }
-.fab { box-shadow: 0 3px 6px hsl(0 0% 0% / 0.2), 0 3px 6px hsl(0 0% 0% / 0.26); transition: box-shadow .2s, transform .2s; }
-.fab:hover { box-shadow: 0 10px 20px hsl(0 0% 0% / 0.22), 0 6px 6px hsl(0 0% 0% / 0.26); transform: translateY(-1px); }
 .btn-caps { text-transform: none; letter-spacing: .005em; }
-@keyframes ripple-in { from { transform: scale(.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
-.pop-in { animation: ripple-in .22s cubic-bezier(.2,.8,.2,1); }
-@media (prefers-reduced-motion: reduce) { .pop-in, .fab { animation: none; transition: none; } }
 
 /* dotted journal paper for the habit tracker */
 .habit-paper {
@@ -444,29 +424,6 @@
   background: linear-gradient(145deg, hsl(var(--k-focus) / .14), transparent 70%), hsl(var(--card));
   border-color: hsl(var(--k-focus) / .24);
 }
-.wellness-stat {
-  position: relative;
-  overflow: hidden;
-  min-height: 95px;
-  padding: 14px 18px 17px;
-}
-.wellness-stat--planned { background: hsl(34 100% 93%); border-color: hsl(35 92% 86%); }
-.wellness-stat--free { background: hsl(156 43% 93%); border-color: hsl(153 38% 85%); }
-.dark .wellness-stat--planned { background: hsl(29 25% 21%); border-color: hsl(29 28% 29%); }
-.dark .wellness-stat--free { background: hsl(155 17% 20%); border-color: hsl(155 18% 28%); }
-.wellness-stat-track {
-  height: 5px;
-  overflow: hidden;
-  border-radius: 99px;
-  background: hsl(var(--foreground) / .09);
-}
-.wellness-stat-track > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: hsl(var(--primary));
-}
-.wellness-stat--free .wellness-stat-track > span { background: hsl(var(--k-habit)); }
 .wellness-habits {
   background: linear-gradient(145deg, hsl(155 45% 96%), hsl(var(--card)) 48%);
   border-color: hsl(155 26% 86%);
@@ -494,7 +451,6 @@
 .wellness-rail { border-color: hsl(var(--border) / .5); }
 .wellness-rail a[aria-current="page"] { background: hsl(var(--sidebar-accent)); }
 @media (max-width: 639px) {
-  .wellness-stat { min-height: 88px; padding: 12px 14px 15px; }
 }
 
 /* Display mode switching on its own (sunrise, sunset, the phone's setting) cross-fades the page. */

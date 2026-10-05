@@ -1,0 +1,46 @@
+<!-- App shortcuts: long-press Cadence's icon for these, or drag one onto the home screen as its own icon.
+     Launchers show the first four or so in the long-press menu; the rest stay available to pin. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="journal" android:enabled="true" android:icon="@mipmap/ic_shortcut_journal"
+        android:shortcutShortLabel="@string/shortcut_journal" android:shortcutLongLabel="@string/shortcut_journal_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.cadence.planner"
+            android:targetClass="app.cadence.planner.AppActivity" android:data="cadence-shortcut://journal">
+            <extra android:name="cadence_add" android:value="open:/journal" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="calendar" android:enabled="true" android:icon="@mipmap/ic_shortcut_calendar"
+        android:shortcutShortLabel="@string/shortcut_calendar" android:shortcutLongLabel="@string/shortcut_calendar_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.cadence.planner"
+            android:targetClass="app.cadence.planner.AppActivity" android:data="cadence-shortcut://calendar">
+            <extra android:name="cadence_add" android:value="open:/calendar" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="tasks" android:enabled="true" android:icon="@mipmap/ic_shortcut_tasks"
+        android:shortcutShortLabel="@string/shortcut_tasks" android:shortcutLongLabel="@string/shortcut_tasks_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.cadence.planner"
+            android:targetClass="app.cadence.planner.AppActivity" android:data="cadence-shortcut://tasks">
+            <extra android:name="cadence_add" android:value="open:/tasks" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="habits" android:enabled="true" android:icon="@mipmap/ic_shortcut_habits"
+        android:shortcutShortLabel="@string/shortcut_habits" android:shortcutLongLabel="@string/shortcut_habits_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.cadence.planner"
+            android:targetClass="app.cadence.planner.AppActivity" android:data="cadence-shortcut://habits">
+            <extra android:name="cadence_add" android:value="open:/habits" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="focus" android:enabled="true" android:icon="@mipmap/ic_shortcut_focus"
+        android:shortcutShortLabel="@string/shortcut_focus" android:shortcutLongLabel="@string/shortcut_focus_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.cadence.planner"
+            android:targetClass="app.cadence.planner.AppActivity" android:data="cadence-shortcut://focus">
+            <extra android:name="cadence_add" android:value="open:/focus" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="today" android:enabled="true" android:icon="@mipmap/ic_shortcut_today"
+        android:shortcutShortLabel="@string/shortcut_today" android:shortcutLongLabel="@string/shortcut_today_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.cadence.planner"
+            android:targetClass="app.cadence.planner.AppActivity" android:data="cadence-shortcut://today">
+            <extra android:name="cadence_add" android:value="open:/" />
+        </intent>
+    </shortcut>
+</shortcuts>

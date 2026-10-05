@@ -9,6 +9,20 @@
     <string name="widget_agenda_description">The next two weeks as a list</string>
     <string name="widget_tasks_label">Tasks</string>
     <string name="widget_tasks_description">Today\'s tasks. Tap a checkbox to complete one.</string>
+    <string name="widget_journal_label">Journal</string>
+    <string name="widget_journal_description">Today\'s journal entries, or your latest ones</string>
+    <string name="shortcut_journal">Journal</string>
+    <string name="shortcut_journal_long">Open the journal</string>
+    <string name="shortcut_calendar">Calendar</string>
+    <string name="shortcut_calendar_long">Open the calendar</string>
+    <string name="shortcut_tasks">Tasks</string>
+    <string name="shortcut_tasks_long">Open your tasks</string>
+    <string name="shortcut_habits">Habits</string>
+    <string name="shortcut_habits_long">Open your habits</string>
+    <string name="shortcut_focus">Focus</string>
+    <string name="shortcut_focus_long">Start a focus timer</string>
+    <string name="shortcut_today">Today</string>
+    <string name="shortcut_today_long">Open today</string>
     <string name="widget_habits_label">Habits</string>
     <string name="widget_habits_description">Today\'s habits. Tap a circle to mark one half or fully done.</string>
 </resources>
