@@ -113,13 +113,12 @@ export function HabitsPage() {
 
   return (
     <>
-      <PageHeader title="Habits" sub={dueNow.length ? `${doneToday} of ${dueNow.length} done today` : "Build routines that stick"} />
+      <PageHeader title="Habits" sub={dueNow.length ? `${doneToday} of ${dueNow.length} done today` : undefined} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         {habits.length === 0 ? (
           <Empty
             icon={<Flame className="h-5 w-5" />}
             title="No habits yet"
-            body="Habits are recurring items you check off. Add one like “Meditate 10 min every day” and watch the streak grow."
           />
         ) : (
           <div className="grid max-w-5xl gap-4 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start">
@@ -127,7 +126,7 @@ export function HabitsPage() {
             <section className="card-md wellness-habits" aria-label="Today">
               <h2 className="px-4 pt-4 pb-2 text-base font-semibold tracking-tight">Today</h2>
               {dueNow.length === 0 && (
-                <p className="px-4 pb-4 text-sm text-muted-foreground" data-testid="text-no-habits-today">No habits scheduled today.</p>
+                <p className="px-4 pb-4 text-sm text-muted-foreground" data-testid="text-no-habits-today">No habits scheduled today</p>
               )}
               <SortableList
                 as="ul"
@@ -268,12 +267,12 @@ export function HabitsPage() {
   );
 }
 
-function Empty({ icon, title, body, children }: { icon: React.ReactNode; title: string; body: string; children?: React.ReactNode }) {
+function Empty({ icon, title, body, children }: { icon: React.ReactNode; title: string; body?: string; children?: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-sm text-center py-16 grid gap-2 justify-items-center">
       <div className="h-10 w-10 rounded-full bg-muted grid place-items-center text-muted-foreground">{icon}</div>
       <div className="font-medium">{title}</div>
-      <p className="text-sm text-muted-foreground">{body}</p>
+      {body && <p className="text-sm text-muted-foreground">{body}</p>}
       {children}
     </div>
   );
@@ -388,7 +387,7 @@ export function FocusPage() {
                     <span className="text-xs text-muted-foreground">hrs:mins</span>
                   </span>
                 </label>
-                {!validDuration && <p className="text-xs text-destructive">Enter a time from 00:01 to 12:00.</p>}
+                {!validDuration && <p className="text-xs text-destructive">Enter a time from 00:01 to 12:00</p>}
                 <Button size="lg" className="rounded-full" disabled={!validDuration} onClick={() => startFocus({ title: label.trim() || "Focus session", minutes })} data-testid="button-start-focus">
                   <Play className="h-4 w-4 mr-1.5" /> {validDuration ? `Start ${fmtDur(minutes)} focus` : "Start focus"}
                 </Button>
@@ -400,7 +399,7 @@ export function FocusPage() {
             <div className="card-md">
               <h2 className="text-sm font-semibold px-4 pt-3 pb-2">Start from your plan</h2>
               {upcoming.length === 0 ? (
-                <p className="px-4 pb-4 text-sm text-muted-foreground">Nothing else scheduled today.</p>
+                <p className="px-4 pb-4 text-sm text-muted-foreground">Nothing else scheduled today</p>
               ) : (
                 <ul className="pb-2">
                   {upcoming.map((b) => (
@@ -472,7 +471,7 @@ export function FocusPage() {
                   <DialogDescription>{openSession && sessionWhen(openSession)}</DialogDescription>
                 </DialogHeader>
                 {openSession?.calendarItemId != null && (items ?? []).some((i) => i.id === openSession.calendarItemId) && (
-                  <p className="text-sm text-muted-foreground">It's on your calendar too. Deleting it removes it from there as well.</p>
+                  <p className="text-sm text-muted-foreground">It's on your calendar too. Deleting it removes it from there as well</p>
                 )}
                 <div className="flex justify-end gap-2">
                   <Button variant="destructive" size="sm" data-testid="button-delete-session" onClick={async () => {
@@ -584,7 +583,7 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
           <DialogTitle>{existing ? existing.name : "Connect a calendar"}</DialogTitle>
           <DialogDescription>
             Paste a calendar's iCal link. For Google Calendar, copy the “Secret address in iCal format” from{" "}
-            <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">your calendar's settings</a>.
+            <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">your calendar's settings</a>
           </DialogDescription>
         </DialogHeader>
         <div className="grid min-w-0 grid-cols-1 gap-3">
@@ -656,7 +655,7 @@ export function CalendarLinks() {
         ics, tz: TZ, importKind: fileKind === "auto" ? null : fileKind, journalNotes: fileJournal,
       })).json() as { imported: number; skipped?: number };
       // A calendar too big to keep whole leaves out its oldest one-off events; say so.
-      if (result.skipped) toast({ title: `Imported ${result.imported.toLocaleString()} items`, description: `${result.skipped.toLocaleString()} older events were left out to keep Cadence quick.` });
+      if (result.skipped) toast({ title: `Imported ${result.imported.toLocaleString()} items`, description: `${result.skipped.toLocaleString()} older events were left out to keep Cadence quick` });
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/journal"] });
     } catch (e: any) {
@@ -723,7 +722,7 @@ export function CalendarLinks() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">No calendars connected yet.</p>
+              <p className="text-sm text-muted-foreground">No calendars connected yet</p>
             )}
             <Button variant="outline" className="justify-self-start" onClick={() => setEditing("new")} data-testid="button-connect-calendar">
               <Link2 className="h-4 w-4 mr-1.5" /> Connect a calendar
@@ -737,7 +736,7 @@ export function CalendarLinks() {
             <h2 className="text-sm font-semibold">Import a file</h2>
             <p className="text-sm text-muted-foreground">
               Upload any .ics file (Google: Settings → Import &amp; export → Export). Imported items are editable in Cadence, and repeating
-              items keep their schedule.
+              items keep their schedule
             </p>
             <input ref={fileRef} type="file" accept=".ics,text/calendar" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} data-testid="input-file-ics" />
             <ImportTypePicker id="select-file-import-kind" value={fileKind} onChange={setFileKind} />
@@ -755,7 +754,7 @@ export function CalendarLinks() {
             <h2 className="text-sm font-semibold">Export</h2>
             <p className="text-sm text-muted-foreground">
               Download your {localCount} Cadence items as an .ics file, then import it into Google Calendar (Settings → Import &amp; export → Import).
-              Repeats, reminders and notes are included.
+              Repeats, reminders and notes are included
             </p>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => exportOnDevice(false)} data-testid="button-export">
@@ -856,9 +855,7 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
   return (
     <>
       <p className="text-sm text-muted-foreground">
-        Save a complete, unencrypted copy of your phone's planner. It includes journal entries,
-        habit progress, settings, focus history, and calendar subscription URLs. Keep this file private.
-        Your settings are saved automatically; the backup includes the latest changes.
+        Save or upload a .json file with all your Cadence data
       </p>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={backup} disabled={busy} data-testid="button-backup-save">
@@ -878,7 +875,7 @@ function BackupRestore({ beforeBackup }: { beforeBackup: () => Promise<void> }) 
             <DialogTitle>Replace data on this phone?</DialogTitle>
             <DialogDescription>
               Restoring {candidate?.name} will remove the current planner data from this phone and replace it
-              with the contents of the backup. This cannot be undone unless you saved another backup.
+              with the contents of the backup. This cannot be undone unless you saved another backup
             </DialogDescription>
           </DialogHeader>
           <p className="rounded-xl bg-muted p-3 text-sm">{candidate?.summary}</p>
@@ -1038,7 +1035,7 @@ export function SettingsPage() {
           </Section>
 
           <Section title="Sunrise & sunset">
-            <Row label="Show sunrise & sunset" hint="Tint your timeline with the sky and mark when the sun rises and sets">
+            <Row label="Show sunrise & sunset" hint="Colors the timeline to show daylight hours">
               <Switch checked={draft.showSun} onCheckedChange={(v) => setDraft({ ...draft, showSun: v })} data-testid="switch-show-sun" />
             </Row>
             {draft.showSun && <>
@@ -1061,7 +1058,7 @@ export function SettingsPage() {
                     const { lat, lng } = await getDeviceLocation();
                     setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4) }));
                   } catch (err) {
-                    toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead.`, variant: "destructive" });
+                    toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead`, variant: "destructive" });
                   } finally {
                     setLocating(false);
                   }
@@ -1113,8 +1110,8 @@ export function SettingsPage() {
                   size="sm"
                   onClick={() => {
                     chime("soft");
-                    toast({ title: "Test reminder", description: "This is how reminders look." });
-                    window.CadenceAndroid?.notify("Test reminder", "This is how reminders look.");
+                    toast({ title: "Test reminder", description: "This is how reminders look" });
+                    window.CadenceAndroid?.notify("Test reminder", "This is how reminders look");
                   }}
                   data-testid="button-test-notification"
                 >
@@ -1137,7 +1134,7 @@ export function SettingsPage() {
             <CalendarLinks />
           </Section>
 
-          <Section title="Backup & restore" hint="Move all your phone-local Cadence data to a file">
+          <Section title="Backup & restore">
             <BackupRestore beforeBackup={flushAndroidSettings} />
           </Section>
 
@@ -1158,7 +1155,7 @@ export function SettingsPage() {
 
             </div>
           </Section>
-          <Section title="Appearance" hint="Color theme, display mode and the bottom bar">
+          <Section title="Appearance">
             <div className="flex flex-wrap gap-2" role="group" aria-label="App color theme">
               {COLOR_THEMES.map((name) => (
                 <button key={name} type="button" aria-pressed={draft.colorTheme === name}
@@ -1193,9 +1190,9 @@ export function SettingsPage() {
             <Field label="Bottom bar">
               {/* Saved with the rest of the page's settings; also in Today's Customize window. */}
               <NavOrderEditor order={draft.navOrder} onReorder={(next) => setDraft((d) => ({ ...d, navOrder: next }))} />
-              <p className="text-xs text-muted-foreground">Hold a page and drag it along. Cadence still opens on Today.</p>
+              <p className="text-xs text-muted-foreground">Drag to reorder</p>
             </Field>
-            <SubSection title="Let Cadence outside" hint="Hide the cat stuff">
+            <SubSection title="Let Cadence outside">
               <p className="text-sm text-muted-foreground">
                 Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to. (The app will close)
               </p>

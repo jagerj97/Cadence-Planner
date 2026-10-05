@@ -24,7 +24,7 @@ const stamp = () => new Date().toLocaleDateString("en-CA");
 const nothing = () => {};
 
 const webBridge: AndroidBridge = {
-  fetchCalendar: () => JSON.stringify({ error: "Calendar links sync in the Android app." }),
+  fetchCalendar: () => JSON.stringify({ error: "Calendar links sync in the Android app" }),
   saveIcs: (text) => download(`cadence-${stamp()}.ics`, "text/calendar", text),
   saveBackup: (text) => download(`cadence-backup-${stamp()}.json`, "application/json", text),
   notify: nothing,

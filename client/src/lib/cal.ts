@@ -644,7 +644,6 @@ export function parseQuick(input: string, baseDay: string): Parsed {
   const title = s.replace(/\s+/g, " ").trim() || "Untitled";
   if (!kind) {
     if (/\b(meeting|call|sync|standup|1:1|interview)\b/i.test(title)) kind = "meeting";
-    else if (/\b(sleep|nap|bed)\b/i.test(title)) kind = "sleep";
     else if (/\b(focus|deep work|study)\b/i.test(title)) kind = "focus";
     else if (recurrence.freq !== "none") kind = "habit";
     else kind = start != null ? "event" : "task";

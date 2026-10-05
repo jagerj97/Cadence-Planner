@@ -186,8 +186,7 @@ export default function TasksPage() {
               <div className="h-10 w-10 rounded-full bg-accent grid place-items-center text-primary">
                 <CheckSquare className="h-5 w-5" />
               </div>
-              <div className="font-medium">{filter === "done" ? "Nothing completed yet" : filter === "upcoming" ? "Nothing coming up" : "You're all clear"}</div>
-              <p className="text-sm text-muted-foreground max-w-xs">Add a task above — give it a time like “3pm” to put it on your timeline, or leave it open for anytime.</p>
+              <div className="font-medium">No tasks here!</div>
             </div>
           ) : (
             groups.map((g) => (

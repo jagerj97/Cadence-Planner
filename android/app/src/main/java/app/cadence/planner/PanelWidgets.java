@@ -407,7 +407,7 @@ final class PanelWidgets {
         list(context, v, R.id.list_rows, new Intent(context, RowService.class).putExtra("tasks", tasks), id, 0, null, null);
         v.setEmptyView(R.id.list_rows, R.id.list_empty);
         v.setTextViewText(R.id.list_empty, day == null ? "Open Cadence to load your day"
-            : tasks ? "No tasks. Add one in Cadence — it lands here if it has no time." : "No habits today.");
+            : tasks ? "No tasks today" : "No habits today");
         v.setTextColor(R.id.list_empty, theme.mutedForeground);
         Intent tap = new Intent(context, ItemReceiver.class).setAction(ACTION_ITEM);
         v.setPendingIntentTemplate(R.id.list_rows, PendingIntent.getBroadcast(context, 800030 + (tasks ? 0 : 1), tap,

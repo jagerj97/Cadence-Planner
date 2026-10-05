@@ -139,7 +139,7 @@ function NewTagForm({ taken, onCreate }: { taken: TaskTag[]; onCreate: (t: TaskT
           placeholder="Tag name" className="h-9" aria-label="New tag name" data-testid="input-new-task-tag" />
         <Button size="sm" onClick={create} disabled={!typed || exists} data-testid="button-save-new-task-tag">Add</Button>
       </div>
-      {exists && <p className="text-xs text-muted-foreground">#{typed} already exists.</p>}
+      {exists && <p className="text-xs text-muted-foreground">#{typed} already exists</p>}
       <ColorSwatches value={color} onChange={setColor} />
     </div>
   );
@@ -189,9 +189,7 @@ export function TaskTagList({ onPick, picked, onRenamed, countOf, confirmDelete 
   return (
     <>
       <NewTagForm taken={tags} onCreate={(t) => { save.mutate({ taskTags: [...tags, t] }); onPick?.(t.name); }} />
-      {tags.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No tags yet.</p>
-      ) : (
+      {tags.length === 0 ? null : (
         <ul className="grid grid-cols-1 gap-1">
           {tags.map((t) => (
             <li key={t.name} className="grid gap-2 py-1.5">
@@ -256,7 +254,7 @@ export function TagManager({ open, onOpenChange, onRenamed, onPick, picked }: {
         <DialogHeader className="pr-8 text-left">
           <DialogTitle>Task tags</DialogTitle>
           <DialogDescription className="sr-only">
-            {onPick ? "Pick a tag for this task, or add a new one." : "Add, rename, recolor or delete task tags"}
+            {onPick ? "Pick a tag for this task, or add a new one" : "Add, rename, recolor or delete task tags"}
           </DialogDescription>
         </DialogHeader>
         {/* Remounted when opened, so no tag is left open for editing. */}

@@ -1,16 +1,10 @@
 <resources>
     <string name="widget_now_label">Right now</string>
-    <string name="widget_now_description">What\'s happening now and what\'s next</string>
     <string name="widget_day_label">Your day</string>
-    <string name="widget_day_description">How your day splits between routines, plans, and free time</string>
     <string name="widget_schedule_label">Timeline</string>
-    <string name="widget_schedule_description">Today\'s timeline, starting at the current hour</string>
     <string name="widget_agenda_label">Agenda</string>
-    <string name="widget_agenda_description">The next two weeks as a list</string>
     <string name="widget_tasks_label">Tasks</string>
-    <string name="widget_tasks_description">Today\'s tasks. Tap a checkbox to complete one.</string>
     <string name="widget_journal_label">Journal</string>
-    <string name="widget_journal_description">Today\'s journal entries, or your latest ones</string>
     <string name="shortcut_journal">Journal</string>
     <string name="shortcut_journal_long">Open the journal</string>
     <string name="shortcut_calendar">Calendar</string>
@@ -24,5 +18,4 @@
     <string name="shortcut_today">Today</string>
     <string name="shortcut_today_long">Open today</string>
     <string name="widget_habits_label">Habits</string>
-    <string name="widget_habits_description">Today\'s habits. Tap a circle to mark one half or fully done.</string>
 </resources>

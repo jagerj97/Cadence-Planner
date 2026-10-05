@@ -416,7 +416,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       notesBackfilled = null;
       return ok({ restored: true });
     } catch {
-      return fail("Could not restore this backup. Your existing data was not changed.", 500);
+      return fail("Could not restore this backup. Your existing data was not changed", 500);
     }
   }
   if (path === "/api/items" && method === "GET") {

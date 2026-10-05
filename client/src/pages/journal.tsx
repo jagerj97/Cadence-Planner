@@ -545,7 +545,7 @@ function JournalTagManager({ open, onOpenChange, tags, counts, onRenamed }: {
       <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-manage-journal-tags">
         <DialogTitle>Journal tags</DialogTitle>
         <DialogDescription className="sr-only">Rename or delete journal tags</DialogDescription>
-        {own.length === 0 && <p className="text-sm text-muted-foreground">No tags yet. Add #hashtags or tags to your entries.</p>}
+        {own.length === 0 && <p className="text-sm text-muted-foreground">No tags yet. Add #hashtags or tags to your entries</p>}
         <ul className="grid grid-cols-1 gap-1">
           {own.map(([t, n]) => {
             return (
@@ -574,7 +574,7 @@ function JournalTagManager({ open, onOpenChange, tags, counts, onRenamed }: {
             );
           })}
         </ul>
-        <p className="text-xs text-muted-foreground">Deleting a tag keeps its word in your entries, without the #.</p>
+        <p className="text-xs text-muted-foreground">Deleting a tag keeps its word in your entries, without the #</p>
         {/* Tasks' tags show on their notes' entries; they're changed here or from the Tasks page. */}
         <div className="grid gap-3 border-t pt-4" data-testid="section-journal-task-tags">
           <h3 className="text-base font-semibold">Task tags</h3>
@@ -841,7 +841,7 @@ export default function JournalPage() {
                   )}
                 </div>
                 {results.length === 0 ? (
-                  <div className="card-md p-8 text-center text-sm text-muted-foreground">Nothing matches that yet.</div>
+                  <div className="card-md p-8 text-center text-sm text-muted-foreground">There's nothing here...</div>
                 ) : (
                   results.map((e) => <EntryCard key={e.id} e={e} onTag={searchTag} showDate item={itemOf(e)} openDetails={openDetails} onEdit={(entry) => setCompose({ entry })} />)
                 )}
@@ -859,7 +859,7 @@ export default function JournalPage() {
                 </div>
                 {archivedEntries.length === 0 ? (
                   <div className="card-md p-8 text-center text-sm text-muted-foreground">
-                    Nothing archived yet. Entries of finished tasks and past events land here, and any entry can be archived from its edit window.
+                    The archive is empty
                   </div>
                 ) : (
                   archivedEntries.map((e) => <EntryCard key={e.id} e={e} onTag={(t) => { setInArchive(false); searchTag(t); }} showDate item={itemOf(e)} openDetails={openDetails} onEdit={(entry) => setCompose({ entry })} />)
