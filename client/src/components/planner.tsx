@@ -897,7 +897,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
         <form onSubmit={onSubmit} className="grid gap-4">
           <Input
             placeholder="What's the plan?"
-            className="text-base h-11"
+            className={cn("text-base h-11", isFeed && "opacity-60")}
             readOnly={isFeed}
             {...register("title")}
             data-testid="input-title"
@@ -1159,7 +1159,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
               <Input placeholder="Location or link" className="h-9" {...register("location")} data-testid="input-location" />
             </EditorRow>
             <EditorRow icon={AlignLeft}>
-              <Textarea placeholder="Notes" rows={3} readOnly={isFeed} {...register("notes")} data-testid="input-notes" />
+              <Textarea placeholder="Notes" rows={3} readOnly={isFeed} className={cn(isFeed && "opacity-60")} {...register("notes")} data-testid="input-notes" />
             </EditorRow>
           </div>
 
