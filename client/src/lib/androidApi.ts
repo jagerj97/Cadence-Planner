@@ -416,7 +416,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       notesBackfilled = null;
       return ok({ restored: true });
     } catch {
-      return fail("Could not restore this backup. Your existing data was not changed.", 500);
+      return fail("Could not restore this backup. Your existing data was not changed", 500);
     }
   }
   if (path === "/api/items" && method === "GET") {
@@ -513,6 +513,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         journalNotes: data.journalNotes === undefined ? feed.journalNotes : !!data.journalNotes,
         resetKinds: feed.resetKinds || importKind !== feed.importKind,
       };
+      next.resetColors = feed.resetColors || next.useColor !== feed.useColor || (!!next.useColor && next.color !== feed.color);
       if (!!next.journalNotes !== !!feed.journalNotes) {
         for (const item of await list<Item>("items")) {
           if (item.source !== `feed:${id}`) continue;
@@ -549,6 +550,8 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
               seen.add(old.id);
               // Kinds changed on the item stay unless "Import items as" was changed since.
               const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
+                // A color picked in Cadence stays, unless the calendar's color setting was changed since.
+                color: feed.resetColors ? fresh.color : old.color,
                 // Dates the calendar skips, plus any taken off in Cadence.
                 completions: old.completions, exceptions: JSON.stringify([...new Set([...listOf(old.exceptions), ...listOf(fresh.exceptions)])]), reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && (old.availableFrom || old.leadDays) ? {
@@ -558,7 +561,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);
           }
           for (const old of prior) if (!seen.has(old.id)) await removeItem(old);
-          return ok(await put("feeds", { ...feed, resetKinds: false, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
+          return ok(await put("feeds", { ...feed, resetKinds: false, resetColors: false, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
         });
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Unable to read calendar";

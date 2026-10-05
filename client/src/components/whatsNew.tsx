@@ -16,7 +16,7 @@ export function WhatsNew() {
     setClosed(true);
     save.mutate({ seenVersion: APP_VERSION });
   };
-  const notes = CHANGELOG[APP_VERSION] ?? { changes: ["Fixes and improvements."] };
+  const notes = CHANGELOG[APP_VERSION] ?? { changes: ["Fixes and improvements"] };
   const sections = [["Fixes", notes.fixes], ["Changes", notes.changes]] as const;
   return (
     <Dialog open={open} onOpenChange={(o) => !o && dismiss()}>

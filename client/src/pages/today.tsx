@@ -35,7 +35,6 @@ import { Switch } from "@/components/ui/switch";
 import { SortableList } from "@/components/sortable";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, panelShown, panelToggle, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
@@ -157,9 +156,6 @@ export default function Today() {
               )}
               </div>
             </div>))}
-            {shows("schedule") && !agenda && <p className="text-xs text-muted-foreground hidden md:block" style={at("schedule")}>
-              Click an empty slot to add · hold a block briefly, then drag to move or resize
-            </p>}
           </section>
 
           {/* right rail */}
@@ -167,7 +163,7 @@ export default function Today() {
             {shows("tasks") && <div style={at("tasks")}><TasksCard items={list} day={day} /></div>}
             {shows("habits") && <div style={at("habits")}><HabitsCard items={list} day={day} /></div>}
             {TODAY_PANELS.every((p) => !shows(p.id)) && (
-              <p className="text-sm text-muted-foreground text-center" style={{ order: 98 }}>All cards are hidden.</p>
+              <p className="text-sm text-muted-foreground text-center" style={{ order: 98 }}>All cards are hidden</p>
             )}
             <div className="pb-4 lg:pb-0" style={{ order: 99 }}><CustomizeToday order={panelOrder} /></div>
           </aside>
@@ -219,6 +215,7 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
           <section className="grid gap-2" aria-label="Bottom bar">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bottom bar</h3>
             <NavOrderEditor order={settings.navOrder} onReorder={(next) => save.mutate({ navOrder: next })} />
+            <p className="text-xs text-muted-foreground">Drag to reorder</p>
           </section>
         </DialogContent>
       </Dialog>
@@ -252,20 +249,11 @@ function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: 
 
 export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: string; appbar?: boolean; onDone?: () => void }) {
   const [text, setText] = useState("");
-  const [, nav] = useLocation();
   const { create } = useItemMutations();
   const { settings } = useSettings();
-  const { toast } = useToast();
   const p = text.trim() ? parseQuick(text, day) : null;
   const submit = async () => {
     if (!p) return;
-    if (p.kind === "sleep") {
-      nav("/settings");
-      toast({ title: "Sleep is a schedule", description: "Set bedtime and wake time in Settings.", variant: "destructive" });
-      setText("");
-      onDone?.();
-      return;
-    }
     const item = blankItem({
       title: p.title,
       kind: p.kind,
@@ -449,7 +437,7 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
           </Button>
       </CardHeaderLink>
       {rows.length === 0 ? (
-        <div className="px-4 pb-4 text-sm text-muted-foreground">No tasks. Type one in the bar above — it lands here if it has no time.</div>
+        <div className="px-4 pb-4 text-sm text-muted-foreground">You don't have any tasks today</div>
       ) : (
         <ul className="pb-2">
           {rows.map(({ i, occ, overdue, done }) => {
@@ -547,7 +535,9 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
           </Button>
       </CardHeaderLink>
       {habits.length === 0 ? (
-        <div className="px-4 pb-4 text-sm text-muted-foreground">No habits today. Try “Read 20 min every day #habit”.</div>
+        <div className="px-4 pb-4 text-sm text-muted-foreground">
+          {items.some((i) => kindOf(i) === "habit") ? "No habits today" : "You haven't made any habits yet"}
+        </div>
       ) : (
         <ul className="pb-2">
           {habitRows.map(({ h, mark: mk, streak }) => {
