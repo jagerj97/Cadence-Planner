@@ -10,22 +10,13 @@ export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
   "1.5.6-beta": {
     fixes: [
-      "Reminders are on time on daylight saving days.",
-      "Quick add no longer fails on things like \"read for 30 min\".",
-      "Pages left open overnight move on to the new day.",
-      "Restored backups and quick changes in Settings always save.",
-      "Calendar links keep their changes while syncing, and repeat end dates are right.",
-      "The widget picker shows what each widget looks like, and ticking a task off in a widget ticks it everywhere.",
-      "Tapping a notification goes back to the app instead of opening a second copy.",
+      "Bug fixes, including reminders on daylight saving days.",
+      "Faster, especially during a focus session.",
     ],
     changes: [
       "Routines can be set for certain days of the week.",
-      "Right now says when you've got free time, a task to fit in, or a routine on.",
-      "A new Journal widget with today's entries, and app shortcuts to each page.",
-      "Give calendar items their own color; tagged tasks take their tag's color.",
-      "Every color theme tints the whole app, and Ribbon is a warmer red.",
-      "Tapping the timeline starts new items on the nearest quarter hour.",
-      "Faster, especially during a focus session.",
+      "A new Journal widget, and app shortcuts to each page.",
+      "Calendar items can have their own color.",
       "UI changes.",
     ],
   },
