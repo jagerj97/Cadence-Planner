@@ -1,0 +1,8 @@
+<!-- Every widget's card: the theme's card color, washed from the top left with the widget's color
+     (PanelWidgets.paintCard). Included first in each widget's FrameLayout. -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+    <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/card_tint" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_card_tint" android:scaleType="fitXY" android:importantForAccessibility="no" />
+</merge>

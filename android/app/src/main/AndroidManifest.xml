@@ -21,7 +21,7 @@
         <activity
             android:name=".AppActivity"
             android:exported="false"
-            android:configChanges="uiMode"
+            android:configChanges="uiMode|orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize" />
         <!-- The app's own icon is the logotype: Android shows it in expanded notifications and can't
              switch it. The home screen icon is the cat (the logomark), or the logotype with "Let Cadence
@@ -98,6 +98,8 @@
         <receiver android:name=".PanelWidgets$Journal" android:exported="false" android:label="@string/widget_journal_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_journal" />
         </receiver>

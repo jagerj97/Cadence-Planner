@@ -1,9 +1,6 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/card_root" android:layout_width="match_parent" android:layout_height="match_parent">
-    <ImageView android:id="@+id/card_bg" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:src="@drawable/widget_card" android:scaleType="fitXY" android:importantForAccessibility="no" />
-    <ImageView android:id="@+id/card_tint" android:layout_width="match_parent" android:layout_height="match_parent"
-        android:src="@drawable/widget_card_tint" android:scaleType="fitXY" android:importantForAccessibility="no" />
+    <include layout="@layout/widget_card_layers" />
     <LinearLayout android:id="@+id/now_body" android:layout_width="match_parent" android:layout_height="match_parent"
         android:orientation="vertical" android:padding="16dp" android:gravity="center_vertical">
         <LinearLayout android:id="@+id/now_header" android:layout_width="match_parent" android:layout_height="wrap_content"

@@ -94,6 +94,11 @@ function groupOf(item: Item): CalendarGroup | null {
   }
 }
 
+/** The items in the groups the calendar's filters show, worked out again only when they change. */
+function useVisibleItems(items: Item[] | undefined, visibility: CalendarVisibility) {
+  return useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+}
+
 const FILTERS: { key: CalendarGroup; label: string; color: string }[] = [
   { key: "habits", label: "Habits", color: "hsl(var(--k-habit))" },
   { key: "tasks", label: "Tasks", color: "hsl(var(--k-task))" },
@@ -109,7 +114,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
   const [anchor, setAnchor] = useState(todayStr());
   const start = startOfWeek(anchor, settings.weekStartsOn);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const list = (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; });
+  const list = useVisibleItems(items, visibility);
   const weekBars = barsFor(list, start, 7);
   // Items a day or longer are bars in the header instead of blocks in the hours.
   const gridList = list.filter((i) => !(isTimed(i) && isLong(i)));
@@ -252,7 +257,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
   const first = parseYmd(month);
   const gridStart = startOfWeek(month, settings.weekStartsOn);
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
-  const list = (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; });
+  const list = useVisibleItems(items, visibility);
   const shift = (n: number) => {
     const next = ymd(new Date(first.getFullYear(), first.getMonth() + n, 1));
     setMonth(next);
@@ -442,7 +447,7 @@ function useDayWindow(items: Item[] | undefined, size: { before: number; ahead: 
  */
 export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
   const { data: items } = useItems();
-  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+  const list = useVisibleItems(items, visibility);
   const today = todayStr();
   // The first day shown on or after the one asked for.
   const { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll } = useDayWindow(items, { before: 14, ahead: 45, step: 60 }, (el, day) => {
@@ -484,7 +489,7 @@ export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
   const { data: items } = useItems();
   const { settings } = useSettings();
   const { openDetails } = usePlanner();
-  const list = useMemo(() => (items ?? []).filter((i) => { const group = groupOf(i); return group !== null && visibility[group]; }), [items, visibility]);
+  const list = useVisibleItems(items, visibility);
   const today = todayStr();
   const { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll } = useDayWindow(items, { before: 1, ahead: 3, step: 3 }, (el, day) => {
     const grid = el.querySelector<HTMLElement>(`[data-day="${day}"] [data-day-grid]`);

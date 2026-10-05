@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { colorOf, kindColorOf, kindOf, listOf } from "@/lib/cal";
+import { kindColorOf, kindOf, listOf } from "@/lib/cal";
 import { Check, Hash, Pencil, Plus, Trash2, X } from "lucide-react";
 
 /**

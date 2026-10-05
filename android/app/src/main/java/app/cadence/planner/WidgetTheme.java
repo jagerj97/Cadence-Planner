@@ -6,7 +6,7 @@ import org.json.JSONObject;
 final class WidgetTheme {
     final boolean dark;
     final int card, border, foreground, muted, mutedForeground, primary, destructive, task, habit, sleep;
-    final int skyNight, skyDawn, skyDay, skyDusk, nowCard, nowBorder;
+    final int skyNight, skyDawn, skyDay, skyDusk, nowBorder;
 
     WidgetTheme(JSONObject t) {
         if (t == null) t = new JSONObject();
@@ -25,7 +25,6 @@ final class WidgetTheme {
         skyDawn = c(t, "skyDawn", "#3dff8c1a");
         skyDay = c(t, "skyDay", "#0dffcc33");
         skyDusk = c(t, "skyDusk", "#33eb4785");
-        nowCard = c(t, "nowCard", "#fff4e8");
         nowBorder = c(t, "nowBorder", "#fbd9b8");
     }
 

@@ -8,6 +8,9 @@ export const KIND_TAGS: Record<Kind, string> = { task: "tasks", event: "events",
 const TAG_ALIASES: Record<string, string> = { task: "tasks", event: "events", meeting: "meetings", habit: "habits" };
 export const canonicalTag = (tag: string) => TAG_ALIASES[tag] ?? tag;
 /** Every way a tag can be written as a #hashtag (#meetings and #meeting). */
+/** The tags a text's #hashtags make, in order, each once (#meeting counts as #meetings). */
+export const hashtagsIn = (body: string) =>
+  [...new Set([...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => canonicalTag(m[2].toLowerCase())))];
 export const tagSpellings = (tag: string) => [tag, ...Object.keys(TAG_ALIASES).filter((alias) => TAG_ALIASES[alias] === tag)];
 export const IMPORT_KINDS = ["event", "task", "meeting", "habit", "focus"] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];

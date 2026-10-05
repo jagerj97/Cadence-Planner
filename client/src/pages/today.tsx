@@ -78,6 +78,7 @@ export default function Today() {
   }, [day, isLoading, shows("schedule"), agenda, wholeDay]); // eslint-disable-line
 
   const breakdown = useMemo(() => dayBreakdown(list, settings, day), [list, settings.routines, day]);
+  const agendaItems = useMemo(() => list.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep"), [list]);
 
   const allDay = allDayFor(list, day);
 
@@ -111,7 +112,7 @@ export default function Today() {
               <div className="card-md" style={at("schedule")} data-testid="card-day">
                 <DayViewToggle view={view} onPick={pickView} />
                 <div className="px-4 pb-4">
-                  <AgendaList list={list.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep")} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
+                  <AgendaList list={agendaItems} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
                 </div>
               </div>
             ) : (
@@ -354,16 +355,20 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
   const { focus, openDetails } = usePlanner();
   const nm = now.getHours() * 60 + now.getMinutes();
   const today = todayStr();
-  // Tasks that are already checked off don't need doing now.
-  const blocks = blocksForDay(items, today).filter((b) => !(b.done && kindOf(b.item) === "task"));
+  const { settings } = useSettings();
+  // The day's work, done once per change rather than on every clock tick.
+  const { blocks, tasksLeft, routines } = useMemo(() => ({
+    // Tasks that are already checked off don't need doing now.
+    blocks: blocksForDay(items, today).filter((b) => !(b.done && kindOf(b.item) === "task")),
+    // With nothing on, it nudges toward a task if any are left today.
+    tasksLeft: taskRowsFor(items, today, true).some((r) => !r.done),
+    routines: blocksForDay(routineSchedules(settings), today),
+  }), [items, today, settings]);
   // A task is due at its time rather than taking up the half hour it's drawn as: it can be next, not current.
   const current = blocks.find((b) => nm >= b.start && nm < b.end && kindOf(b.item) !== "task");
   const next = blocks.find((b) => b.start > nm && b.continues !== "before");
-  // With nothing on, it nudges toward a task if any are left today.
-  const tasksLeft = taskRowsFor(items, today, true).some((r) => !r.done);
-  const { settings } = useSettings();
   // With nothing else on, a routine from Settings is named (no ring, and it's never "next").
-  const routine = blocksForDay(routineSchedules(settings), today).find((b) => nm >= b.start && nm < b.end);
+  const routine = routines.find((b) => nm >= b.start && nm < b.end);
   return (
     <div className="card-md wellness-now p-4 md:p-5 grid gap-3" data-testid="card-now">
       <div className="flex items-center justify-between">

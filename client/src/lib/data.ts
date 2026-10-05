@@ -1,9 +1,9 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "./queryClient";
 import type { Item, InsertItem, Feed, Session, Settings } from "@shared/schema";
-import { DEFAULT_SETTINGS, canonicalTag } from "@shared/schema";
+import { DEFAULT_SETTINGS } from "@shared/schema";
 import { haptic } from "./haptics";
-import { setTagColors } from "./cal";
+import { setTagColors, todayStr } from "./cal";
 
 export const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
 
@@ -123,7 +123,7 @@ export function blankItem(partial: Partial<InsertItem>): InsertItem {
   return {
     title: "",
     kind: "event",
-    date: new Date().toISOString().slice(0, 10),
+    date: todayStr(),
     endDate: null,
     availableFrom: null,
     startTime: null,
@@ -135,7 +135,7 @@ export function blankItem(partial: Partial<InsertItem>): InsertItem {
     recurrence: '{"freq":"none"}',
     exceptions: "[]",
     completions: "[]",
-    reminder: 10,
+    reminder: DEFAULT_SETTINGS.defaultReminder,
     extraReminders: "[]",
     priority: "normal",
     autoTimer: false,
@@ -171,13 +171,4 @@ export function useJournalMutations() {
   });
   return { create, update, remove, retag };
 }
-export const tagsOf = (e: { tags: string }): string[] => {
-  try {
-    return JSON.parse(e.tags || "[]");
-  } catch {
-    return [];
-  }
-};
-/** The tags a text's #hashtags make, in order (#meeting counts as #meetings). */
-export const hashtagsIn = (body: string) =>
-  [...new Set([...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => canonicalTag(m[2].toLowerCase())))];
+export { hashtagsIn } from "@shared/schema";

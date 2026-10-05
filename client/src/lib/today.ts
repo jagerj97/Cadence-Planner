@@ -2,6 +2,7 @@ import type { Item, Settings } from "@shared/schema";
 import {
   addDays, appearsOn, blocksForDay, canDoTaskOn, dueDateFor, completionsOf, fmtDate, fmtTime, kindOf, markOf, occursOn, orderHabits, recOf,
   routineSchedules, streakOf, untimedForDay,
+  priorityRank,
 } from "./cal";
 
 /** What the Today page (and the home screen widget) show for a day. */
@@ -47,14 +48,13 @@ export function taskRowsFor(items: Item[], day: string, isToday: boolean): TaskR
   const overdue = isToday
     ? items.filter((i) => kindOf(i) === "task" && recOf(i).freq === "none" && (i.endDate || i.date) < day && !completionsOf(i).has(i.date))
     : [];
-  const pr = (x: Item) => (x.priority === "high" ? 0 : x.priority === "normal" ? 1 : 2);
   return [
     ...overdue.map((i) => ({ i, occ: i.date, overdue: true })),
     // A deadline task counts towards the due date it's being done for.
     ...tasks.map((i) => ({ i, occ: dueDateFor(i, day) ?? (recOf(i).freq === "none" ? i.date : day), overdue: false })),
   ]
     .map((r) => ({ ...r, done: completionsOf(r.i).has(r.occ) }))
-    .sort((a, b) => Number(a.done) - Number(b.done) || pr(a.i) - pr(b.i) || (a.i.startTime || "99").localeCompare(b.i.startTime || "99"));
+    .sort((a, b) => Number(a.done) - Number(b.done) || priorityRank(a.i) - priorityRank(b.i) || (a.i.startTime || "99").localeCompare(b.i.startTime || "99"));
 }
 
 /**

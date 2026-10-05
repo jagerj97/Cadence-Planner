@@ -3,7 +3,7 @@ import {
   KIND_META, addDays, colorOf, setTagColors, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
   routineSchedules, sunTimes, todayStr,
 } from "./cal";
-import { agendaFor, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
+import { agendaFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
 import { firstTagColor } from "@/components/taskTags";
 
 /**
@@ -64,8 +64,8 @@ function readTheme(dark: boolean) {
     card: v("card"), border: v("border"), foreground: v("foreground"), muted: v("muted"), mutedForeground: v("muted-foreground"),
     primary: v("primary"), destructive: v("destructive"), task: v("k-task"), habit: v("k-habit"), sleep: v("k-sleep"),
     skyNight: v("sky-night"), skyDawn: v("sky-dawn"), skyDay: v("sky-day"), skyDusk: v("sky-dusk"),
-    // The Right now card's tint of the color theme (.wellness-now in index.css).
-    nowCard: mixHex(v("primary"), v("card"), .16), nowBorder: mixHex(v("primary"), v("card"), dark ? .25 : .35),
+    // Right now's divider: a tint of the color theme (.wellness-now in index.css).
+    nowBorder: mixHex(v("primary"), v("card"), dark ? .25 : .35),
   };
 }
 
@@ -108,7 +108,6 @@ export function widgetSnapshot(items: Item[], settings: Settings, journal: Journ
     const { totals, spans } = dayBreakdown(items, settings, day);
     const sun = sunTimes(day, settings.lat, settings.lng);
     days[day] = {
-      label: fmtDate(day, { weekday: "short", month: "short", day: "numeric" }),
       totals, // minutes free, routine, planned
       spans: spans.map((s) => [s.category, s.length]),
       // No sky or sunrise and sunset marks when they're turned off in Settings.
@@ -117,6 +116,8 @@ export function widgetSnapshot(items: Item[], settings: Settings, journal: Journ
       // Laid out like the app's timeline (items well into another nest on top of it, indented).
       blocks: arrangeBlocks(blocksForDay(items, day), 45).map(({ b, col, cols, depth }) => ({
         title: b.item.title, start: b.start, end: b.end, fullStart: b.fullStart, fullEnd: b.fullEnd,
+        // The occurrence, so ticking a task off in the Tasks widget ticks it here too.
+        id: b.item.id, occ: b.occDate,
         continues: b.continues ?? "", col, cols, depth, done: b.done, kind: kindOf(b.item), color: hexOf(b.item),
         accent: kindHexOf(b.item),
         // The line under the title, as the timeline shows it.
@@ -129,7 +130,6 @@ export function widgetSnapshot(items: Item[], settings: Settings, journal: Journ
       routines: blocksForDay(routineSchedules(settings), day).map((b) => ({
         title: b.item.title, start: b.start, end: b.end, color: hexOf(b.item),
       })),
-      allDay: allDayFor(items, day).map((i) => ({ title: i.title, color: hexOf(i) })),
       tasks: taskRowsFor(items, day, true).map(({ i, occ, overdue, done }) => ({
         id: i.id, occ, title: i.title, done, overdue,
         due: isDeadlineTask(i) ? `Due ${fmtDate(occ, { month: "short", day: "numeric" })}` : "",
@@ -155,11 +155,8 @@ export function widgetSnapshot(items: Item[], settings: Settings, journal: Journ
     if (!entries.length && offset > 0) continue;
     agenda.push({
       day,
-      num: String(Number(day.slice(8))),
-      weekday: fmtDate(day, { weekday: "short" }),
-      month: fmtDate(day, { month: "long" }),
       entries: entries.map((e) => ({
-        title: e.i.title, kind: kindOf(e.i), done: e.done, color: hexOf(e.i),
+        id: e.i.id, occ: e.occ, title: e.i.title, kind: kindOf(e.i), done: e.done, color: hexOf(e.i),
         accent: kindHexOf(e.i),
         sub: [e.time, e.i.location].filter(Boolean).join(" · "),
       })),

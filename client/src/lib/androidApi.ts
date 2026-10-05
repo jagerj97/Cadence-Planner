@@ -1,10 +1,10 @@
-import { COLOR_THEMES, DEFAULT_SETTINGS, DISPLAY_MODES, IMPORT_KINDS, RENAMED_THEMES, canonicalTag } from "@shared/schema";
+import { COLOR_THEMES, DEFAULT_SETTINGS, DISPLAY_MODES, IMPORT_KINDS, RENAMED_THEMES, canonicalTag, hashtagsIn } from "@shared/schema";
 import { KIND_TAGS, type Feed, type InsertItem, type Item, type JournalEntry, type Session, type Settings } from "@shared/schema";
 import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
 import { APP_VERSION } from "./changelog";
-import { addDays, blocksForDay, completionsOf, fmtDur, listOf, parseYmd, recOf, remindersOf, toMin, todayStr } from "./cal";
+import { addDays, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -129,15 +129,13 @@ function validItem(it: Item | InsertItem): boolean {
       !validTime(it.startTime) || !validTime(it.endTime)) return false;
   // A one-off task can be done from a day up to its due date (and time, if it has one).
   if (it.availableFrom && (it.kind !== "task" || !validDate(it.availableFrom) || it.availableFrom > it.date ||
-      it.allDay || JSON.parse(it.recurrence || '{"freq":"none"}').freq !== "none")) return false;
+      it.allDay || recOf(it as Item).freq !== "none")) return false;
   // Days before each due date a (repeating) task can be done: a whole number of days.
   if (it.leadDays != null && (it.kind !== "task" || !Number.isInteger(it.leadDays) || it.leadDays < 1 || it.leadDays > 365 ||
       it.availableFrom)) return false;
   return true;
 }
 const entryTitle = (title: unknown) => (typeof title === "string" && title.trim() ? title.trim().slice(0, 200) : null);
-// #meeting counts as #meetings, and so on (canonicalTag).
-const hashtagsIn = (body: string) => [...body.matchAll(/(^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => canonicalTag(m[2].toLowerCase()));
 /** An entry's tags: its text's #hashtags (unless it has them turned off) and the ones added to it. */
 const normTags = (body: string, tags: unknown, useHashtags = true) => {
   const found = new Set<string>(useHashtags ? hashtagsIn(body) : []);
@@ -192,9 +190,20 @@ async function removeItem(item: Item) {
 }
 let notesBackfilled: Promise<void> | null = null;
 
-/** A routine's days: missing (every day), or some of 0–6 (Sunday first). */
-const validDays = (days: unknown) => days === undefined ||
-  (Array.isArray(days) && days.length > 0 && days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6));
+/** A routine's days: missing (every day), or some of 0–6 (Sunday first), each once. */
+const validDays = (days: unknown) => days === undefined || (Array.isArray(days) && days.length > 0 &&
+  new Set(days).size === days.length && days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6));
+
+/** Settings that can be saved (and restored): the lists are lists, and the routines, tags and themes valid. */
+function validSettings(s: Record<string, any>) {
+  return Array.isArray(s.habitOrder) && Array.isArray(s.hiddenTodayPanels) && Array.isArray(s.todayPanelOrder) &&
+    Array.isArray(s.taskTags) && s.taskTags.every((t: any) => typeof t?.name === "string" && t.name && /^#[0-9a-f]{6}$/i.test(t.color)) &&
+    ["light", "dark"].includes(s.appearanceTheme) && (DISPLAY_MODES as readonly string[]).includes(s.displayMode) &&
+    KNOWN_THEMES.has(s.colorTheme) &&
+    Array.isArray(s.routines) && s.routines.every((r: any) => r && typeof r.name === "string" && r.name.trim() &&
+      typeof r.startTime === "string" && typeof r.endTime === "string" && validTime(r.startTime) && validTime(r.endTime) &&
+      r.startTime !== r.endTime && validDays(r.days));
+}
 
 const normalizedUrl = (raw: string) => {
   const url = new URL(raw.trim().replace(/^webcal:\/\//i, "https://"));
@@ -207,13 +216,21 @@ const normalizedUrl = (raw: string) => {
   return url.href;
 };
 
-async function refreshNotifications() {
+/** The local time `minutes` after midnight on `date`, as a timestamp (right on daylight saving days too). */
+const localAt = (date: string, minutes: number) => {
+  const d = parseYmd(date);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, minutes).getTime();
+};
+
+async function refreshNotifications(remindersToo: boolean) {
   const bridge = window.CadenceAndroid;
-  if (!bridge?.scheduleReminders) return;
+  // The web version's stand-in bridge has no widget or reminders, so there's nothing to build.
+  if (!bridge?.scheduleReminders || window.cadenceWeb) return;
   const items = await list<Item>("items");
   try {
     bridge.updateWidget?.(JSON.stringify(widgetSnapshot(items, await pref(), await list<JournalEntry>("journal"))));
   } catch { /* the widget is optional */ }
+  if (!remindersToo) return;
   // `start` lets the notification count down to it (older builds show `body` as it is).
   const reminders: { at: number; start: number; title: string; body: string }[] = [];
   const now = Date.now();
@@ -221,14 +238,16 @@ async function refreshNotifications() {
     const date = addDays(todayStr(), offset);
     for (const block of blocksForDay(items, date)) {
       const item = block.item;
-      if (block.continues === "before" || !item.startTime || item.kind === "sleep") continue;
+      // Only the day an item starts gets its reminders (not the days it carries on through).
+      if (block.continues === "before" || block.continues === "through" || !item.startTime || item.kind === "sleep") continue;
+      const kind = item.kind ? `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ` : "";
       for (const minutes of remindersOf(item)) {
-        const at = parseYmd(date).getTime() + (block.start - minutes) * 60000;
+        const at = localAt(date, block.start - minutes);
         if (at <= now || at > now + 31 * 86400000) continue;
         reminders.push({
           at,
-          start: parseYmd(date).getTime() + block.start * 60000,
-          title: `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ${item.title}`,
+          start: localAt(date, block.start),
+          title: kind + item.title,
           body: minutes === 0 ? "Starting now" : `Starts in ${fmtDur(minutes)}`,
         });
       }
@@ -236,6 +255,22 @@ async function refreshNotifications() {
   }
   reminders.sort((a, b) => a.at - b.at);
   bridge.scheduleReminders(JSON.stringify(reminders.slice(0, 128)));
+}
+
+/**
+ * Refreshes the widgets (and with `remindersToo`, the reminders) shortly after a change, once for a
+ * burst of changes. The change is already saved, so a failure here never fails it.
+ */
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+let refreshReminders = false;
+function queueRefresh(remindersToo: boolean) {
+  refreshReminders ||= remindersToo;
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    const reminders = refreshReminders;
+    refreshReminders = false;
+    void refreshNotifications(reminders).catch(() => {});
+  }, 300);
 }
 
 /**
@@ -247,27 +282,29 @@ function itemFinished(item: Item, now: Date): boolean {
   const r = recOf(item);
   if (item.kind === "task") return r.freq === "none" && completionsOf(item).has(item.date);
   if (item.kind !== "event" && item.kind !== "meeting" && item.kind !== "focus") return false;
-  const lastDay = r.freq === "none" ? item.endDate || item.date : r.until;
-  if (!lastDay) return false;
-  const day = parseYmd(lastDay);
-  if (item.allDay || !item.startTime) return now >= new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
-  const end = toMin(item.endTime || item.startTime);
-  // A timed item with no end date that ends at or before its start runs past midnight.
-  const overnight = !item.endDate && end <= toMin(item.startTime) && !!item.endTime;
-  return now >= new Date(day.getFullYear(), day.getMonth(), day.getDate() + (overnight ? 1 : 0), 0, end);
+  // Over once its last occurrence ends, counting the days an overnight or multi-day one runs into.
+  const lastStart = r.freq === "none" ? item.date : r.until;
+  if (!lastStart) return false;
+  const day = parseYmd(lastStart);
+  if (item.allDay || !item.startTime) return now >= new Date(day.getFullYear(), day.getMonth(), day.getDate() + lastDayOffset(item) + 1);
+  return now >= new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, span(item).e);
 }
 
 /** Archives the entries of items that have finished, and brings back ones whose item is no longer finished. */
 async function archiveFinished() {
   const now = new Date();
   const items = new Map((await list<Item>("items")).map((item) => [item.id, item]));
+  let changed = false;
   for (const entry of await list<JournalEntry>("journal")) {
     const item = entry.itemId ? items.get(entry.itemId) : undefined;
     if (!item) continue;
     const finished = itemFinished(item, now);
-    if (finished && !entry.archivedAuto) await put("journal", { ...entry, archived: true, archivedAuto: true });
-    else if (!finished && entry.archivedAuto) await put("journal", { ...entry, archived: false, archivedAuto: false });
+    if (finished === !!entry.archivedAuto) continue;
+    await put("journal", { ...entry, archived: finished, archivedAuto: finished });
+    changed = true;
   }
+  // The journal widget leaves archived entries out.
+  if (changed) queueRefresh(false);
 }
 
 const backupStores: StoreName[] = ["items", "feeds", "journal", "sessions", "settings"];
@@ -325,17 +362,9 @@ function validateBackup(value: unknown): Backup {
         !validDate(entry.date) || typeof entry.title !== "string" ||
         !Number.isFinite(Date.parse(entry.startedAt)) || !Number.isFinite(entry.actualSec)
       )) throw new Error("Invalid focus session in backup");
-      if (store === "settings" && (
-        !record(entry.value) || !Array.isArray(entry.value.routines) ||
-        !Array.isArray(entry.value.habitOrder) ||
-        (entry.value.appearanceTheme !== undefined && !["light", "dark"].includes(entry.value.appearanceTheme)) ||
-        !KNOWN_THEMES.has(entry.value.colorTheme) ||
-        entry.value.routines.some((routine: unknown) => !record(routine) ||
-          typeof routine.name !== "string" || !routine.name.trim() ||
-          typeof routine.startTime !== "string" || typeof routine.endTime !== "string" ||
-          !validTime(routine.startTime) || !validTime(routine.endTime) ||
-          routine.startTime === routine.endTime || !validDays(routine.days))
-      )) throw new Error("Invalid settings in backup");
+      // The same check as saving settings, so a restored backup can always be saved again.
+      if (store === "settings" && (!record(entry.value) || !validSettings({ ...DEFAULT_SETTINGS, ...entry.value })))
+        throw new Error("Invalid settings in backup");
     }
   }
   if (value.focus !== null && (
@@ -361,7 +390,7 @@ async function restoreBackup(backup: Backup) {
     }
   });
   window.CadenceAndroid!.saveFocus(JSON.stringify(backup.focus));
-  await refreshNotifications().catch(() => {});
+  await refreshNotifications(true).catch(() => {});
 }
 
 async function localApi(method: string, path: string, data: any): Promise<Response> {
@@ -418,7 +447,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       return ok({ ok: true });
     }
     if (method === "PATCH" && !itemRoute[2]) {
-      const merged = { ...item, ...data, journalId: item.journalId, ...(item.source.startsWith("feed:") && data.kind && data.kind !== item.kind ? { color: null } : {}) };
+      const merged = { ...item, ...data, id: item.id, source: item.source, uid: item.uid, journalId: item.journalId, ...(item.source.startsWith("feed:") && data.kind && data.kind !== item.kind ? { color: null } : {}) };
       if (!validItem(merged)) return fail("Enter a valid title, date and time");
       const notesChanged = typeof data.notes === "string" && data.notes.trim() !== (item.notes || "").trim() ||
         item.kind === "habit" && merged.kind !== "habit" || data.journalOff === false;
@@ -445,16 +474,13 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   });
   if (path === "/api/settings" && method === "GET") return ok(await pref());
   if (path === "/api/settings" && method === "PUT") {
-    const next = { ...await pref(), ...data };
-    if (!Array.isArray(next.routines) || !Array.isArray(next.habitOrder) || !Array.isArray(next.hiddenTodayPanels) || !Array.isArray(next.todayPanelOrder) ||
-        !Array.isArray(next.taskTags) || next.taskTags.some((t: any) => typeof t?.name !== "string" || !t.name || !/^#[0-9a-f]{6}$/i.test(t.color)) ||
-        !["light", "dark"].includes(next.appearanceTheme) || !(DISPLAY_MODES as readonly string[]).includes(next.displayMode) ||
-        !KNOWN_THEMES.has(next.colorTheme) ||
-        next.routines.some((r: any) => !r.name?.trim() || !validTime(r.startTime) || !validTime(r.endTime) || r.startTime === r.endTime || !validDays(r.days))) {
-      return fail("Check routine settings, theme and habit order");
-    }
-    await put("settings", { key: "prefs", value: next });
-    return ok(next);
+    // In turn with other changes, so two quick saves can't each overwrite the other.
+    return exclusive(async () => {
+      const next = { ...await pref(), ...data };
+      if (!validSettings(next)) return fail("Check routine settings, theme and habit order");
+      await put("settings", { key: "prefs", value: next });
+      return ok(next);
+    });
   }
   if (path === "/api/feeds" && method === "GET") return ok(await list<Feed>("feeds"));
   if (path === "/api/feeds" && method === "POST") {
@@ -506,11 +532,14 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       try {
         const fetched = JSON.parse(window.CadenceAndroid!.fetchCalendar(feed.url));
         if (fetched.error) throw new Error(fetched.error);
-        const imported = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`).items
-          .map((item) => ({ ...item, kind: feed.importKind ?? item.kind, color: feed.useColor ? feed.color : null }));
+        const parsed = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`).items;
         // A repeating event and a changed date of it can share a start date, so repeats are matched apart.
         const keyOf = (item: InsertItem | Item) => `${item.uid || item.title}\0${item.date}\0${item.recurrence === '{"freq":"none"}' ? "" : "r"}`;
         return exclusive(async () => {
+          // Read again in turn: the calendar may have been changed or removed while it downloaded.
+          const feed = await read<Feed>("feeds", id);
+          if (!feed) return fail("Calendar not found", 404);
+          const imported = parsed.map((item) => ({ ...item, kind: feed.importKind ?? item.kind, color: feed.useColor ? feed.color : null }));
           const prior = (await list<Item>("items")).filter((item) => item.source === `feed:${id}`);
           const byUid = new Map(prior.map((item) => [keyOf(item), item]));
           const seen = new Set<number>();
@@ -533,7 +562,10 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         });
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Unable to read calendar";
-        await put("feeds", { ...feed, lastError: message });
+        await exclusive(async () => {
+          const current = await read<Feed>("feeds", id);
+          if (current) await put("feeds", { ...current, lastError: message });
+        });
         return fail(message, 502);
       }
     }
@@ -548,15 +580,12 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       return ok({ imported: rows.length, skipped });
     } catch (cause) { return fail("Couldn't read calendar: " + String(cause instanceof Error ? cause.message : cause)); }
   }
-  if (path === "/api/export.ics" && method === "GET") {
-    const includeFeeds = new URLSearchParams(location.search).get("feeds") === "1";
-    const items = (await list<Item>("items")).filter((item) => includeFeeds || !item.source.startsWith("feed:"));
-    return new Response(exportAndroidIcs(items, Intl.DateTimeFormat().resolvedOptions().timeZone), {
-      headers: { "Content-Type": "text/calendar; charset=utf-8" },
-    });
-  }
   if (path === "/api/sessions" && method === "GET") return ok(await list<Session>("sessions"));
-  if (path === "/api/sessions" && method === "POST") return ok(await put("sessions", data));
+  if (path === "/api/sessions" && method === "POST") {
+    if (!validDate(data.date) || typeof data.title !== "string" || !Number.isFinite(data.actualSec)) return fail("Invalid focus session");
+    const { id: _id, ...session } = data;
+    return ok(await put("sessions", session));
+  }
   const sessionRoute = /^\/api\/sessions\/(\d+)$/.exec(path);
   // A session saved to the calendar is deleted with its calendar item (and that item's journal entry).
   if (sessionRoute && method === "DELETE") return exclusive(async () => {
@@ -617,7 +646,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
     }
     if (method === "PATCH") {
       const next = {
-        ...entry, ...data, itemId: entry.itemId, archivedAuto: entry.archivedAuto,
+        ...entry, ...data, id: entry.id, itemId: entry.itemId, archivedAuto: entry.archivedAuto,
         archived: data.archived !== undefined ? !!data.archived : !!entry.archived,
         title: data.title !== undefined ? entryTitle(data.title) : entry.title ?? null,
         body: typeof data.body === "string" ? data.body.trim() : entry.body,
@@ -659,18 +688,20 @@ export function installAndroidApi() {
         });
       }
       const response = await localApi(method, url.pathname, data);
-      if (response.ok && method !== "GET" && (
-        url.pathname.startsWith("/api/items") || url.pathname.startsWith("/api/feeds") || url.pathname.startsWith("/api/journal") ||
-        url.pathname === "/api/import" || url.pathname === "/api/settings"
-      )) await refreshNotifications();
+      // Journal changes only touch the journal widget; the rest can change reminders too.
+      if (response.ok && method !== "GET") {
+        if (url.pathname.startsWith("/api/journal")) queueRefresh(false);
+        else if (url.pathname.startsWith("/api/items") || url.pathname.startsWith("/api/feeds") ||
+          url.pathname === "/api/import" || url.pathname === "/api/settings") queueRefresh(true);
+      }
       return response;
     } catch (cause) {
       return fail(cause instanceof Error ? cause.message : "Local database unavailable", 500);
     }
   };
-  void dbReady.then(applyWidgetActions).then(refreshNotifications).catch(() => {});
+  void dbReady.then(applyWidgetActions).then(() => refreshNotifications(true)).catch(() => {});
   // Android pokes the app when a widget is tapped while it's running.
-  window.addEventListener("cadence-widget-actions", () => { void applyWidgetActions().then(refreshNotifications).catch(() => {}); });
+  window.addEventListener("cadence-widget-actions", () => { void applyWidgetActions().then(() => refreshNotifications(true)).catch(() => {}); });
 }
 
 /**

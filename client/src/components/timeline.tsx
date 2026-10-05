@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Item } from "@shared/schema";
 import { useSaveItem, usePlanner } from "./planner";
 import { accentOf } from "./taskTags";
@@ -73,14 +73,17 @@ export function DayColumn({
   const { toggle } = useItemMutations();
   // Overlaps are laid out like Google Calendar: an item that starts once the one under it has room
   // for its title and time (about 36px) is drawn on top, indented; closer starts go side by side.
-  const blocks = arrangeBlocks(blocksForDay(items, day), Math.ceil((36 / hourPx) * 60));
-  const routineBlocks = showRoutines ? blocksForDay(routineSchedules(settings), day) : [];
+  const blocks = useMemo(() => arrangeBlocks(blocksForDay(items, day), Math.ceil((36 / hourPx) * 60)), [items, day, hourPx]);
+  const routineBlocks = useMemo(() => showRoutines ? blocksForDay(routineSchedules(settings), day) : [], [showRoutines, settings, day]);
   const isToday = day === todayStr();
+  // Only today's column keeps the time (other days have no now line to move).
   const [now, setNow] = useState(nowMin());
   useEffect(() => {
+    if (!isToday) return;
+    setNow(nowMin());
     const t = setInterval(() => setNow(nowMin()), 30000);
     return () => clearInterval(t);
-  }, []);
+  }, [isToday]);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const pendingRef = useRef<PendingDrag | null>(null);

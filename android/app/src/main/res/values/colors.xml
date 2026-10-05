@@ -11,14 +11,9 @@
     <color name="wp_primary">#E66000</color>
     <color name="wp_task">#C9910D</color>
     <color name="wp_event">#1975D2</color>
-    <color name="wp_meeting">#7E56C2</color>
     <color name="wp_habit">#32855C</color>
     <color name="wp_sleep">#4051B5</color>
     <color name="wp_primary_chip">#FBE7D9</color>
     <color name="wp_task_chip">#F7EEDB</color>
     <color name="wp_event_chip">#DCEAF8</color>
-    <color name="wp_meeting_chip">#ECE6F6</color>
-    <color name="wp_habit_chip">#E0EDE7</color>
-    <color name="wp_sleep_chip">#E2E5F4</color>
-    <color name="wp_note">#FCECE0</color>
 </resources>
