@@ -8,6 +8,17 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  */
 export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
+  "1.5.7-beta": {
+    fixes: [
+      "Quick add no longer mistakes things like \"make bed\" for sleep",
+      "Synced calendar items keep the color you pick for them",
+    ],
+    changes: [
+      "Calendars sync as soon as the app opens",
+      "Less text around the app, and simpler empty pages",
+      "UI changes",
+    ],
+  },
   "1.5.6-beta": {
     fixes: [
       "Bug fixes, including reminders on daylight saving days",
