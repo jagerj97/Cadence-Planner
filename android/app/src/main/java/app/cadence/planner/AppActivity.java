@@ -379,7 +379,8 @@ public class AppActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (browser.canGoBack()) browser.goBack();
-        else super.onBackPressed();
+        // Back on the first page leaves the app running, so it reopens where it was (not from scratch).
+        else moveTaskToBack(true);
     }
 
     @Override protected void onDestroy() {
