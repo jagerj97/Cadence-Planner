@@ -180,6 +180,8 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
   const save = useSaveSettings();
   const { settings } = useSettings();
   const toggle = (panel: TodayPanel, shown: boolean) => save.mutate(panelToggle(settings, panel, shown));
+  const isDefault = !settings.hiddenTodayPanels?.length && !settings.shownTodayPanels?.length &&
+    !settings.todayPanelOrder?.length && !settings.navOrder?.length;
   return (
     <>
       <div className="flex justify-center">
@@ -217,6 +219,14 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
             <NavOrderEditor order={settings.navOrder} onReorder={(next) => save.mutate({ navOrder: next })} />
             <p className="text-xs text-muted-foreground">Drag to reorder</p>
           </section>
+          {/* Every card back on, and the cards and bottom bar back in their first order. */}
+          <div className="flex justify-center">
+            <Button variant="outline" size="sm" className="h-8 rounded-full px-4 text-xs" disabled={isDefault}
+              onClick={() => save.mutate({ hiddenTodayPanels: [], shownTodayPanels: [], todayPanelOrder: [], navOrder: [] })}
+              data-testid="button-customize-reset">
+              Reset to defaults
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>
