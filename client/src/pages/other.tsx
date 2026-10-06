@@ -692,7 +692,7 @@ export function CalendarLinks() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold">Connected calendars</h2>
-                <p className="text-xs text-muted-foreground">Auto-syncs every 15 min while open</p>
+                <p className="text-xs text-muted-foreground">Auto-syncs every 10 min while open</p>
               </div>
               {feeds && feeds.length > 0 && (
                 <Button size="sm" variant="outline" className="shrink-0" onClick={syncAll} disabled={busy !== null} data-testid="button-sync-all">
@@ -780,7 +780,11 @@ export function CalendarLinks() {
 }
 
 /** keeps feeds fresh while the app is open */
-/** Calendar links sync once when the app starts, then every 15 minutes while it's open. */
+/**
+ * Calendar links sync once when the app starts, then every 10 minutes while it's on screen. In the
+ * background they don't sync, and coming back doesn't either: the 10 minutes start over.
+ */
+const SYNC_EVERY_MS = 10 * 60 * 1000;
 let syncedAtStart = false;
 export function useAutoSync() {
   const { data: feeds } = useFeeds();
@@ -801,8 +805,12 @@ export function useAutoSync() {
       syncedAtStart = true;
       void run();
     }
-    const t = setInterval(run, 15 * 60 * 1000);
-    return () => clearInterval(t);
+    let t: ReturnType<typeof setInterval> | undefined;
+    const start = () => { clearInterval(t); t = setInterval(() => { if (!document.hidden) void run(); }, SYNC_EVERY_MS); };
+    const visibility = () => (document.hidden ? clearInterval(t) : start());
+    start();
+    document.addEventListener("visibilitychange", visibility);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", visibility); };
   }, [feeds?.length]); // eslint-disable-line
 }
 
