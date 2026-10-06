@@ -1002,7 +1002,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                 </Select>
                 {v.avail === "from" && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-muted-foreground">From</span>
+                    <span className="text-sm text-muted-foreground">Available to complete from</span>
                     <DatePill value={v.availableFrom} max={v.date} onChange={(d) => setValue("availableFrom", d)} testId="input-available-from" label="Available from" />
                     {v.freq !== "none" && v.availableFrom && v.availableFrom < v.date && (
                       <span className="text-xs text-muted-foreground">
