@@ -72,6 +72,10 @@ export type Feed = {
   resetKinds?: boolean;
   /** Its color setting changed since the last sync, so the next one recolors every item (otherwise items keep their own). */
   resetColors?: boolean;
+  /** A task tag its items get when it imports them as tasks (null: none). */
+  tag?: string | null;
+  /** Its tag changed since the last sync, so the next one re-tags every task (otherwise tasks keep their own). */
+  resetTags?: boolean;
 };
 
 export type Session = {

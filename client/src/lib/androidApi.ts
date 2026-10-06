@@ -195,6 +195,11 @@ async function removeItem(item: Item) {
 }
 let notesBackfilled: Promise<void> | null = null;
 
+/** A calendar link's task tag from a request: a tag name, or null for none. */
+const feedTag = (data: Record<string, any>) => (typeof data.tag === "string" && data.tag.trim() ? data.tag.trim() : null);
+/** The tags a calendar link gives an item it imports: its tag, on tasks only. */
+const tagsFor = (feed: Feed, kind: string | undefined) => JSON.stringify(feed.tag && kind === "task" ? [feed.tag] : []);
+
 /** A routine's days: missing (every day), or some of 0–6 (Sunday first), each once. */
 const validDays = (days: unknown) => days === undefined || (Array.isArray(days) && days.length > 0 &&
   new Set(days).size === days.length && days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6));
@@ -494,7 +499,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       return ok(await put("feeds", {
         name: data.name.trim(), url: normalizedUrl(data.url), color: data.color || "#4f6bd8",
         importKind: data.importKind || null, lastSynced: null, eventCount: 0, lastError: null, journalNotes: !!data.journalNotes,
-        useColor: !!data.useColor,
+        useColor: !!data.useColor, tag: feedTag(data),
       }));
     } catch { return fail("Enter a valid calendar URL"); }
   }
@@ -517,7 +522,9 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         color: typeof data.color === "string" && /^#[0-9a-f]{6}$/i.test(data.color) ? data.color : feed.color,
         journalNotes: data.journalNotes === undefined ? feed.journalNotes : !!data.journalNotes,
         resetKinds: feed.resetKinds || importKind !== feed.importKind,
+        tag: data.tag === undefined ? feed.tag ?? null : feedTag(data),
       };
+      next.resetTags = feed.resetTags || (next.tag ?? null) !== (feed.tag ?? null);
       next.resetColors = feed.resetColors || next.useColor !== feed.useColor || (!!next.useColor && next.color !== feed.color);
       if (!!next.journalNotes !== !!feed.journalNotes) {
         for (const item of await list<Item>("items")) {
@@ -554,19 +561,22 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             if (old) {
               seen.add(old.id);
               // Kinds changed on the item stay unless "Import items as" was changed since.
-              const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
+              const kind = (feed.resetKinds ? fresh.kind : undefined) ?? old.kind;
+              const saved = await put("items", { ...old, ...fresh, id: old.id, kind, journalOff: old.journalOff,
                 // A color picked in Cadence stays, unless the calendar's color setting was changed since.
                 color: feed.resetColors ? fresh.color : old.color,
+                // So does a task's own tag, unless the calendar's tag was changed since.
+                tags: feed.resetTags ? tagsFor(feed, kind) : old.tags,
                 // Dates the calendar skips, plus any taken off in Cadence.
                 completions: old.completions, exceptions: JSON.stringify([...new Set([...listOf(old.exceptions), ...listOf(fresh.exceptions)])]), reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && (old.availableFrom || old.leadDays) ? {
                   availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, endDate: null, allDay: false,
                 } : {}) });
               await syncNotes(saved, (fresh.notes || "").trim() !== (old.notes || "").trim());
-            } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);
+            } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes, tags: tagsFor(feed, fresh.kind) }) as Item, true);
           }
           for (const old of prior) if (!seen.has(old.id)) await removeItem(old);
-          return ok(await put("feeds", { ...feed, resetKinds: false, resetColors: false, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
+          return ok(await put("feeds", { ...feed, resetKinds: false, resetColors: false, resetTags: false, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
         });
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Unable to read calendar";

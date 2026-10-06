@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
 import { REMINDERS, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
-import { ColorSwatches, TAG_COLORS } from "@/components/taskTags";
+import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { APP_VERSION } from "@/lib/changelog";
 import { DurationInput } from "@/components/durationInput";
@@ -534,6 +534,7 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
   const [journal, setJournal] = useState(false);
   const [useColor, setUseColor] = useState(false);
   const [color, setColor] = useState(TAG_COLORS[4]);
+  const [tag, setTag] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (!feed) return;
@@ -543,12 +544,15 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
     setJournal(!!existing?.journalNotes);
     setUseColor(!!existing?.useColor);
     setColor(existing?.color ?? colorFor());
+    setTag(existing?.tag ? [existing.tag] : []);
   }, [feed]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = async () => {
     if (!url.trim()) return;
     setSaving(true);
     try {
-      const body = { name: name.trim() || "Calendar", url: url.trim(), importKind: kind === "auto" ? null : kind, journalNotes: journal, useColor, color };
+      const body = { name: name.trim() || "Calendar", url: url.trim(), importKind: kind === "auto" ? null : kind, journalNotes: journal, useColor, color,
+        // A tag only goes on tasks, so it's kept only while the calendar imports items as tasks.
+        tag: kind === "task" ? tag[0] ?? null : null };
       const f = existing
         ? await (await apiRequest("PATCH", `/api/feeds/${existing.id}`, body)).json()
         : await (await apiRequest("POST", "/api/feeds", body)).json();
@@ -591,6 +595,12 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
           <Input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()}
             placeholder="https://… or webcal://…" aria-label="Calendar iCal URL" data-testid="input-feed-url" />
           <ImportTypePicker id="select-feed-import-kind" value={kind} onChange={setKind} />
+          {kind === "task" && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="row-feed-tag">
+              <span className="text-sm">Task tag</span>
+              <TaskTagField value={tag} onChange={setTag} />
+            </div>
+          )}
           {/* Imported events' notes go to the journal only when asked; each item's details can change it later. */}
           <JournalNotesCheckbox id="checkbox-feed-journal" checked={journal} onChange={setJournal} />
           {/* Off: items take their kind's color, like everything else in Cadence. */}
