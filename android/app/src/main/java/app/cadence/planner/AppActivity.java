@@ -422,6 +422,15 @@ public class AppActivity extends Activity {
     }
 
     private String calendarText(String raw) throws Exception {
+        return calendarFetch(raw, null, null).getString("text");
+    }
+
+    /**
+     * Downloads a calendar. With the ETag or Last-Modified its server gave last time, the server can
+     * answer "not modified" ({"notModified": true}) instead of sending it all again. Otherwise
+     * {"text", "etag", "lastModified"}.
+     */
+    private JSONObject calendarFetch(String raw, String etag, String lastModified) throws Exception {
         if (raw == null || raw.length() > 4096) throw new Exception("Invalid calendar URL");
         String current = raw.trim().replaceFirst("(?i)^webcal://", "https://");
         for (int redirect = 0; redirect < 4; redirect++) {
@@ -435,8 +444,11 @@ public class AppActivity extends Activity {
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);
             connection.setRequestProperty("Accept", "text/calendar, text/plain;q=0.8");
+            if (etag != null && !etag.isEmpty()) connection.setRequestProperty("If-None-Match", etag);
+            if (lastModified != null && !lastModified.isEmpty()) connection.setRequestProperty("If-Modified-Since", lastModified);
             try {
                 int status = connection.getResponseCode();
+                if (status == 304) return new JSONObject().put("notModified", true);
                 if (status >= 300 && status < 400) {
                     String destination = connection.getHeaderField("Location");
                     if (destination == null) throw new Exception("Calendar redirect has no destination");
@@ -452,7 +464,11 @@ public class AppActivity extends Activity {
                         if (output.size() + length > 2 * 1024 * 1024) throw new Exception("Calendar exceeds 2 MB");
                         output.write(chunk, 0, length);
                     }
-                    return output.toString(StandardCharsets.UTF_8.name());
+                    JSONObject result = new JSONObject().put("text", output.toString(StandardCharsets.UTF_8.name()));
+                    String tag = connection.getHeaderField("ETag"), modified = connection.getHeaderField("Last-Modified");
+                    if (tag != null) result.put("etag", tag);
+                    if (modified != null) result.put("lastModified", modified);
+                    return result;
                 }
             } finally {
                 connection.disconnect();
@@ -537,6 +553,16 @@ public class AppActivity extends Activity {
         @JavascriptInterface public String fetchCalendar(String url) {
             try {
                 return new JSONObject().put("text", calendarText(url)).toString();
+            } catch (Exception e) {
+                try { return new JSONObject().put("error", e.getMessage()).toString(); }
+                catch (Exception ignored) { return "{\"error\":\"Calendar unavailable\"}"; }
+            }
+        }
+
+        /** fetchCalendar, but asking the server whether it changed first (calendarFetch). */
+        @JavascriptInterface public String fetchCalendarIfChanged(String url, String etag, String lastModified) {
+            try {
+                return calendarFetch(url, etag, lastModified).toString();
             } catch (Exception e) {
                 try { return new JSONObject().put("error", e.getMessage()).toString(); }
                 catch (Exception ignored) { return "{\"error\":\"Calendar unavailable\"}"; }

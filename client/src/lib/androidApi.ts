@@ -23,6 +23,8 @@ export interface AndroidBridge {
   requestLocation?(): void;
   haptic?(kind: string): void;
   fetchCalendar(url: string): string;
+  /** fetchCalendar, asking the server first whether it changed ({"notModified": true} if not). Older builds lack it. */
+  fetchCalendarIfChanged?(url: string, etag: string, lastModified: string): string;
   saveIcs(text: string): void;
   saveBackup(text: string): void;
   notify(title: string, body: string): void;
@@ -194,6 +196,19 @@ async function removeItem(item: Item) {
   await remove("items", item.id);
 }
 let notesBackfilled: Promise<void> | null = null;
+
+/** A quick fingerprint of a downloaded calendar (cyrb53), to tell whether it changed since the last sync. */
+function fingerprintOf(text: string) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `${text.length}:${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}`;
+}
 
 /** A calendar link's task tag from a request: a tag name, or null for none. */
 const feedTag = (data: Record<string, any>) => (typeof data.tag === "string" && data.tag.trim() ? data.tag.trim() : null);
@@ -525,6 +540,8 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         tag: data.tag === undefined ? feed.tag ?? null : feedTag(data),
       };
       next.resetTags = feed.resetTags || (next.tag ?? null) !== (feed.tag ?? null);
+      // A new link is a different calendar: nothing from the last download carries over.
+      if (url !== feed.url) Object.assign(next, { etag: null, lastModified: null, fingerprint: null });
       next.resetColors = feed.resetColors || next.useColor !== feed.useColor || (!!next.useColor && next.color !== feed.color);
       if (!!next.journalNotes !== !!feed.journalNotes) {
         for (const item of await list<Item>("items")) {
@@ -543,9 +560,34 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       const feed = await read<Feed>("feeds", id);
       if (!feed) return fail("Calendar not found", 404);
       try {
-        const fetched = JSON.parse(window.CadenceAndroid!.fetchCalendar(feed.url));
+        const bridge = window.CadenceAndroid!;
+        const tz = data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+        // Settings changed since the last sync have to reach every item, so those syncs read it all.
+        const resetting = !!(feed.resetKinds || feed.resetColors || feed.resetTags);
+        // What's imported from the same file depends on the day (old events are left out) and time zone.
+        const readFor = `${todayStr()}|${tz}`;
+        const sameRead = !resetting && !!feed.fingerprint && feed.fingerprint.endsWith(`|${readFor}`);
+        const fetched = JSON.parse(sameRead && bridge.fetchCalendarIfChanged
+          ? bridge.fetchCalendarIfChanged(feed.url, feed.etag ?? "", feed.lastModified ?? "")
+          : bridge.fetchCalendar(feed.url));
         if (fetched.error) throw new Error(fetched.error);
-        const parsed = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`).items;
+        const markSynced = () => exclusive(async () => {
+          const current = await read<Feed>("feeds", id);
+          if (!current) return fail("Calendar not found", 404);
+          return ok(await put("feeds", { ...current, lastSynced: new Date().toISOString(), lastError: null }));
+        });
+        // The server says nothing changed: nothing to read.
+        if (fetched.notModified) return markSynced();
+        const fingerprint = `${fingerprintOf(fetched.text)}|${readFor}`;
+        // The same file as last time, read for the same day: nothing to read either.
+        if (sameRead && fingerprint === feed.fingerprint) {
+          await exclusive(async () => {
+            const current = await read<Feed>("feeds", id);
+            if (current) await put("feeds", { ...current, etag: fetched.etag ?? null, lastModified: fetched.lastModified ?? null });
+          });
+          return markSynced();
+        }
+        const parsed = parseAndroidIcs(fetched.text, tz, `feed:${id}`).items;
         // A repeating event and a changed date of it can share a start date, so repeats are matched apart.
         const keyOf = (item: InsertItem | Item) => `${item.uid || item.title}\0${item.date}\0${item.recurrence === '{"freq":"none"}' ? "" : "r"}`;
         return exclusive(async () => {
@@ -576,7 +618,8 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes, tags: tagsFor(feed, fresh.kind) }) as Item, true);
           }
           for (const old of prior) if (!seen.has(old.id)) await removeItem(old);
-          return ok(await put("feeds", { ...feed, resetKinds: false, resetColors: false, resetTags: false, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
+          return ok(await put("feeds", { ...feed, resetKinds: false, resetColors: false, resetTags: false,
+            etag: fetched.etag ?? null, lastModified: fetched.lastModified ?? null, fingerprint, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
         });
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Unable to read calendar";

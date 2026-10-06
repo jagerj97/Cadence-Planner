@@ -76,6 +76,11 @@ export type Feed = {
   tag?: string | null;
   /** Its tag changed since the last sync, so the next one re-tags every task (otherwise tasks keep their own). */
   resetTags?: boolean;
+  /** What the last sync downloaded: the server's ETag / Last-Modified, and a fingerprint of the file with
+   *  the day and time zone it was read for, so an unchanged calendar isn't read and saved again. */
+  etag?: string | null;
+  lastModified?: string | null;
+  fingerprint?: string | null;
 };
 
 export type Session = {
