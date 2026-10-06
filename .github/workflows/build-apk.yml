@@ -36,21 +36,22 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk ../Cadence.apk
+          cp app/build/outputs/apk/release/app-release.apk "../cadence_${APP_VERSION}.apk"
 
       - name: Keep the APK with this run
         uses: actions/upload-artifact@v4
         with:
           name: Cadence-apk
-          path: Cadence.apk
+          path: cadence_${{ env.APP_VERSION }}.apk
 
-      # A release gives a direct download link you can open on your phone. It's named after the
-      # version in package.json; pushing again without bumping it replaces that version's APK.
+      # A release gives a direct download link you can open on your phone. It and the APK are named
+      # after the version in package.json (cadence_1.5.7-beta.apk); pushing again without bumping it
+      # replaces that version's APK.
       - name: Publish a release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
           name: Cadence v${{ env.APP_VERSION }}
-          body: Built from commit ${{ github.sha }}. Download Cadence.apk below and open it on your phone to install.
-          files: Cadence.apk
+          body: Built from commit ${{ github.sha }}. Download cadence_${{ env.APP_VERSION }}.apk below and open it on your phone to install.
+          files: cadence_${{ env.APP_VERSION }}.apk
           make_latest: true
