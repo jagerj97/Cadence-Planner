@@ -178,6 +178,11 @@ const backfillNotes = () => exclusive(async () => {
     if (item.kind === "task" && (item.allDay || item.startTime && (item.endTime || item.endDate))) await put("items", item);
     if (item.journalId === undefined && !item.journalOff && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
   }
+  // Entries saved before #meeting counted as #meetings (and so on) get the one tag.
+  for (const entry of await list<JournalEntry>("journal")) {
+    const tags = JSON.stringify([...new Set(listOf(entry.tags).map(canonicalTag))]);
+    if (tags !== entry.tags) await put("journal", { ...entry, tags });
+  }
 });
 /**
  * Deletes an item along with what belongs to it: the journal entry holding its notes, and a focus
