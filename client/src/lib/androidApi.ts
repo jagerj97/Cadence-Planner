@@ -467,6 +467,10 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (itemRoute) return exclusive(async () => {
     const id = Number(itemRoute[1]), item = await read<Item>("items", id);
     if (!item) return fail("Not found", 404);
+    // A synced item comes and goes with its calendar.
+    if (item.source.startsWith("feed:") && (method === "DELETE" && !itemRoute[2] || itemRoute[2] === "skip")) {
+      return fail("Synced items can't be deleted", 403);
+    }
     if (method === "DELETE" && !itemRoute[2]) {
       await removeItem(item);
       return ok({ ok: true });

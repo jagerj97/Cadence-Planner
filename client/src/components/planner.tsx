@@ -886,7 +886,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
         {isFeed && (
           <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
             <Link2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            Synced from a subscribed calendar. The name, times, location, and notes cannot be changed!
+            Synced from a subscribed calendar. The name, times, location, and notes cannot be changed, and it can't be deleted!
           </div>
         )}
         <form onSubmit={onSubmit} className="grid gap-4">
@@ -1160,7 +1160,8 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
           </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            {existing && (
+            {/* A synced item comes and goes with its calendar, so it can't be deleted or skipped here. */}
+            {existing && !isFeed && (
               <>
                 <Button
                   type="button"
