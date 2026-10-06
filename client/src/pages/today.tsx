@@ -193,7 +193,7 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
         <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto" data-testid="dialog-customize-today">
           <DialogHeader className="text-left">
             <DialogTitle>Customize</DialogTitle>
-            <DialogDescription className="sr-only">Choose which cards show on your Today page and the order of the pages in the bottom bar. Hold an item and drag to reorder.</DialogDescription>
+            <DialogDescription className="sr-only">Choose which cards show on your Today page and the order of the pages. Hold an item and drag to reorder.</DialogDescription>
           </DialogHeader>
           <section className="grid gap-1" aria-label="Cards">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cards</h3>
@@ -214,8 +214,8 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
             />
           </section>
           {/* Drawn like the bar itself; hold a page and drag it along. The app still opens on Today, wherever it sits. */}
-          <section className="grid gap-2" aria-label="Bottom bar">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bottom bar</h3>
+          <section className="grid gap-2" aria-label="Page order">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Page order</h3>
             <NavOrderEditor order={settings.navOrder} onReorder={(next) => save.mutate({ navOrder: next })} />
             <p className="text-xs text-muted-foreground">Drag to reorder</p>
           </section>
