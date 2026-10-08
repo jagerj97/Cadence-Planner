@@ -4,7 +4,7 @@ import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
 import { APP_VERSION } from "./changelog";
-import { addDays, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, notifyTimesOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
+import { addDays, anytimeRemindersFor, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, notifyTimesOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -128,7 +128,7 @@ const validDate = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/
 const validTime = (s: unknown) => s == null || typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 function validItem(it: Item | InsertItem): boolean {
   if (!it.title?.trim() || !validDate(it.date) || it.endDate && (!validDate(it.endDate) || it.endDate < it.date) ||
-      !validTime(it.startTime) || !validTime(it.endTime)) return false;
+      !validTime(it.startTime) || !validTime(it.endTime) || !validTime(it.remindAt)) return false;
   // A one-off task can be done from a day up to its due date (and time, if it has one).
   if (it.availableFrom && (it.kind !== "task" || !validDate(it.availableFrom) || it.availableFrom > it.date ||
       it.allDay || recOf(it as Item).freq !== "none")) return false;
@@ -279,6 +279,15 @@ async function refreshNotifications(remindersToo: boolean) {
           body: minutes === 0 ? (item.kind === "task" ? "Due now" : "Starting now") : `${item.kind === "task" ? "Due" : "Starts"} in ${fmtDur(minutes)}`,
         });
       }
+    }
+  }
+  // Any-time tasks with a time to be reminded at, on each day they're due.
+  for (let offset = 0; offset < 32; offset++) {
+    const date = addDays(todayStr(), offset);
+    for (const { item, at: minutes } of anytimeRemindersFor(items, date)) {
+      const at = localAt(date, minutes);
+      if (at <= now) continue;
+      reminders.push({ at, start: at, title: `Task: ${item.title}`, body: "Due today" });
     }
   }
   reminders.sort((a, b) => a.at - b.at);

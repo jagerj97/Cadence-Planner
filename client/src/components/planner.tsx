@@ -36,6 +36,7 @@ import {
   recOf,
   remindersOf,
   notifyTimesOf,
+  anytimeRemindersFor,
   reminderLabel,
   MAX_REMINDER,
   toMin,
@@ -461,6 +462,15 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           .filter((b) => b.continues !== "before")
           .map((b) => ({ b, offset: 1440 })),
       ];
+      // Any-time tasks due today that remind at a time of day.
+      for (const { item, at } of anytimeRemindersFor(items, day)) {
+        const key = `${item.id}:${day}:at`;
+        if (nowM >= at && nowM < at + 2 && !fired.current.has(key)) {
+          fired.current.add(key);
+          if (settings.sound && !phoneOnly) chime("soft");
+          toast({ title: `Task: ${item.title}`, description: "Due today" });
+        }
+      }
       for (const { b, offset } of candidates) {
         // auto-start timer at the start time
         if (b.item.autoTimer && offset === 0 && kindOf(b.item) !== "sleep") {
@@ -651,6 +661,10 @@ function ItemDetails({ details, onClose, onEdit }: {
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date ? " (ends later)" : ""}</div>
             </div>}
+            {!i.startTime && i.remindAt && <div>
+              <div className="text-xs text-muted-foreground">Reminder</div>
+              <div>At {fmtTime(i.remindAt, true)}</div>
+            </div>}
             {i.startTime && remindersOf(i).length > 0 && <div>
               <div className="text-xs text-muted-foreground">{remindersOf(i).length > 1 ? "Reminders" : "Reminder"}</div>
               <div className="first-letter:uppercase">{remindersOf(i).map(reminderLabel).join(", ")}</div>
@@ -761,6 +775,8 @@ type FormVals = {
   until: string;
   reminder: string;
   extraReminders: string[];
+  /** An any-time task's reminder time of day ("" for none). */
+  remindAt: string;
   priority: string;
   autoTimer: boolean;
   location: string;
@@ -918,6 +934,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
       endTime: timed && !task ? f.endTime || fromMin(toMin(start) + 30) : null,
       recurrence: JSON.stringify(r),
       reminder: !timed || f.reminder === "none" ? null : Number(f.reminder),
+      remindAt: task && !timed && f.remindAt ? f.remindAt : null,
       extraReminders: JSON.stringify(!timed || f.reminder === "none" ? []
         : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
@@ -1138,6 +1155,27 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
               })()}
             </EditorRow>
 
+            {/* An any-time task reminds at a time of day on the day it's due. */}
+            {!timed && v.kind === "task" && (
+              <EditorRow icon={Bell}>
+                {v.remindAt ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Remind me at</span>
+                    <TimePill value={v.remindAt} onChange={(t) => setValue("remindAt", t)} testId="input-remind-at" label="Reminder time" />
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setValue("remindAt", "")}
+                      aria-label="Remove reminder" data-testid="button-remove-remind-at">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <button type="button" className="inline-flex h-7 w-fit items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                    onClick={() => setValue("remindAt", "09:00")} data-testid="button-add-remind-at">
+                    <Plus className="h-3.5 w-3.5" /> add reminder
+                  </button>
+                )}
+              </EditorRow>
+            )}
+
             {timed && v.kind !== "sleep" && (
               <EditorRow icon={Bell}>
                 {[v.reminder, ...(v.reminder === "none" ? [] : v.extraReminders)].map((value, index) => (
@@ -1308,6 +1346,7 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     // A saved item's reminders (an old "at start time" isn't one: it notifies as it starts anyway); a new one's default.
     reminder: i.title ? String(remindersOf(i as Item)[0] ?? "none") : !defReminder ? "none" : String(defReminder),
     extraReminders: i.title ? remindersOf(i as Item).slice(1).map(String) : [],
+    remindAt: i.remindAt || "",
     priority: i.priority || "normal",
     tags: taskTagsOf(i).slice(0, 1), // a task has one tag
     autoTimer: !!(i as any).autoTimer,

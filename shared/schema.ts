@@ -40,6 +40,8 @@ export type Item = {
   exceptions: string; // JSON string[] of skipped dates
   completions: string; // JSON string[] of completed dates
   reminder: number | null; // minutes before, null = none
+  /** An any-time task's reminder: the time of day ("HH:MM") it reminds on the day it's due. */
+  remindAt?: string | null;
   extraReminders: string; // JSON list of more minutes-before values
   priority: string;
   autoTimer: boolean;

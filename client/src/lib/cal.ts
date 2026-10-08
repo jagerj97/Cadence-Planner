@@ -431,6 +431,13 @@ export function blocksForDay(list: Item[], day: string): Block[] {
   return out.sort((a, b) => a.start - b.start || b.end - a.end);
 }
 
+/** Any-time tasks due on `day`, not yet done, that remind at a time that day (remindAt). */
+export function anytimeRemindersFor(list: Item[], day: string): { item: Item; at: number }[] {
+  return list.filter((i) => i.kind === "task" && !isTimed(i) && i.remindAt && occursOn(i, day) &&
+      !rulesOf(i).done.has(recOf(i).freq === "none" ? i.date : day))
+    .map((item) => ({ item, at: toMin(item.remindAt) }));
+}
+
 export function untimedForDay(list: Item[], day: string) {
   return list.filter((i) => !isTimed(i) && appearsOn(i, day));
 }
