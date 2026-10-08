@@ -51,7 +51,7 @@ import { WeekdayPills, choicePill } from "@/components/pills";
 import { TwoRows } from "@/components/twoRows";
 import { Linked, LocationLink } from "@/components/links";
 import { WhatsNew } from "@/components/whatsNew";
-import { TAG_COLORS, TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
+import { DefaultSwatch, TAG_COLORS, TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
 import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Palette, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
 
 /* ============ sound ============ */
@@ -1460,17 +1460,17 @@ export function useToday() {
  * with its kind's color kept as the bar down its left edge.
  */
 function ItemColorPicker({ kind, value, onChange }: { kind: Kind; value: string; onChange: (color: string) => void }) {
-  const kindColor = `hsl(var(${KIND_META[kind].cssVar}))`;
-  const choices = ["", ...TAG_COLORS];
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Color">
-      {choices.map((c) => {
+      {/* No color of its own: the item takes its kind's. */}
+      <DefaultSwatch on={!value} onClick={() => onChange("")} size="h-7 w-7" label={`${KIND_META[kind].label} color`} testId="swatch-item-kind" />
+      {TAG_COLORS.map((c) => {
         const on = value === c;
         return (
-          <button key={c || "kind"} type="button" role="radio" aria-checked={on} aria-label={c ? `Color ${c}` : `${KIND_META[kind].label} color`}
+          <button key={c} type="button" role="radio" aria-checked={on} aria-label={`Color ${c}`}
             onClick={() => onChange(c)}
             className={cn("grid h-7 w-7 place-items-center rounded-full", on && "ring-2 ring-offset-2 ring-offset-background ring-foreground/60")}
-            style={{ background: c || kindColor }} data-testid={`swatch-item-${c ? c.slice(1) : "kind"}`}>
+            style={{ background: c }} data-testid={`swatch-item-${c.slice(1)}`}>
             {on && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
           </button>
         );

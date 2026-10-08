@@ -77,6 +77,30 @@ export function TagChip({ tag, onRemove }: { tag: TaskTag; onRemove?: () => void
   );
 }
 
+/** A droplet struck through: "no color of its own" (the Default choice wherever colors are picked). */
+export function NoColorIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />
+      <path d="M3 3l18 18" />
+    </svg>
+  );
+}
+
+/** The Default swatch: an outlined circle with NoColorIcon, ringed when chosen. */
+export function DefaultSwatch({ on, onClick, size = "h-6 w-6", label = "Default color", testId }: {
+  on: boolean; onClick: () => void; size?: string; label?: string; testId: string;
+}) {
+  return (
+    <button type="button" role="radio" aria-checked={on} aria-label={label} title="Default" onClick={onClick}
+      className={cn("grid place-items-center rounded-full border-2 border-muted-foreground/50 text-muted-foreground", size,
+        on && "ring-2 ring-offset-2 ring-offset-popover ring-foreground/60 border-foreground/70 text-foreground")}
+      data-testid={testId}>
+      <NoColorIcon className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 /**
  * The color choices for task tags, routines and calendars. With defaultColor, the first choice is
  * "Default" (stored as ""): the color the thing takes without one of its own, drawn in that color.
@@ -89,13 +113,7 @@ export function ColorSwatches({ value, onChange, defaultColor, defaultReplaces }
   if (defaultReplaces && value === defaultReplaces) value = "";
   return (
     <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tag color">
-      {defaultColor && (
-        <button type="button" role="radio" aria-checked={!value} aria-label="Default color" title="Default" onClick={() => onChange("")}
-          className={cn("grid h-6 w-6 place-items-center rounded-full border-2 border-dashed border-background", !value && "ring-2 ring-offset-2 ring-offset-popover ring-foreground/60")}
-          style={{ background: defaultColor }} data-testid="swatch-default">
-          {!value && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
-        </button>
-      )}
+      {defaultColor && <DefaultSwatch on={!value} onClick={() => onChange("")} testId="swatch-default" />}
       {TAG_COLORS.filter((c) => c !== defaultReplaces).map((c) => (
         <button key={c} type="button" role="radio" aria-checked={value === c} aria-label={c} onClick={() => onChange(c)}
           className={cn("grid h-6 w-6 place-items-center rounded-full", value === c && "ring-2 ring-offset-2 ring-offset-popover ring-foreground/60")}
