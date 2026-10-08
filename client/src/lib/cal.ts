@@ -455,6 +455,19 @@ export function anytimeRemindersFor(list: Item[], day: string, settings: Setting
     ]);
 }
 
+/**
+ * The items that can show on any day from `from` to `to`: the rest (one-offs that are over or not yet
+ * here, repeats that ended) are left out before going day by day. Habits aren't tied to their date.
+ */
+export function itemsInRange(list: Item[], from: string, to: string): Item[] {
+  return list.filter((i) => {
+    if (i.date > to && i.kind !== "habit") return false;
+    const r = rulesOf(i).r;
+    if (r.freq === "none") return addDays(i.date, lastDayOffset(i)) >= from;
+    return !r.until || addDays(r.until, lastDayOffset(i)) >= from;
+  });
+}
+
 export function untimedForDay(list: Item[], day: string) {
   return list.filter((i) => !isTimed(i) && appearsOn(i, day));
 }
