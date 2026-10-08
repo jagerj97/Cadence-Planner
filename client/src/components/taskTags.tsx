@@ -87,7 +87,7 @@ export function NoColorIcon({ className }: { className?: string }) {
   );
 }
 
-/** The Default swatch: an outlined circle with NoColorIcon, ringed when chosen. */
+/** The Default swatch: an outlined circle with NoColorIcon, or a check mark when it's the one chosen. */
 export function DefaultSwatch({ on, onClick, size = "h-6 w-6", label = "Default color", testId }: {
   on: boolean; onClick: () => void; size?: string; label?: string; testId: string;
 }) {
@@ -96,7 +96,7 @@ export function DefaultSwatch({ on, onClick, size = "h-6 w-6", label = "Default 
       className={cn("grid place-items-center rounded-full border-2 border-muted-foreground/50 text-muted-foreground", size,
         on && "ring-2 ring-offset-2 ring-offset-popover ring-foreground/60 border-foreground/70 text-foreground")}
       data-testid={testId}>
-      <NoColorIcon className="h-3.5 w-3.5" />
+      {on ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <NoColorIcon className="h-3.5 w-3.5" />}
     </button>
   );
 }
