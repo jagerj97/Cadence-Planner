@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
-import { REMINDERS, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
+import { ReminderSelect, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { APP_VERSION } from "@/lib/changelog";
@@ -1099,17 +1099,11 @@ export function SettingsPage() {
 
           <Section title="Reminders & notifications">
             <Field label="Default reminder for new items">
-              <Select
-                value={draft.defaultReminder == null ? "none" : String(draft.defaultReminder)}
-                onValueChange={(v) => setDraft({ ...draft, defaultReminder: v === "none" ? null : Number(v) })}
-              >
-                <SelectTrigger data-testid="select-default-reminder">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REMINDERS.map((r) => <SelectItem key={r.v} value={r.v}>{r.l}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {/* Everything notifies as it starts; this is the extra reminder new items get before that. */}
+              <ReminderSelect className="w-full justify-between"
+                value={!draft.defaultReminder ? "none" : String(draft.defaultReminder)}
+                onChange={(v) => setDraft({ ...draft, defaultReminder: v === "none" ? null : Number(v) })}
+                label="Default reminder for new items" testId="select-default-reminder" />
             </Field>
             <Row label="In-app pop-ups">
               <Switch checked={draft.inAppPopups !== false} onCheckedChange={(v) => setDraft({ ...draft, inAppPopups: v })} data-testid="switch-in-app-popups" />

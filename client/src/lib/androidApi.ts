@@ -4,7 +4,7 @@ import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
 import { APP_VERSION } from "./changelog";
-import { addDays, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
+import { addDays, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, notifyTimesOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -259,21 +259,24 @@ async function refreshNotifications(remindersToo: boolean) {
   // `start` lets the notification count down to it (older builds show `body` as it is).
   const reminders: { at: number; start: number; title: string; body: string }[] = [];
   const now = Date.now();
-  for (let offset = -1; offset < 32; offset++) {
+  // Far enough ahead that an item's longest reminder still falls within the next 31 days.
+  const longest = Math.max(0, ...items.map((item) => remindersOf(item)[0] ?? 0));
+  for (let offset = -1; offset < 32 + Math.ceil(longest / 1440); offset++) {
     const date = addDays(todayStr(), offset);
     for (const block of blocksForDay(items, date)) {
       const item = block.item;
       // Only the day an item starts gets its reminders (not the days it carries on through).
       if (block.continues === "before" || block.continues === "through" || !item.startTime || item.kind === "sleep") continue;
       const kind = item.kind ? `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ` : "";
-      for (const minutes of remindersOf(item)) {
+      // Every timed item notifies as it starts, and at each reminder before that.
+      for (const minutes of notifyTimesOf(item)) {
         const at = localAt(date, block.start - minutes);
         if (at <= now || at > now + 31 * 86400000) continue;
         reminders.push({
           at,
           start: localAt(date, block.start),
           title: kind + item.title,
-          body: minutes === 0 ? "Starting now" : `Starts in ${fmtDur(minutes)}`,
+          body: minutes === 0 ? (item.kind === "task" ? "Due now" : "Starting now") : `${item.kind === "task" ? "Due" : "Starts"} in ${fmtDur(minutes)}`,
         });
       }
     }

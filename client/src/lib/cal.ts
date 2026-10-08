@@ -130,12 +130,30 @@ export const listOf = (s: string | null | undefined): string[] => {
     return [];
   }
 };
-/** Every reminder on an item (minutes before start), latest-firing last, without duplicates. */
+/**
+ * The reminders set on an item (minutes before it starts), earliest-firing first, without duplicates.
+ * Every timed item also notifies as it starts (notifyTimesOf), so an old "at start time" (0) isn't one.
+ */
 export const remindersOf = (i: Pick<Item, "reminder"> & { extraReminders?: string | null }): number[] => {
   if (i.reminder == null) return [];
   const all = [i.reminder, ...(listOf(i.extraReminders) as unknown[])];
-  return [...new Set(all.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0))].sort((a, b) => b - a);
+  return [...new Set(all.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
 };
+/** When a timed item notifies: its reminders, then as it starts (0). */
+export const notifyTimesOf = (i: Pick<Item, "reminder"> & { extraReminders?: string | null }): number[] => [...remindersOf(i), 0];
+/** The longest reminder that can be set: four weeks before. */
+export const MAX_REMINDER = 4 * 7 * 1440;
+/** A reminder as words: "10 min before", "2 hours before", "3 days before", "1 week before". */
+export function reminderLabel(minutes: number) {
+  const units: [number, string][] = [[10080, "week"], [1440, "day"], [60, "hour"]];
+  for (const [size, name] of units) {
+    if (minutes >= size && minutes % size === 0) {
+      const n = minutes / size;
+      return `${n} ${name}${n === 1 ? "" : "s"} before`;
+    }
+  }
+  return minutes < 60 ? `${minutes} min before` : `${fmtDur(minutes)} before`;
+}
 export const completionsOf = (i: Item) => new Set((listOf(i.completions) as string[]).filter((x) => !x.endsWith("~h")));
 /** dates marked half-done (Theme System style partial fill) */
 export const partialsOf = (i: Item) => new Set((listOf(i.completions) as string[]).filter((x) => x.endsWith("~h")).map((x) => x.slice(0, -2)));
