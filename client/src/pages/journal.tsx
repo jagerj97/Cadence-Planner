@@ -143,7 +143,8 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
     if (CONVERTIBLE.has(t)) setOpen(false);
   };
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
+    // Modal: it opens over the entry window, which otherwise keeps scrolling to itself (the list couldn't scroll).
+    <Popover modal open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
       <PopoverTrigger asChild>
         <button className="inline-flex items-center gap-1 rounded-full border border-dashed h-7 px-2.5 text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary" data-testid="button-add-tag">
           <Plus className="h-3.5 w-3.5" />
