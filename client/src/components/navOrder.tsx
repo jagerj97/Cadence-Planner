@@ -19,12 +19,12 @@ export function NavOrderEditor({ order, onReorder }: { order: string[] | undefin
       render={(href, lifted) => {
         const n = pages.find((page) => page.href === href)!;
         return (
-          <div className={cn("flex flex-col items-center gap-0.5 rounded-2xl pb-2 pt-1 text-muted-foreground", lifted && "text-primary")}
+          <div className={cn("flex flex-col items-center gap-0.5 rounded-2xl pb-1 pt-2 text-muted-foreground", lifted && "text-primary")}
             data-testid={`row-nav-${n.label.toLowerCase()}`}>
-            {/* Grip dots: each page can be held and dragged along. */}
-            <GripHorizontal className="h-3 w-3 opacity-60" aria-hidden />
             <n.icon className="h-5 w-5" aria-hidden />
             <span className="max-w-full truncate text-[10px] tracking-tight">{n.label}</span>
+            {/* Grip dots: each page can be held and dragged along. */}
+            <GripHorizontal className="h-3 w-3 opacity-60" aria-hidden />
           </div>
         );
       }}
