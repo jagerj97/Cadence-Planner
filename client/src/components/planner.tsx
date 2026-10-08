@@ -35,6 +35,10 @@ import {
   recLabel,
   recOf,
   remindersOf,
+  notifyTimesOf,
+  anytimeRemindersFor,
+  reminderLabel,
+  MAX_REMINDER,
   toMin,
   todayStr,
   ymd,
@@ -47,7 +51,7 @@ import { WeekdayPills, choicePill } from "@/components/pills";
 import { TwoRows } from "@/components/twoRows";
 import { Linked, LocationLink } from "@/components/links";
 import { WhatsNew } from "@/components/whatsNew";
-import { TAG_COLORS, TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
+import { DefaultSwatch, TAG_COLORS, TagChip, TaskTagField, itemTags, taskColor, taskTagsOf } from "@/components/taskTags";
 import { AlignLeft, Bell, CalendarClock, Check, Clock, Flag, Flame, Hash, Link2, MapPin, Palette, Plus, Repeat, Timer, Trash2, X } from "lucide-react";
 
 /* ============ sound ============ */
@@ -185,7 +189,7 @@ export function useSaveItem() {
       recurrence: '{"freq":"none"}', exceptions: "[]", uid: null, source: "local",
       completions: JSON.stringify(marks.map((c) => c.replace(occDate, date))),
       // The series already keeps these notes in the journal.
-      journalOff: (changes.notes ?? series.notes).trim() === series.notes.trim() ? true : undefined,
+      journalOff: (changes.notes ?? series.notes).trim() === series.notes.trim() ? true : changes.journalOff,
     }));
   };
   return async (item: Item, changes: Partial<InsertItem>, occDate?: string): Promise<RepeatScope | null> => {
@@ -458,6 +462,15 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           .filter((b) => b.continues !== "before")
           .map((b) => ({ b, offset: 1440 })),
       ];
+      // Any-time tasks due today: as the day starts, and at their reminder time.
+      for (const { item, at } of anytimeRemindersFor(items, day, settings)) {
+        const key = `${item.id}:${day}:at${at}`;
+        if (nowM >= at && nowM < at + 2 && !fired.current.has(key)) {
+          fired.current.add(key);
+          if (settings.sound && !phoneOnly) chime("soft");
+          toast({ title: `Task: ${item.title}`, description: "Due today" });
+        }
+      }
       for (const { b, offset } of candidates) {
         // auto-start timer at the start time
         if (b.item.autoTimer && offset === 0 && kindOf(b.item) !== "sleep") {
@@ -471,7 +484,8 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
             toast({ title: `Timer started · ${b.item.title}`, description: `${fmtDur(mins)} on the clock` });
           }
         }
-        for (const r of remindersOf(b.item)) {
+        // Every timed item notifies as it starts (unless its timer starting says so), and at each reminder.
+        for (const r of notifyTimesOf(b.item)) {
           if (r === 0 && b.item.autoTimer) continue;
           const startAbs = b.start + offset;
           const fireAt = startAbs - r;
@@ -505,7 +519,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     check();
     const t = setInterval(check, 15000);
     return () => clearInterval(t);
-  }, [items, settings.sound, settings.inAppPopups, toast]);
+  }, [items, settings, toast]);
 
   const value: Ctx = useMemo(() => ({
     theme,
@@ -647,9 +661,13 @@ function ItemDetails({ details, onClose, onEdit }: {
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date ? " (ends later)" : ""}</div>
             </div>}
+            {!i.startTime && i.remindAt && <div>
+              <div className="text-xs text-muted-foreground">Reminder</div>
+              <div>At {fmtTime(i.remindAt, true)}</div>
+            </div>}
             {i.startTime && remindersOf(i).length > 0 && <div>
               <div className="text-xs text-muted-foreground">{remindersOf(i).length > 1 ? "Reminders" : "Reminder"}</div>
-              <div className="first-letter:uppercase">{remindersOf(i).map((m) => (REMINDERS.find((r) => r.v === String(m))?.l ?? `${fmtDur(m)} before`).toLowerCase()).join(", ")}</div>
+              <div className="first-letter:uppercase">{remindersOf(i).map(reminderLabel).join(", ")}</div>
             </div>}
             {recOf(i).freq !== "none" && <div>
               <div className="text-xs text-muted-foreground">Repeats</div>
@@ -757,10 +775,14 @@ type FormVals = {
   until: string;
   reminder: string;
   extraReminders: string[];
+  /** An any-time task's reminder time of day ("" for none). */
+  remindAt: string;
   priority: string;
   autoTimer: boolean;
   location: string;
   notes: string;
+  /** Its notes show in the journal (the item's journalOff, flipped). */
+  journal: boolean;
   /** The item's own color ("" for its kind's); a task takes its tag's instead. */
   color: string;
 };
@@ -768,10 +790,9 @@ type FormVals = {
 /** "Any day before" is stored as a year's window: a year before a one-off's due date, or 365 days' lead. */
 const ANY_DAY_BEFORE = 365;
 
-/** The reminder choices, for items and the default for new ones. */
+/** The reminder choices, for items and the default for new ones (everything also notifies as it starts). */
 export const REMINDERS = [
   { v: "none", l: "No reminder" },
-  { v: "0", l: "At start time" },
   { v: "5", l: "5 min before" },
   { v: "10", l: "10 min before" },
   { v: "15", l: "15 min before" },
@@ -779,6 +800,72 @@ export const REMINDERS = [
   { v: "60", l: "1 hour before" },
   { v: "1440", l: "1 day before" },
 ];
+
+const REMINDER_UNITS = [
+  { v: "1", l: "minutes" },
+  { v: "60", l: "hours" },
+  { v: "1440", l: "days" },
+  { v: "10080", l: "weeks" },
+] as const;
+
+/**
+ * A reminder dropdown: the usual choices, any other time already set, and "Custom…", which opens a
+ * window to type a number of minutes, hours, days or weeks before.
+ */
+export function ReminderSelect({ value, onChange, allowNone = true, label, testId, className }: {
+  value: string; onChange: (value: string) => void; allowNone?: boolean; label: string; testId: string; className?: string;
+}) {
+  const [custom, setCustom] = useState(false);
+  const [amount, setAmount] = useState("1");
+  const [unit, setUnit] = useState<string>("60");
+  const choices = REMINDERS.filter((r) => allowNone || r.v !== "none");
+  const minutes = Math.round(Number(amount) * Number(unit));
+  const valid = Number.isFinite(minutes) && minutes >= 1 && minutes <= MAX_REMINDER;
+  return (
+    <>
+      {/* An empty value comes from the hidden form select catching up with a new choice: not a pick. */}
+      <Select value={value} onValueChange={(x) => { if (!x) return; if (x === "custom") setCustom(true); else onChange(x); }}>
+        <SelectTrigger className={cn("h-9 w-fit gap-2 rounded-full px-3.5", className)} aria-label={label} data-testid={testId}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {choices.map((r) => <SelectItem key={r.v} value={r.v}>{r.l}</SelectItem>)}
+          {value !== "none" && !choices.some((r) => r.v === value) && <SelectItem value={value}>{reminderLabel(Number(value))}</SelectItem>}
+          <SelectItem value="custom" data-testid={`${testId}-custom`}>Custom…</SelectItem>
+        </SelectContent>
+      </Select>
+      <Dialog open={custom} onOpenChange={setCustom}>
+        <DialogContent className="max-w-xs" data-testid="dialog-custom-reminder">
+          <DialogHeader className="text-left">
+            <DialogTitle>Custom reminder</DialogTitle>
+            <DialogDescription className="sr-only">How long before it starts to be reminded</DialogDescription>
+          </DialogHeader>
+          {/* Its own form, kept from reaching the item window's form (React passes events up through portals). */}
+          <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); if (valid) { onChange(String(minutes)); setCustom(false); } }}>
+            <div className="flex items-center gap-2">
+              <Input type="number" inputMode="numeric" min={1} className="h-9 w-20 rounded-full text-center" value={amount}
+                onChange={(e) => setAmount(e.target.value)} aria-label="How many" autoFocus data-testid="input-custom-reminder" />
+              <Select value={unit} onValueChange={setUnit}>
+                <SelectTrigger className="h-9 w-fit gap-2 rounded-full px-3.5" aria-label="Unit" data-testid="select-custom-reminder-unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REMINDER_UNITS.map((u) => <SelectItem key={u.v} value={u.v}>{u.l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <span className="text-sm text-muted-foreground">before</span>
+            </div>
+            {!valid && amount !== "" && <p className="text-xs text-destructive">Up to 4 weeks before</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setCustom(false)}>Cancel</Button>
+              <Button type="submit" size="sm" disabled={!valid} data-testid="button-custom-reminder-save">Set</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 type Editing = { target: Item | Partial<InsertItem>; occDate?: string; onCreated?: (item: Item) => void };
 function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: () => void }) {
@@ -847,6 +934,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
       endTime: timed && !task ? f.endTime || fromMin(toMin(start) + 30) : null,
       recurrence: JSON.stringify(r),
       reminder: !timed || f.reminder === "none" ? null : Number(f.reminder),
+      remindAt: task && !timed && f.remindAt ? f.remindAt : null,
       extraReminders: JSON.stringify(!timed || f.reminder === "none" ? []
         : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
@@ -854,6 +942,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
       autoTimer: timed && !task && f.kind !== "sleep" && f.autoTimer,
       location: f.location,
       notes: f.notes,
+      journalOff: !f.journal,
     };
     if (existing) {
       const scope = await saveItem(existing, payload, editing?.occDate);
@@ -1002,7 +1091,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                 </Select>
                 {v.avail === "from" && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-muted-foreground">From</span>
+                    <span className="text-sm text-muted-foreground">Opens</span>
                     <DatePill value={v.availableFrom} max={v.date} onChange={(d) => setValue("availableFrom", d)} testId="input-available-from" label="Available from" />
                     {v.freq !== "none" && v.availableFrom && v.availableFrom < v.date && (
                       <span className="text-xs text-muted-foreground">
@@ -1066,26 +1155,38 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
               })()}
             </EditorRow>
 
+            {/* An any-time task reminds at a time of day on the day it's due. */}
+            {!timed && v.kind === "task" && (
+              <EditorRow icon={Bell}>
+                {v.remindAt ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Remind me at</span>
+                    <TimePill value={v.remindAt} onChange={(t) => setValue("remindAt", t)} testId="input-remind-at" label="Reminder time" />
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setValue("remindAt", "")}
+                      aria-label="Remove reminder" data-testid="button-remove-remind-at">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <button type="button" className="inline-flex h-7 w-fit items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                    onClick={() => setValue("remindAt", "09:00")} data-testid="button-add-remind-at">
+                    <Plus className="h-3.5 w-3.5" /> add reminder
+                  </button>
+                )}
+              </EditorRow>
+            )}
+
             {timed && v.kind !== "sleep" && (
               <EditorRow icon={Bell}>
                 {[v.reminder, ...(v.reminder === "none" ? [] : v.extraReminders)].map((value, index) => (
                   <div key={index} className="flex items-center gap-2">
-                    <Select value={value} onValueChange={(x) => {
+                    <ReminderSelect value={value} allowNone={index === 0} onChange={(x) => {
                       if (index === 0) {
                         setValue("reminder", x);
                         if (x === "none") setValue("extraReminders", []);
                       } else setValue("extraReminders", v.extraReminders.map((e, k) => (k === index - 1 ? x : e)));
-                    }}>
-                      <SelectTrigger className="h-9 w-fit gap-2 rounded-full px-3.5" aria-label={index ? `Reminder ${index + 1}` : "Reminder"}
-                        data-testid={index ? `select-extra-reminder-${index - 1}` : "select-reminder"}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {REMINDERS.filter((r) => index === 0 || r.v !== "none").map((r) => (
-                          <SelectItem key={r.v} value={r.v}>{v.kind === "task" && r.v === "0" ? "At due time" : r.l}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    }} label={index ? `Reminder ${index + 1}` : "Reminder"}
+                      testId={index ? `select-extra-reminder-${index - 1}` : "select-reminder"} />
                     {index > 0 && (
                       <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0"
                         onClick={() => setValue("extraReminders", v.extraReminders.filter((_, k) => k !== index - 1))}
@@ -1099,7 +1200,7 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                   <button type="button" className="inline-flex h-7 w-fit items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
                     onClick={() => {
                       const used = new Set([v.reminder, ...v.extraReminders]);
-                      const next = REMINDERS.find((r) => r.v !== "none" && !used.has(r.v))?.v ?? "0";
+                      const next = REMINDERS.find((r) => r.v !== "none" && !used.has(r.v))?.v ?? "5";
                       setValue("extraReminders", [...v.extraReminders, next]);
                     }}
                     data-testid="button-add-reminder">
@@ -1156,11 +1257,16 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
             </EditorRow>
             <EditorRow icon={AlignLeft}>
               <Textarea placeholder="Notes" rows={3} readOnly={isFeed} className={cn(isFeed && "opacity-60")} {...register("notes")} data-testid="input-notes" />
+              {/* Once there are notes, whether they also go to the journal (habits keep theirs to themselves). */}
+              {v.notes.trim() && v.kind !== "habit" && (
+                <JournalNotesCheckbox id="checkbox-editor-journal" checked={v.journal} onChange={(on) => setValue("journal", on)} />
+              )}
             </EditorRow>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            {existing && (
+            {/* A synced item comes and goes with its calendar, so it can't be deleted or skipped here. */}
+            {existing && !isFeed && (
               <>
                 <Button
                   type="button"
@@ -1237,13 +1343,16 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     interval: r.interval || 1,
     days: r.days || [],
     until: r.until || "",
-    reminder: i.reminder == null ? (i.title ? "none" : defReminder == null ? "none" : String(defReminder)) : String(i.reminder),
-    extraReminders: i.reminder == null ? [] : remindersOf(i as Item).filter((n) => n !== i.reminder).map(String),
+    // A saved item's reminders (an old "at start time" isn't one: it notifies as it starts anyway); a new one's default.
+    reminder: i.title ? String(remindersOf(i as Item)[0] ?? "none") : !defReminder ? "none" : String(defReminder),
+    extraReminders: i.title ? remindersOf(i as Item).slice(1).map(String) : [],
+    remindAt: i.remindAt || "",
     priority: i.priority || "normal",
     tags: taskTagsOf(i).slice(0, 1), // a task has one tag
     autoTimer: !!(i as any).autoTimer,
     location: i.location || "",
     notes: i.notes || "",
+    journal: !i.journalOff,
     color: i.color || "",
   };
 }
@@ -1351,17 +1460,17 @@ export function useToday() {
  * with its kind's color kept as the bar down its left edge.
  */
 function ItemColorPicker({ kind, value, onChange }: { kind: Kind; value: string; onChange: (color: string) => void }) {
-  const kindColor = `hsl(var(${KIND_META[kind].cssVar}))`;
-  const choices = ["", ...TAG_COLORS];
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Color">
-      {choices.map((c) => {
+      {/* No color of its own: the item takes its kind's. */}
+      <DefaultSwatch on={!value} onClick={() => onChange("")} size="h-7 w-7" label={`${KIND_META[kind].label} color`} testId="swatch-item-kind" />
+      {TAG_COLORS.map((c) => {
         const on = value === c;
         return (
-          <button key={c || "kind"} type="button" role="radio" aria-checked={on} aria-label={c ? `Color ${c}` : `${KIND_META[kind].label} color`}
+          <button key={c} type="button" role="radio" aria-checked={on} aria-label={`Color ${c}`}
             onClick={() => onChange(c)}
             className={cn("grid h-7 w-7 place-items-center rounded-full", on && "ring-2 ring-offset-2 ring-offset-background ring-foreground/60")}
-            style={{ background: c || kindColor }} data-testid={`swatch-item-${c ? c.slice(1) : "kind"}`}>
+            style={{ background: c }} data-testid={`swatch-item-${c.slice(1)}`}>
             {on && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
           </button>
         );

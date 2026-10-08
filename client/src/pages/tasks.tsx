@@ -182,15 +182,16 @@ export default function TasksPage() {
               ))}
             </div>
           ) : groups.length === 0 ? (
-            <div className="card-md text-center py-14 px-6 grid justify-items-center gap-2">
+            <div className="card-md wellness-tasks text-center py-14 px-6 grid justify-items-center gap-2">
               <div className="h-10 w-10 rounded-full bg-accent grid place-items-center text-primary">
                 <CheckSquare className="h-5 w-5" />
               </div>
               <div className="font-medium">No tasks here!</div>
             </div>
           ) : (
-            groups.map((g) => (
-              <section key={g.key} className={cn("card-md", g.key === "today" && "wellness-tasks")} aria-label={g.label}>
+            // The top card carries the page's wash, whichever group it is (like the first card on the other pages).
+            groups.map((g, index) => (
+              <section key={g.key} className={cn("card-md", index === 0 && "wellness-tasks")} aria-label={g.label}>
                 <h2 className={cn("flex items-center justify-between px-4 pt-3 pb-1.5 text-sm font-semibold", g.key === "overdue" && "text-destructive")}>
                   {g.label}
                   <span className="text-xs font-normal text-muted-foreground tnum">{g.rows.length}</span>

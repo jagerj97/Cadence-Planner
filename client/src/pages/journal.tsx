@@ -6,7 +6,7 @@ import { hashtagsIn, useItems, useJournal, useJournalMutations, useSettings } fr
 import { KIND_META, addDays, colorOf, fmtDate, kindOf, listOf, todayStr } from "@/lib/cal";
 import { DayPicker } from "@/pages/calendar";
 import { takeJournalCompose, usePlanner, useToday } from "@/components/planner";
-import { TaskTagList, cleanTag, itemTags, tagTint } from "@/components/taskTags";
+import { TaskTagList, cleanTag, tagColorValue, itemTags, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,7 +34,10 @@ const editedAt = (e: JournalEntry) => {
 const KIND_OF_TAG = new Map(Object.entries(KIND_TAGS).map(([k, t]) => [t, k as Kind]));
 function tagColor(t: string, settings: Settings, item?: Item): string | undefined {
   const kind = KIND_OF_TAG.get(t);
-  if (!kind) return settings.taskTags?.find((x) => x.name === t)?.color;
+  if (!kind) {
+    const tag = settings.taskTags?.find((x) => x.name === t);
+    return tag ? tagColorValue(tag.color) : undefined;
+  }
   return item && kindOf(item) === kind ? colorOf(item) : `hsl(var(${KIND_META[kind].cssVar}))`;
 }
 
@@ -42,8 +45,10 @@ function tagColor(t: string, settings: Settings, item?: Item): string | undefine
  * An entry's tags, with its task's tag when it holds a tagged task's notes. The task tag is read from
  * the task, so changing, renaming or deleting it there shows here too.
  */
+/** An entry's own tags, #meeting counted as #meetings and so on. */
+const ownTags = (e: Pick<JournalEntry, "tags">) => [...new Set(listOf(e.tags).map(canonicalTag))];
 function entryTags(e: JournalEntry, item: Item | undefined, settings: Settings): string[] {
-  const own = listOf(e.tags);
+  const own = ownTags(e);
   if (!item || kindOf(item) !== "task") return own;
   return [...new Set([...own, ...itemTags(item, settings).map((t) => t.name)])];
 }
@@ -127,12 +132,18 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
   const { data: entries } = useJournal();
   const counts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const e of entries ?? []) if (!e.archived) for (const t of listOf(e.tags)) m.set(t, (m.get(t) ?? 0) + 1);
+    for (const e of entries ?? []) if (!e.archived) for (const t of ownTags(e)) m.set(t, (m.get(t) ?? 0) + 1);
     return m;
   }, [entries]);
+  const { settings } = useSettings();
+  const taskTags = settings.taskTags ?? [];
   const typed = canonicalTag(cleanTag(q));
-  const pool = [...new Set([...[...counts.keys()].sort((a, b) => (counts.get(b)! - counts.get(a)!) || a.localeCompare(b)), ...SUGGESTED])];
-  const options = pool.filter((t) => !taken.includes(t) && !hide?.(t) && (!typed || t.includes(typed))).slice(0, 12);
+  // Every tag: the journal's (most used first), then task tags not used in entries yet, then ideas.
+  const pool = [...new Set([
+    ...[...counts.keys()].sort((a, b) => (counts.get(b)! - counts.get(a)!) || a.localeCompare(b)),
+    ...taskTags.map((t) => t.name), ...SUGGESTED,
+  ])];
+  const options = pool.filter((t) => !taken.includes(t) && !hide?.(t) && (!typed || t.includes(typed)));
   const add = (t: string) => {
     if (!t || hide?.(t)) return;
     onAdd(t);
@@ -141,7 +152,8 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
     if (CONVERTIBLE.has(t)) setOpen(false);
   };
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
+    // Modal: it opens over the entry window, which otherwise keeps scrolling to itself (the list couldn't scroll).
+    <Popover modal open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
       <PopoverTrigger asChild>
         <button className="inline-flex items-center gap-1 rounded-full border border-dashed h-7 px-2.5 text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary" data-testid="button-add-tag">
           <Plus className="h-3.5 w-3.5" />
@@ -178,8 +190,11 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
           ) : (
             options.map((t) => (
               <button key={t} onClick={() => add(t)} className="flex h-9 w-full items-center justify-between rounded-full px-3.5 text-sm font-medium hover:bg-muted text-left" role="option" data-testid={`option-tag-${t}`}>
-                <span>#{t}</span>
-                <span className="text-xs text-muted-foreground tnum">{counts.get(t) ? `${counts.get(t)} used` : "suggested"}</span>
+                {/* Task tags show in their color. */}
+                <span style={{ color: (() => { const tag = taskTags.find((x) => x.name === t); return tag ? `color-mix(in srgb, ${tagColorValue(tag.color)} 75%, hsl(var(--foreground)))` : undefined; })() }}>#{t}</span>
+                <span className="text-xs text-muted-foreground tnum">
+                  {counts.get(t) ? `${counts.get(t)} used` : taskTags.some((x) => x.name === t) ? "task tag" : "suggested"}
+                </span>
               </button>
             ))
           )}
@@ -630,7 +645,7 @@ export default function JournalPage() {
   // Every tag to find entries by (task tags included), and the ones saved on entries themselves.
   const tagCounts = useMemo(() => count(tagsOfEntry), [live, itemsById, settings.taskTags]); // eslint-disable-line react-hooks/exhaustive-deps
   // Manage lists tags on archived entries too, so they can still be renamed or removed.
-  const savedTagCounts = useMemo(() => count((e) => listOf(e.tags), all), [all]); // eslint-disable-line react-hooks/exhaustive-deps
+  const savedTagCounts = useMemo(() => count(ownTags, all), [all]); // eslint-disable-line react-hooks/exhaustive-deps
   const recentDays = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of all) m.set(e.date, (m.get(e.date) ?? 0) + 1);
@@ -776,7 +791,7 @@ export default function JournalPage() {
                   key={compose.entry?.id ?? "new"}
                   initialTitle={compose.entry?.title ?? ""}
                   initial={compose.entry?.body}
-                  initialTags={compose.entry ? listOf(compose.entry.tags) : []}
+                  initialTags={compose.entry ? ownTags(compose.entry) : []}
                   initialHashtags={compose.entry?.hashtags !== false}
                   submitLabel={compose.entry ? "Save" : "Add entry"}
                   busy={create.isPending || update.isPending}

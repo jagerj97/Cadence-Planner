@@ -4,7 +4,7 @@ import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
 import { APP_VERSION } from "./changelog";
-import { addDays, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
+import { addDays, anytimeRemindersFor, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, notifyTimesOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -23,6 +23,8 @@ export interface AndroidBridge {
   requestLocation?(): void;
   haptic?(kind: string): void;
   fetchCalendar(url: string): string;
+  /** fetchCalendar, asking the server first whether it changed ({"notModified": true} if not). Older builds lack it. */
+  fetchCalendarIfChanged?(url: string, etag: string, lastModified: string): string;
   saveIcs(text: string): void;
   saveBackup(text: string): void;
   notify(title: string, body: string): void;
@@ -126,7 +128,7 @@ const validDate = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/
 const validTime = (s: unknown) => s == null || typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 function validItem(it: Item | InsertItem): boolean {
   if (!it.title?.trim() || !validDate(it.date) || it.endDate && (!validDate(it.endDate) || it.endDate < it.date) ||
-      !validTime(it.startTime) || !validTime(it.endTime)) return false;
+      !validTime(it.startTime) || !validTime(it.endTime) || !validTime(it.remindAt)) return false;
   // A one-off task can be done from a day up to its due date (and time, if it has one).
   if (it.availableFrom && (it.kind !== "task" || !validDate(it.availableFrom) || it.availableFrom > it.date ||
       it.allDay || recOf(it as Item).freq !== "none")) return false;
@@ -178,6 +180,11 @@ const backfillNotes = () => exclusive(async () => {
     if (item.kind === "task" && (item.allDay || item.startTime && (item.endTime || item.endDate))) await put("items", item);
     if (item.journalId === undefined && !item.journalOff && item.source === "local" && item.notes?.trim()) await syncNotes(item, true);
   }
+  // Entries saved before #meeting counted as #meetings (and so on) get the one tag.
+  for (const entry of await list<JournalEntry>("journal")) {
+    const tags = JSON.stringify([...new Set(listOf(entry.tags).map(canonicalTag))]);
+    if (tags !== entry.tags) await put("journal", { ...entry, tags });
+  }
 });
 /**
  * Deletes an item along with what belongs to it: the journal entry holding its notes, and a focus
@@ -190,6 +197,24 @@ async function removeItem(item: Item) {
 }
 let notesBackfilled: Promise<void> | null = null;
 
+/** A quick fingerprint of a downloaded calendar (cyrb53), to tell whether it changed since the last sync. */
+function fingerprintOf(text: string) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `${text.length}:${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}`;
+}
+
+/** A calendar link's task tag from a request: a tag name, or null for none. */
+const feedTag = (data: Record<string, any>) => (typeof data.tag === "string" && data.tag.trim() ? data.tag.trim() : null);
+/** The tags a calendar link gives an item it imports: its tag, on tasks only. */
+const tagsFor = (feed: Feed, kind: string | undefined) => JSON.stringify(feed.tag && kind === "task" ? [feed.tag] : []);
+
 /** A routine's days: missing (every day), or some of 0–6 (Sunday first), each once. */
 const validDays = (days: unknown) => days === undefined || (Array.isArray(days) && days.length > 0 &&
   new Set(days).size === days.length && days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6));
@@ -197,7 +222,7 @@ const validDays = (days: unknown) => days === undefined || (Array.isArray(days) 
 /** Settings that can be saved (and restored): the lists are lists, and the routines, tags and themes valid. */
 function validSettings(s: Record<string, any>) {
   return Array.isArray(s.habitOrder) && Array.isArray(s.hiddenTodayPanels) && Array.isArray(s.todayPanelOrder) &&
-    Array.isArray(s.taskTags) && s.taskTags.every((t: any) => typeof t?.name === "string" && t.name && /^#[0-9a-f]{6}$/i.test(t.color)) &&
+    Array.isArray(s.taskTags) && s.taskTags.every((t: any) => typeof t?.name === "string" && t.name && /^(#[0-9a-f]{6})?$/i.test(t.color)) &&
     ["light", "dark"].includes(s.appearanceTheme) && (DISPLAY_MODES as readonly string[]).includes(s.displayMode) &&
     KNOWN_THEMES.has(s.colorTheme) &&
     Array.isArray(s.routines) && s.routines.every((r: any) => r && typeof r.name === "string" && r.name.trim() &&
@@ -234,23 +259,36 @@ async function refreshNotifications(remindersToo: boolean) {
   // `start` lets the notification count down to it (older builds show `body` as it is).
   const reminders: { at: number; start: number; title: string; body: string }[] = [];
   const now = Date.now();
-  for (let offset = -1; offset < 32; offset++) {
+  // Far enough ahead that an item's longest reminder still falls within the next 31 days.
+  const longest = Math.max(0, ...items.map((item) => remindersOf(item)[0] ?? 0));
+  for (let offset = -1; offset < 32 + Math.ceil(longest / 1440); offset++) {
     const date = addDays(todayStr(), offset);
     for (const block of blocksForDay(items, date)) {
       const item = block.item;
       // Only the day an item starts gets its reminders (not the days it carries on through).
       if (block.continues === "before" || block.continues === "through" || !item.startTime || item.kind === "sleep") continue;
       const kind = item.kind ? `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ` : "";
-      for (const minutes of remindersOf(item)) {
+      // Every timed item notifies as it starts, and at each reminder before that.
+      for (const minutes of notifyTimesOf(item)) {
         const at = localAt(date, block.start - minutes);
         if (at <= now || at > now + 31 * 86400000) continue;
         reminders.push({
           at,
           start: localAt(date, block.start),
           title: kind + item.title,
-          body: minutes === 0 ? "Starting now" : `Starts in ${fmtDur(minutes)}`,
+          body: minutes === 0 ? (item.kind === "task" ? "Due now" : "Starting now") : `${item.kind === "task" ? "Due" : "Starts"} in ${fmtDur(minutes)}`,
         });
       }
+    }
+  }
+  // Any-time tasks: "due today" as each day they're due starts, and at their reminder time.
+  const settings = await pref();
+  for (let offset = 0; offset < 32; offset++) {
+    const date = addDays(todayStr(), offset);
+    for (const { item, at: minutes } of anytimeRemindersFor(items, date, settings)) {
+      const at = localAt(date, minutes);
+      if (at <= now) continue;
+      reminders.push({ at, start: at, title: `Task: ${item.title}`, body: "Due today" });
     }
   }
   reminders.sort((a, b) => a.at - b.at);
@@ -442,6 +480,10 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
   if (itemRoute) return exclusive(async () => {
     const id = Number(itemRoute[1]), item = await read<Item>("items", id);
     if (!item) return fail("Not found", 404);
+    // A synced item comes and goes with its calendar.
+    if (item.source.startsWith("feed:") && (method === "DELETE" && !itemRoute[2] || itemRoute[2] === "skip")) {
+      return fail("Synced items can't be deleted", 403);
+    }
     if (method === "DELETE" && !itemRoute[2]) {
       await removeItem(item);
       return ok({ ok: true });
@@ -489,7 +531,7 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       return ok(await put("feeds", {
         name: data.name.trim(), url: normalizedUrl(data.url), color: data.color || "#4f6bd8",
         importKind: data.importKind || null, lastSynced: null, eventCount: 0, lastError: null, journalNotes: !!data.journalNotes,
-        useColor: !!data.useColor,
+        useColor: !!data.useColor, tag: feedTag(data),
       }));
     } catch { return fail("Enter a valid calendar URL"); }
   }
@@ -512,7 +554,11 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
         color: typeof data.color === "string" && /^#[0-9a-f]{6}$/i.test(data.color) ? data.color : feed.color,
         journalNotes: data.journalNotes === undefined ? feed.journalNotes : !!data.journalNotes,
         resetKinds: feed.resetKinds || importKind !== feed.importKind,
+        tag: data.tag === undefined ? feed.tag ?? null : feedTag(data),
       };
+      next.resetTags = feed.resetTags || (next.tag ?? null) !== (feed.tag ?? null);
+      // A new link is a different calendar: nothing from the last download carries over.
+      if (url !== feed.url) Object.assign(next, { etag: null, lastModified: null, fingerprint: null });
       next.resetColors = feed.resetColors || next.useColor !== feed.useColor || (!!next.useColor && next.color !== feed.color);
       if (!!next.journalNotes !== !!feed.journalNotes) {
         for (const item of await list<Item>("items")) {
@@ -531,9 +577,34 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
       const feed = await read<Feed>("feeds", id);
       if (!feed) return fail("Calendar not found", 404);
       try {
-        const fetched = JSON.parse(window.CadenceAndroid!.fetchCalendar(feed.url));
+        const bridge = window.CadenceAndroid!;
+        const tz = data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+        // Settings changed since the last sync have to reach every item, so those syncs read it all.
+        const resetting = !!(feed.resetKinds || feed.resetColors || feed.resetTags);
+        // What's imported from the same file depends on the day (old events are left out) and time zone.
+        const readFor = `${todayStr()}|${tz}`;
+        const sameRead = !resetting && !!feed.fingerprint && feed.fingerprint.endsWith(`|${readFor}`);
+        const fetched = JSON.parse(sameRead && bridge.fetchCalendarIfChanged
+          ? bridge.fetchCalendarIfChanged(feed.url, feed.etag ?? "", feed.lastModified ?? "")
+          : bridge.fetchCalendar(feed.url));
         if (fetched.error) throw new Error(fetched.error);
-        const parsed = parseAndroidIcs(fetched.text, data.tz || Intl.DateTimeFormat().resolvedOptions().timeZone, `feed:${id}`).items;
+        const markSynced = () => exclusive(async () => {
+          const current = await read<Feed>("feeds", id);
+          if (!current) return fail("Calendar not found", 404);
+          return ok(await put("feeds", { ...current, lastSynced: new Date().toISOString(), lastError: null }));
+        });
+        // The server says nothing changed: nothing to read.
+        if (fetched.notModified) return markSynced();
+        const fingerprint = `${fingerprintOf(fetched.text)}|${readFor}`;
+        // The same file as last time, read for the same day: nothing to read either.
+        if (sameRead && fingerprint === feed.fingerprint) {
+          await exclusive(async () => {
+            const current = await read<Feed>("feeds", id);
+            if (current) await put("feeds", { ...current, etag: fetched.etag ?? null, lastModified: fetched.lastModified ?? null });
+          });
+          return markSynced();
+        }
+        const parsed = parseAndroidIcs(fetched.text, tz, `feed:${id}`).items;
         // A repeating event and a changed date of it can share a start date, so repeats are matched apart.
         const keyOf = (item: InsertItem | Item) => `${item.uid || item.title}\0${item.date}\0${item.recurrence === '{"freq":"none"}' ? "" : "r"}`;
         return exclusive(async () => {
@@ -549,19 +620,23 @@ async function localApi(method: string, path: string, data: any): Promise<Respon
             if (old) {
               seen.add(old.id);
               // Kinds changed on the item stay unless "Import items as" was changed since.
-              const saved = await put("items", { ...old, ...fresh, id: old.id, kind: (feed.resetKinds ? fresh.kind : undefined) ?? old.kind, journalOff: old.journalOff,
+              const kind = (feed.resetKinds ? fresh.kind : undefined) ?? old.kind;
+              const saved = await put("items", { ...old, ...fresh, id: old.id, kind, journalOff: old.journalOff,
                 // A color picked in Cadence stays, unless the calendar's color setting was changed since.
                 color: feed.resetColors ? fresh.color : old.color,
+                // So does a task's own tag, unless the calendar's tag was changed since.
+                tags: feed.resetTags ? tagsFor(feed, kind) : old.tags,
                 // Dates the calendar skips, plus any taken off in Cadence.
                 completions: old.completions, exceptions: JSON.stringify([...new Set([...listOf(old.exceptions), ...listOf(fresh.exceptions)])]), reminder: old.reminder, extraReminders: old.extraReminders, priority: old.priority,
                 autoTimer: old.autoTimer, ...(old.kind === "task" && (old.availableFrom || old.leadDays) ? {
                   availableFrom: old.availableFrom, leadDays: old.leadDays ?? null, endDate: null, allDay: false,
                 } : {}) });
               await syncNotes(saved, (fresh.notes || "").trim() !== (old.notes || "").trim());
-            } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes }) as Item, true);
+            } else await syncNotes(await put("items", { ...fresh, journalOff: !feed.journalNotes, tags: tagsFor(feed, fresh.kind) }) as Item, true);
           }
           for (const old of prior) if (!seen.has(old.id)) await removeItem(old);
-          return ok(await put("feeds", { ...feed, resetKinds: false, resetColors: false, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
+          return ok(await put("feeds", { ...feed, resetKinds: false, resetColors: false, resetTags: false,
+            etag: fetched.etag ?? null, lastModified: fetched.lastModified ?? null, fingerprint, lastSynced: new Date().toISOString(), eventCount: imported.length, lastError: null }));
         });
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Unable to read calendar";

@@ -40,6 +40,8 @@ export type Item = {
   exceptions: string; // JSON string[] of skipped dates
   completions: string; // JSON string[] of completed dates
   reminder: number | null; // minutes before, null = none
+  /** An any-time task's reminder: the time of day ("HH:MM") it reminds on the day it's due. */
+  remindAt?: string | null;
   extraReminders: string; // JSON list of more minutes-before values
   priority: string;
   autoTimer: boolean;
@@ -72,6 +74,15 @@ export type Feed = {
   resetKinds?: boolean;
   /** Its color setting changed since the last sync, so the next one recolors every item (otherwise items keep their own). */
   resetColors?: boolean;
+  /** A task tag its items get when it imports them as tasks (null: none). */
+  tag?: string | null;
+  /** Its tag changed since the last sync, so the next one re-tags every task (otherwise tasks keep their own). */
+  resetTags?: boolean;
+  /** What the last sync downloaded: the server's ETag / Last-Modified, and a fingerprint of the file with
+   *  the day and time zone it was read for, so an unchanged calendar isn't read and saved again. */
+  etag?: string | null;
+  lastModified?: string | null;
+  fingerprint?: string | null;
 };
 
 export type Session = {

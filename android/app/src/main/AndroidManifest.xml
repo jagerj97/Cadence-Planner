@@ -18,9 +18,12 @@
         android:icon="@mipmap/ic_launcher_plain"
         android:roundIcon="@mipmap/ic_launcher_plain"
         android:theme="@style/CadenceTheme">
+        <!-- One copy of the app: the home screen icon, widgets, notifications and shortcuts all bring back
+             the one that's open (onNewIntent) instead of starting it fresh. -->
         <activity
             android:name=".AppActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:configChanges="uiMode|orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize" />
         <!-- The app's own icon is the logotype: Android shows it in expanded notifications and can't

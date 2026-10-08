@@ -8,6 +8,20 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  */
 export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
+  "1.5.8-beta": {
+    fixes: [
+      "Opening Cadence picks up where you left off instead of starting over",
+      "The agenda's filters are quick again, and the journal's tag list scrolls",
+    ],
+    changes: [
+      "Everything with a time notifies when it starts, and reminders can be any time before",
+      "Any-time tasks remind you on the day they're due",
+      "Task and journal tags share one list, with a Default color",
+      "Choose whether an item's notes go to the journal as you write them",
+      "Calendars sync every 10 minutes while open, and only when they've changed",
+      "UI changes",
+    ],
+  },
   "1.5.7-beta": {
     fixes: [
       "Quick add no longer mistakes things like \"make bed\" for sleep",

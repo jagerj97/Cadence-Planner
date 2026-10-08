@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/components/shell";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
@@ -382,7 +382,9 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
  * element carries data-day. `place` scrolls `scroller` to a day once it's drawn; days added above keep
  * the view steady; `inView` is the first day showing, for the page title.
  */
-function useDayWindow(items: Item[] | undefined, size: { before: number; ahead: number; step: number }, place: (scroller: HTMLElement, day: string) => void) {
+function useDayWindow(items: Item[] | undefined, size: { before: number; ahead: number; step: number }, place: (scroller: HTMLElement, day: string) => void,
+  /** When this changes (the filters), the window starts over around the day in view. */
+  resetKey?: unknown) {
   const today = todayStr();
   const around = (day: string) => ({ start: addDays(day, -size.before), end: addDays(day, size.ahead) });
   const [range, setRange] = useState(() => around(today));
@@ -411,7 +413,8 @@ function useDayWindow(items: Item[] | undefined, size: { before: number; ahead: 
   const grewFrom = useRef<number | null>(null);
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && grewFrom.current != null) el.scrollTop += el.scrollHeight - grewFrom.current;
+    // A jump places the list itself (and the height may have changed for other reasons since).
+    if (el && grewFrom.current != null && !jump) el.scrollTop += el.scrollHeight - grewFrom.current;
     grewFrom.current = null;
   }, [range.start]);
   const onScroll = () => {
@@ -431,7 +434,22 @@ function useDayWindow(items: Item[] | undefined, size: { before: number; ahead: 
     watch.observe(edge);
     return () => watch.disconnect();
   };
-  useEffect(() => watchEdge(bottomEdge.current, () => setRange((r) => ({ ...r, end: addDays(r.end, size.step) }))), [range.end, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Loads more days as the end comes near, up to three years ahead (a short, filtered list would
+  // otherwise keep loading with nothing to show).
+  const ceiling = addDays(today, 3 * 365);
+  useEffect(() => watchEdge(bottomEdge.current, () => {
+    if (range.end >= ceiling) return;
+    setRange((r) => ({ ...r, end: addDays(r.end, size.step) }));
+  }), [range.end, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Filters changed: back to a normal window around the day in view, rather than every day loaded
+  // while fewer items showed.
+  const firstKey = useRef(true);
+  useEffect(() => {
+    if (firstKey.current) { firstKey.current = false; return; }
+    grewFrom.current = null;
+    setRange(around(inView));
+    setJump(inView);
+  }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => watchEdge(topEdge.current, () => {
     if (range.start <= floor || jump) return;
     grewFrom.current = scroller.current?.scrollHeight ?? null;
@@ -447,14 +465,17 @@ function useDayWindow(items: Item[] | undefined, size: { before: number; ahead: 
  */
 export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle?: ReactNode; filters?: ReactNode; visibility?: CalendarVisibility }) {
   const { data: items } = useItems();
-  const list = useVisibleItems(items, visibility);
+  // The days are worked out from every item once; the filters just hide entries (so they're quick).
+  // A filter tap updates its button straight away; the list (and its window) follow together after.
+  const shownVisibility = useDeferredValue(visibility);
+  const keep = useCallback((i: Item) => { const group = groupOf(i); return group !== null && shownVisibility[group]; }, [shownVisibility]);
   const today = todayStr();
   // The first day shown on or after the one asked for.
   const { range, scroller, topEdge, bottomEdge, inView, goTo, onScroll } = useDayWindow(items, { before: 14, ahead: 45, step: 60 }, (el, day) => {
     const rows = [...el.querySelectorAll<HTMLElement>("[data-day]")];
     const row = rows.find((r) => (r.dataset.day ?? "") >= day) ?? rows[rows.length - 1];
     if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top;
-  });
+  }, shownVisibility);
   return (
     <>
       <PageHeader title={<DayPicker day={inView} label={fmtDate(inView, { month: "long", year: "numeric" })} onPick={goTo} testId="button-pick-agenda-day" />}>
@@ -470,7 +491,7 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
         <div className="card-md card-flush mx-auto h-full max-w-3xl overflow-hidden">
           <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto scroll-thin [overflow-anchor:none]" data-testid="agenda-scroller">
             <div ref={topEdge} className="h-px" aria-hidden />
-            {items && <AgendaList list={list} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
+            {items && <AgendaList list={items} keep={keep} from={range.start} days={dayDiff(range.start, range.end) + 1} />}
             <div ref={bottomEdge} className="h-px" aria-hidden />
           </div>
         </div>

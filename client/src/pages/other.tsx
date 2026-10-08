@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
-import { REMINDERS, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
-import { ColorSwatches, TAG_COLORS } from "@/components/taskTags";
+import { ReminderSelect, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
+import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
 import { APP_VERSION } from "@/lib/changelog";
 import { DurationInput } from "@/components/durationInput";
@@ -534,6 +534,7 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
   const [journal, setJournal] = useState(false);
   const [useColor, setUseColor] = useState(false);
   const [color, setColor] = useState(TAG_COLORS[4]);
+  const [tag, setTag] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (!feed) return;
@@ -543,12 +544,15 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
     setJournal(!!existing?.journalNotes);
     setUseColor(!!existing?.useColor);
     setColor(existing?.color ?? colorFor());
+    setTag(existing?.tag ? [existing.tag] : []);
   }, [feed]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = async () => {
     if (!url.trim()) return;
     setSaving(true);
     try {
-      const body = { name: name.trim() || "Calendar", url: url.trim(), importKind: kind === "auto" ? null : kind, journalNotes: journal, useColor, color };
+      const body = { name: name.trim() || "Calendar", url: url.trim(), importKind: kind === "auto" ? null : kind, journalNotes: journal, useColor, color,
+        // A tag only goes on tasks, so it's kept only while the calendar imports items as tasks.
+        tag: kind === "task" ? tag[0] ?? null : null };
       const f = existing
         ? await (await apiRequest("PATCH", `/api/feeds/${existing.id}`, body)).json()
         : await (await apiRequest("POST", "/api/feeds", body)).json();
@@ -591,6 +595,12 @@ function FeedDialog({ feed, onClose, onSaved, colorFor }: {
           <Input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()}
             placeholder="https://… or webcal://…" aria-label="Calendar iCal URL" data-testid="input-feed-url" />
           <ImportTypePicker id="select-feed-import-kind" value={kind} onChange={setKind} />
+          {kind === "task" && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="row-feed-tag">
+              <span className="text-sm">Task tag</span>
+              <TaskTagField value={tag} onChange={setTag} />
+            </div>
+          )}
           {/* Imported events' notes go to the journal only when asked; each item's details can change it later. */}
           <JournalNotesCheckbox id="checkbox-feed-journal" checked={journal} onChange={setJournal} />
           {/* Off: items take their kind's color, like everything else in Cadence. */}
@@ -682,7 +692,7 @@ export function CalendarLinks() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold">Connected calendars</h2>
-                <p className="text-xs text-muted-foreground">Auto-syncs every 15 min while open</p>
+                <p className="text-xs text-muted-foreground">Auto-syncs every 10 min while open</p>
               </div>
               {feeds && feeds.length > 0 && (
                 <Button size="sm" variant="outline" className="shrink-0" onClick={syncAll} disabled={busy !== null} data-testid="button-sync-all">
@@ -770,7 +780,11 @@ export function CalendarLinks() {
 }
 
 /** keeps feeds fresh while the app is open */
-/** Calendar links sync once when the app starts, then every 15 minutes while it's open. */
+/**
+ * Calendar links sync once when the app starts, then every 10 minutes while it's on screen. In the
+ * background they don't sync, and coming back doesn't either: the 10 minutes start over.
+ */
+const SYNC_EVERY_MS = 10 * 60 * 1000;
 let syncedAtStart = false;
 export function useAutoSync() {
   const { data: feeds } = useFeeds();
@@ -791,8 +805,12 @@ export function useAutoSync() {
       syncedAtStart = true;
       void run();
     }
-    const t = setInterval(run, 15 * 60 * 1000);
-    return () => clearInterval(t);
+    let t: ReturnType<typeof setInterval> | undefined;
+    const start = () => { clearInterval(t); t = setInterval(() => { if (!document.hidden) void run(); }, SYNC_EVERY_MS); };
+    const visibility = () => (document.hidden ? clearInterval(t) : start());
+    start();
+    document.addEventListener("visibilitychange", visibility);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", visibility); };
   }, [feeds?.length]); // eslint-disable-line
 }
 
@@ -1016,7 +1034,7 @@ export function SettingsPage() {
                     </Button>
                   </div>
                   {/* The same colors as task tags. */}
-                  <ColorSwatches value={r.color} onChange={(color) => updateRoutine(r.id, { color })} />
+                  <ColorSwatches value={r.color} onChange={(color) => updateRoutine(r.id, { color })} defaultColor="hsl(var(--k-sleep))" defaultReplaces="#3f51b5" />
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="From">
                       <Input type="time" step={60} className="min-w-0" value={r.startTime} aria-label={`${r.name} start time`}
@@ -1081,17 +1099,11 @@ export function SettingsPage() {
 
           <Section title="Reminders & notifications">
             <Field label="Default reminder for new items">
-              <Select
-                value={draft.defaultReminder == null ? "none" : String(draft.defaultReminder)}
-                onValueChange={(v) => setDraft({ ...draft, defaultReminder: v === "none" ? null : Number(v) })}
-              >
-                <SelectTrigger data-testid="select-default-reminder">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REMINDERS.map((r) => <SelectItem key={r.v} value={r.v}>{r.l}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {/* Everything notifies as it starts; this is the extra reminder new items get before that. */}
+              <ReminderSelect className="w-full justify-between"
+                value={!draft.defaultReminder ? "none" : String(draft.defaultReminder)}
+                onChange={(v) => setDraft({ ...draft, defaultReminder: v === "none" ? null : Number(v) })}
+                label="Default reminder for new items" testId="select-default-reminder" />
             </Field>
             <Row label="In-app pop-ups">
               <Switch checked={draft.inAppPopups !== false} onCheckedChange={(v) => setDraft({ ...draft, inAppPopups: v })} data-testid="switch-in-app-popups" />
@@ -1193,10 +1205,9 @@ export function SettingsPage() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Bottom bar">
+            <Field label="Page order">
               {/* Saved with the rest of the page's settings; also in Today's Customize window. */}
               <NavOrderEditor order={draft.navOrder} onReorder={(next) => setDraft((d) => ({ ...d, navOrder: next }))} />
-              <p className="text-xs text-muted-foreground">Drag to reorder</p>
             </Field>
             <SubSection title="Let Cadence outside">
               <p className="text-sm text-muted-foreground">

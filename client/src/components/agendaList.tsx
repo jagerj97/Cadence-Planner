@@ -1,9 +1,9 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useState } from "react";
 import type { Item, Settings } from "@shared/schema";
 import { usePlanner, useToday } from "@/components/planner";
 import { accentOf } from "@/components/taskTags";
 import { useSettings } from "@/lib/data";
-import { KIND_META, addDays, colorOf, fmtDate, kindOf, tint, todayStr } from "@/lib/cal";
+import { KIND_META, addDays, colorOf, fmtDate, itemsInRange, kindOf, tint, todayStr } from "@/lib/cal";
 import { agendaFor, type AgendaEntry as Entry } from "@/lib/today";
 import { cn } from "@/lib/utils";
 
@@ -13,8 +13,11 @@ import { cn } from "@/lib/utils";
  * out, except today.
  */
 
-/** An item as the timeline draws it: a tint of its color, its accent along the left, and its kind's icon. */
-export function AgendaItem({ e, settings, compact = false }: { e: Entry; settings: Settings; compact?: boolean }) {
+/**
+ * An item as the timeline draws it: a tint of its color, its accent along the left, and its kind's icon.
+ * Memoized: entries keep their objects while only the filters change, so they aren't drawn again.
+ */
+export const AgendaItem = memo(function AgendaItem({ e, settings, compact = false }: { e: Entry; settings: Settings; compact?: boolean }) {
   const { openDetails } = usePlanner();
   const k = kindOf(e.i);
   const Icon = KIND_META[k].icon;
@@ -34,7 +37,7 @@ export function AgendaItem({ e, settings, compact = false }: { e: Entry; setting
       )}
     </button>
   );
-}
+});
 
 /** A day's date as the agenda and timeline views head it: the day of the month in bold, then the weekday, lighter. */
 export function DayHeading({ day }: { day: string }) {
@@ -74,8 +77,13 @@ function useNowMinutes(on: boolean) {
  * data-day, so a page can find which day is in view or scroll to one. With `now`, today's row shows
  * where the current time falls among its items.
  */
-export function AgendaList({ list, from, days, limit, compact = false, emptyToday = "Nothing planned", dates = true, always = false, now = true }: {
+export function AgendaList({ list, keep, from, days, limit, compact = false, emptyToday = "Nothing planned", dates = true, always = false, now = true }: {
   list: Item[]; from: string; days: number; limit?: number; compact?: boolean; emptyToday?: string;
+  /**
+   * Which of `list`'s items to show (the calendar's filters). The days are worked out from all of
+   * `list` once, so changing this only hides or shows entries.
+   */
+  keep?: (i: Item) => boolean;
   /** Show each day's date above its items (off for a single day's list). */
   dates?: boolean;
   /** Show every day in the range, even with nothing on (not just today). */
@@ -84,18 +92,27 @@ export function AgendaList({ list, from, days, limit, compact = false, emptyToda
 }) {
   const { settings } = useSettings();
   const today = useToday();
+  // Every day's entries, from only the items that can fall in the range.
+  const allDays = useMemo(() => {
+    const pool = itemsInRange(list, from, addDays(from, days - 1));
+    return Array.from({ length: days }, (_, n) => {
+      const day = addDays(from, n);
+      return { day, entries: agendaFor(pool, day) };
+    });
+  }, [list, from, days]);
+  const shown = keep;
   const rows = useMemo(() => {
     const out: { day: string; entries: Entry[] }[] = [];
     let count = 0;
-    for (let n = 0; n < days && (limit == null || count < limit); n++) {
-      const day = addDays(from, n);
-      let entries = agendaFor(list, day);
+    for (const { day, entries: all } of allDays) {
+      if (limit != null && count >= limit) break;
+      let entries = shown ? all.filter((e) => shown(e.i)) : all;
       if (limit != null) entries = entries.slice(0, limit - count);
       count += entries.length;
       if (entries.length || day === today || always) out.push({ day, entries });
     }
     return out;
-  }, [list, from, days, limit, always, today]);
+  }, [allDays, shown, limit, always, today]);
   const nowMin = useNowMinutes(now && rows.some((r) => r.day === today));
   return (
     <div className={cn("grid", !dates && "gap-3")} data-testid="agenda-list">

@@ -38,18 +38,19 @@ let tagColorsFrom: unknown = null;
 export function setTagColors(tags: { name: string; color: string }[] | undefined) {
   if (tags === tagColorsFrom) return;
   tagColorsFrom = tags;
-  tagColors = new Map((tags ?? []).map((t) => [t.name, t.color]));
+  // A tag on "Default" (no color) leaves its tasks the task yellow.
+  tagColors = new Map((tags ?? []).filter((t) => t.color).map((t) => [t.name, t.color]));
 }
 const tagColorOf = (i: Item) => (kindOf(i) === "task" ? tagColors.get(String(listOf(i.tags)[0] ?? "")) : undefined);
 
 /** An item's own color: a tagged task's tag color, a color picked for the item, or its kind's color. */
 export function colorOf(i: Item): string {
-  return tagColorOf(i) ?? i.color ?? `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
+  return tagColorOf(i) || i.color || `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
 }
 /** The kind's color, for the bar down an item's left edge (the item itself takes colorOf). */
 export const kindColorOf = (i: Item) => `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
 export function tint(i: Item, alpha: number): string {
-  const own = tagColorOf(i) ?? i.color;
+  const own = tagColorOf(i) || i.color;
   if (own) return hexAlpha(own, alpha);
   return `hsl(var(${KIND_META[kindOf(i)].cssVar}) / ${alpha})`;
 }
@@ -130,12 +131,30 @@ export const listOf = (s: string | null | undefined): string[] => {
     return [];
   }
 };
-/** Every reminder on an item (minutes before start), latest-firing last, without duplicates. */
+/**
+ * The reminders set on an item (minutes before it starts), earliest-firing first, without duplicates.
+ * Every timed item also notifies as it starts (notifyTimesOf), so an old "at start time" (0) isn't one.
+ */
 export const remindersOf = (i: Pick<Item, "reminder"> & { extraReminders?: string | null }): number[] => {
   if (i.reminder == null) return [];
   const all = [i.reminder, ...(listOf(i.extraReminders) as unknown[])];
-  return [...new Set(all.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0))].sort((a, b) => b - a);
+  return [...new Set(all.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
 };
+/** When a timed item notifies: its reminders, then as it starts (0). */
+export const notifyTimesOf = (i: Pick<Item, "reminder"> & { extraReminders?: string | null }): number[] => [...remindersOf(i), 0];
+/** The longest reminder that can be set: four weeks before. */
+export const MAX_REMINDER = 4 * 7 * 1440;
+/** A reminder as words: "10 min before", "2 hours before", "3 days before", "1 week before". */
+export function reminderLabel(minutes: number) {
+  const units: [number, string][] = [[10080, "week"], [1440, "day"], [60, "hour"]];
+  for (const [size, name] of units) {
+    if (minutes >= size && minutes % size === 0) {
+      const n = minutes / size;
+      return `${n} ${name}${n === 1 ? "" : "s"} before`;
+    }
+  }
+  return minutes < 60 ? `${minutes} min before` : `${fmtDur(minutes)} before`;
+}
 export const completionsOf = (i: Item) => new Set((listOf(i.completions) as string[]).filter((x) => !x.endsWith("~h")));
 /** dates marked half-done (Theme System style partial fill) */
 export const partialsOf = (i: Item) => new Set((listOf(i.completions) as string[]).filter((x) => x.endsWith("~h")).map((x) => x.slice(0, -2)));
@@ -411,6 +430,42 @@ export function blocksForDay(list: Item[], day: string): Block[] {
     }
   }
   return out.sort((a, b) => a.start - b.start || b.end - a.end);
+}
+
+/**
+ * When the day starts, for "due today" notifications: when a Sleep routine ends that morning (waking
+ * up), or 7 AM without one.
+ */
+export function dayStartFor(settings: Settings, day: string) {
+  const wake = blocksForDay(routineSchedules(settings), day).find((b) => b.start === 0 && /sleep/i.test(b.item.title));
+  return wake ? wake.end : 7 * 60;
+}
+
+/**
+ * Notifications for any-time tasks due on `day` and not yet done: "due today" as the day starts, and
+ * at the time it was set to remind at (remindAt), if any.
+ */
+export function anytimeRemindersFor(list: Item[], day: string, settings: Settings): { item: Item; at: number }[] {
+  const start = dayStartFor(settings, day);
+  return list.filter((i) => i.kind === "task" && !isTimed(i) && occursOn(i, day) &&
+      !rulesOf(i).done.has(recOf(i).freq === "none" ? i.date : day))
+    .flatMap((item) => [
+      { item, at: start },
+      ...(item.remindAt && toMin(item.remindAt) !== start ? [{ item, at: toMin(item.remindAt) }] : []),
+    ]);
+}
+
+/**
+ * The items that can show on any day from `from` to `to`: the rest (one-offs that are over or not yet
+ * here, repeats that ended) are left out before going day by day. Habits aren't tied to their date.
+ */
+export function itemsInRange(list: Item[], from: string, to: string): Item[] {
+  return list.filter((i) => {
+    if (i.date > to && i.kind !== "habit") return false;
+    const r = rulesOf(i).r;
+    if (r.freq === "none") return addDays(i.date, lastDayOffset(i)) >= from;
+    return !r.until || addDays(r.until, lastDayOffset(i)) >= from;
+  });
 }
 
 export function untimedForDay(list: Item[], day: string) {
