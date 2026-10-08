@@ -1208,7 +1208,6 @@ export function SettingsPage() {
             <Field label="Page order">
               {/* Saved with the rest of the page's settings; also in Today's Customize window. */}
               <NavOrderEditor order={draft.navOrder} onReorder={(next) => setDraft((d) => ({ ...d, navOrder: next }))} />
-              <p className="text-xs text-muted-foreground">Drag to reorder</p>
             </Field>
             <SubSection title="Let Cadence outside">
               <p className="text-sm text-muted-foreground">

@@ -217,7 +217,6 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
           <section className="grid gap-2" aria-label="Page order">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Page order</h3>
             <NavOrderEditor order={settings.navOrder} onReorder={(next) => save.mutate({ navOrder: next })} />
-            <p className="text-xs text-muted-foreground">Drag to reorder</p>
           </section>
           {/* Every card back on, and the cards and bottom bar back in their first order. */}
           <div className="flex justify-center">
