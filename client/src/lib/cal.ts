@@ -38,18 +38,19 @@ let tagColorsFrom: unknown = null;
 export function setTagColors(tags: { name: string; color: string }[] | undefined) {
   if (tags === tagColorsFrom) return;
   tagColorsFrom = tags;
-  tagColors = new Map((tags ?? []).map((t) => [t.name, t.color]));
+  // A tag on "Default" (no color) leaves its tasks the task yellow.
+  tagColors = new Map((tags ?? []).filter((t) => t.color).map((t) => [t.name, t.color]));
 }
 const tagColorOf = (i: Item) => (kindOf(i) === "task" ? tagColors.get(String(listOf(i.tags)[0] ?? "")) : undefined);
 
 /** An item's own color: a tagged task's tag color, a color picked for the item, or its kind's color. */
 export function colorOf(i: Item): string {
-  return tagColorOf(i) ?? i.color ?? `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
+  return tagColorOf(i) || i.color || `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
 }
 /** The kind's color, for the bar down an item's left edge (the item itself takes colorOf). */
 export const kindColorOf = (i: Item) => `hsl(var(${KIND_META[kindOf(i)].cssVar}))`;
 export function tint(i: Item, alpha: number): string {
-  const own = tagColorOf(i) ?? i.color;
+  const own = tagColorOf(i) || i.color;
   if (own) return hexAlpha(own, alpha);
   return `hsl(var(${KIND_META[kindOf(i)].cssVar}) / ${alpha})`;
 }

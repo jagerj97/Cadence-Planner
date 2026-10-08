@@ -1034,7 +1034,7 @@ export function SettingsPage() {
                     </Button>
                   </div>
                   {/* The same colors as task tags. */}
-                  <ColorSwatches value={r.color} onChange={(color) => updateRoutine(r.id, { color })} />
+                  <ColorSwatches value={r.color} onChange={(color) => updateRoutine(r.id, { color })} defaultColor="hsl(var(--k-sleep))" defaultReplaces="#3f51b5" />
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="From">
                       <Input type="time" step={60} className="min-w-0" value={r.startTime} aria-label={`${r.name} start time`}

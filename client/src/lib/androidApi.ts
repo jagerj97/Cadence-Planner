@@ -222,7 +222,7 @@ const validDays = (days: unknown) => days === undefined || (Array.isArray(days) 
 /** Settings that can be saved (and restored): the lists are lists, and the routines, tags and themes valid. */
 function validSettings(s: Record<string, any>) {
   return Array.isArray(s.habitOrder) && Array.isArray(s.hiddenTodayPanels) && Array.isArray(s.todayPanelOrder) &&
-    Array.isArray(s.taskTags) && s.taskTags.every((t: any) => typeof t?.name === "string" && t.name && /^#[0-9a-f]{6}$/i.test(t.color)) &&
+    Array.isArray(s.taskTags) && s.taskTags.every((t: any) => typeof t?.name === "string" && t.name && /^(#[0-9a-f]{6})?$/i.test(t.color)) &&
     ["light", "dark"].includes(s.appearanceTheme) && (DISPLAY_MODES as readonly string[]).includes(s.displayMode) &&
     KNOWN_THEMES.has(s.colorTheme) &&
     Array.isArray(s.routines) && s.routines.every((r: any) => r && typeof r.name === "string" && r.name.trim() &&

@@ -6,7 +6,7 @@ import { hashtagsIn, useItems, useJournal, useJournalMutations, useSettings } fr
 import { KIND_META, addDays, colorOf, fmtDate, kindOf, listOf, todayStr } from "@/lib/cal";
 import { DayPicker } from "@/pages/calendar";
 import { takeJournalCompose, usePlanner, useToday } from "@/components/planner";
-import { TaskTagList, cleanTag, itemTags, tagTint } from "@/components/taskTags";
+import { TaskTagList, cleanTag, tagColorValue, itemTags, tagTint } from "@/components/taskTags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,7 +34,10 @@ const editedAt = (e: JournalEntry) => {
 const KIND_OF_TAG = new Map(Object.entries(KIND_TAGS).map(([k, t]) => [t, k as Kind]));
 function tagColor(t: string, settings: Settings, item?: Item): string | undefined {
   const kind = KIND_OF_TAG.get(t);
-  if (!kind) return settings.taskTags?.find((x) => x.name === t)?.color;
+  if (!kind) {
+    const tag = settings.taskTags?.find((x) => x.name === t);
+    return tag ? tagColorValue(tag.color) : undefined;
+  }
   return item && kindOf(item) === kind ? colorOf(item) : `hsl(var(${KIND_META[kind].cssVar}))`;
 }
 
@@ -132,9 +135,15 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
     for (const e of entries ?? []) if (!e.archived) for (const t of ownTags(e)) m.set(t, (m.get(t) ?? 0) + 1);
     return m;
   }, [entries]);
+  const { settings } = useSettings();
+  const taskTags = settings.taskTags ?? [];
   const typed = canonicalTag(cleanTag(q));
-  const pool = [...new Set([...[...counts.keys()].sort((a, b) => (counts.get(b)! - counts.get(a)!) || a.localeCompare(b)), ...SUGGESTED])];
-  const options = pool.filter((t) => !taken.includes(t) && !hide?.(t) && (!typed || t.includes(typed))).slice(0, 12);
+  // Every tag: the journal's (most used first), then task tags not used in entries yet, then ideas.
+  const pool = [...new Set([
+    ...[...counts.keys()].sort((a, b) => (counts.get(b)! - counts.get(a)!) || a.localeCompare(b)),
+    ...taskTags.map((t) => t.name), ...SUGGESTED,
+  ])];
+  const options = pool.filter((t) => !taken.includes(t) && !hide?.(t) && (!typed || t.includes(typed)));
   const add = (t: string) => {
     if (!t || hide?.(t)) return;
     onAdd(t);
@@ -181,8 +190,11 @@ function TagPicker({ taken, hide, onAdd }: { taken: string[]; hide?: (t: string)
           ) : (
             options.map((t) => (
               <button key={t} onClick={() => add(t)} className="flex h-9 w-full items-center justify-between rounded-full px-3.5 text-sm font-medium hover:bg-muted text-left" role="option" data-testid={`option-tag-${t}`}>
-                <span>#{t}</span>
-                <span className="text-xs text-muted-foreground tnum">{counts.get(t) ? `${counts.get(t)} used` : "suggested"}</span>
+                {/* Task tags show in their color. */}
+                <span style={{ color: (() => { const tag = taskTags.find((x) => x.name === t); return tag ? `color-mix(in srgb, ${tagColorValue(tag.color)} 75%, hsl(var(--foreground)))` : undefined; })() }}>#{t}</span>
+                <span className="text-xs text-muted-foreground tnum">
+                  {counts.get(t) ? `${counts.get(t)} used` : taskTags.some((x) => x.name === t) ? "task tag" : "suggested"}
+                </span>
               </button>
             ))
           )}
