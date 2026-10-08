@@ -431,11 +431,27 @@ export function blocksForDay(list: Item[], day: string): Block[] {
   return out.sort((a, b) => a.start - b.start || b.end - a.end);
 }
 
-/** Any-time tasks due on `day`, not yet done, that remind at a time that day (remindAt). */
-export function anytimeRemindersFor(list: Item[], day: string): { item: Item; at: number }[] {
-  return list.filter((i) => i.kind === "task" && !isTimed(i) && i.remindAt && occursOn(i, day) &&
+/**
+ * When the day starts, for "due today" notifications: when a Sleep routine ends that morning (waking
+ * up), or 7 AM without one.
+ */
+export function dayStartFor(settings: Settings, day: string) {
+  const wake = blocksForDay(routineSchedules(settings), day).find((b) => b.start === 0 && /sleep/i.test(b.item.title));
+  return wake ? wake.end : 7 * 60;
+}
+
+/**
+ * Notifications for any-time tasks due on `day` and not yet done: "due today" as the day starts, and
+ * at the time it was set to remind at (remindAt), if any.
+ */
+export function anytimeRemindersFor(list: Item[], day: string, settings: Settings): { item: Item; at: number }[] {
+  const start = dayStartFor(settings, day);
+  return list.filter((i) => i.kind === "task" && !isTimed(i) && occursOn(i, day) &&
       !rulesOf(i).done.has(recOf(i).freq === "none" ? i.date : day))
-    .map((item) => ({ item, at: toMin(item.remindAt) }));
+    .flatMap((item) => [
+      { item, at: start },
+      ...(item.remindAt && toMin(item.remindAt) !== start ? [{ item, at: toMin(item.remindAt) }] : []),
+    ]);
 }
 
 export function untimedForDay(list: Item[], day: string) {

@@ -281,10 +281,11 @@ async function refreshNotifications(remindersToo: boolean) {
       }
     }
   }
-  // Any-time tasks with a time to be reminded at, on each day they're due.
+  // Any-time tasks: "due today" as each day they're due starts, and at their reminder time.
+  const settings = await pref();
   for (let offset = 0; offset < 32; offset++) {
     const date = addDays(todayStr(), offset);
-    for (const { item, at: minutes } of anytimeRemindersFor(items, date)) {
+    for (const { item, at: minutes } of anytimeRemindersFor(items, date, settings)) {
       const at = localAt(date, minutes);
       if (at <= now) continue;
       reminders.push({ at, start: at, title: `Task: ${item.title}`, body: "Due today" });

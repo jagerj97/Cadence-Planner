@@ -462,9 +462,9 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           .filter((b) => b.continues !== "before")
           .map((b) => ({ b, offset: 1440 })),
       ];
-      // Any-time tasks due today that remind at a time of day.
-      for (const { item, at } of anytimeRemindersFor(items, day)) {
-        const key = `${item.id}:${day}:at`;
+      // Any-time tasks due today: as the day starts, and at their reminder time.
+      for (const { item, at } of anytimeRemindersFor(items, day, settings)) {
+        const key = `${item.id}:${day}:at${at}`;
         if (nowM >= at && nowM < at + 2 && !fired.current.has(key)) {
           fired.current.add(key);
           if (settings.sound && !phoneOnly) chime("soft");
@@ -519,7 +519,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     check();
     const t = setInterval(check, 15000);
     return () => clearInterval(t);
-  }, [items, settings.sound, settings.inAppPopups, toast]);
+  }, [items, settings, toast]);
 
   const value: Ctx = useMemo(() => ({
     theme,
