@@ -196,13 +196,18 @@ function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
 
 /**
  * Swiping left or right across a page goes to the next or previous page in the bar (in the user's
- * order); the end pages go no further. Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
+ * order); the end pages go no further. Set to dates in Settings, it presses the page's own next or
+ * previous day (week, month) button instead, marked `data-swipe`; pages without one stay put.
+ * Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
  */
-function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typeof NAV)[number][], go: (href: string, dir: 1 | -1) => void) {
+function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typeof NAV)[number][], dates: boolean,
+  go: (href: string, dir: 1 | -1) => void, stepped: (dir: 1 | -1) => void) {
   const locRef = useRef(loc);
   locRef.current = loc;
   const navRef = useRef(nav);
   navRef.current = nav;
+  const datesRef = useRef(dates);
+  datesRef.current = dates;
   useEffect(() => {
     const el = main.current;
     if (!el) return;
@@ -218,10 +223,15 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typ
       if (!s || !t || Date.now() - s.t > 700) return;
       const dx = t.clientX - s.x, dy = t.clientY - s.y;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
+      const dir = dx < 0 ? 1 : -1;
+      if (datesRef.current) {
+        const step = el.querySelector<HTMLButtonElement>(`[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`);
+        if (step) { step.click(); stepped(dir); }
+        return;
+      }
       const pages = navRef.current;
       const at = pages.findIndex((n) => n.match(locRef.current));
       if (at < 0) return;
-      const dir = dx < 0 ? 1 : -1;
       const next = pages[at + dir];
       if (next) go(next.href, dir);
     };
@@ -236,7 +246,7 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typ
       el.removeEventListener("touchend", up);
       el.removeEventListener("touchcancel", cancel);
     };
-  }, [main, go]);
+  }, [main, go, stepped]);
 }
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -253,11 +263,17 @@ export function Shell({ children }: { children: ReactNode }) {
     clearTimeout(slideTimer.current);
     slideTimer.current = setTimeout(() => setSlide(null), 300);
   }, [nav]);
-  usePageSwipe(mainRef, loc, pages, go);
+  // A date swipe keeps the page (and what's open on it), so it's nudged in from that side instead.
+  const pageRef = useRef<HTMLDivElement>(null);
+  const stepped = useCallback((dir: 1 | -1) => {
+    pageRef.current?.animate([{ opacity: 0.4, transform: `translateX(${dir * 32}px)` }, { opacity: 1, transform: "none" }],
+      { duration: 200, easing: "ease-out" });
+  }, []);
+  const { settings } = useSettings();
+  usePageSwipe(mainRef, loc, pages, settings.swipe === "dates", go, stepped);
   const slid = slide && pages[page]?.href === slide.to ? slide.dir : 0;
   const { focus } = usePlanner();
   const elapsed = useFocusElapsed();
-  const { settings } = useSettings();
   const inSettings = SETTINGS_NAV.match(loc);
   if (!inSettings) lastPage = loc;
 
@@ -293,7 +309,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </aside>
         <main ref={mainRef} className="flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
           {/* Keyed by the page (not its place in the bar, which reordering the bar changes). */}
-          <div key={pages[page]?.href ?? (inSettings ? "/settings" : "other")}
+          <div key={pages[page]?.href ?? (inSettings ? "/settings" : "other")} ref={pageRef}
             className={cn("flex flex-1 min-h-0 flex-col", slid !== 0 && "animate-in fade-in duration-200", slid > 0 ? "slide-in-from-right-8" : slid < 0 && "slide-in-from-left-8")}>
             {children}
           </div>

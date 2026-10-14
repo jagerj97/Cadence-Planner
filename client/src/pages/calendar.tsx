@@ -132,13 +132,13 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
     <>
       <PageHeader title={<WeekPicker title={title} start={start} weekStartsOn={settings.weekStartsOn} onPick={setAnchor} />}>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Previous week" data-testid="button-prev-week">
+          <Button size="icon" variant="ghost" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Previous week" data-swipe="prev" data-testid="button-prev-week">
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => setAnchor(todayStr())} data-testid="button-this-week">
             This week
           </Button>
-          <Button size="icon" variant="ghost" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Next week" data-testid="button-next-week">
+          <Button size="icon" variant="ghost" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Next week" data-swipe="next" data-testid="button-next-week">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -268,7 +268,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
     <>
       <PageHeader title={<MonthPicker month={month} onPick={setMonth} />}>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" onClick={() => shift(-1)} aria-label="Previous month" data-testid="button-prev-month">
+          <Button size="icon" variant="ghost" onClick={() => shift(-1)} aria-label="Previous month" data-swipe="prev" data-testid="button-prev-month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button
@@ -282,7 +282,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
           >
             This month
           </Button>
-          <Button size="icon" variant="ghost" onClick={() => shift(1)} aria-label="Next month" data-testid="button-next-month">
+          <Button size="icon" variant="ghost" onClick={() => shift(1)} aria-label="Next month" data-swipe="next" data-testid="button-next-month">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

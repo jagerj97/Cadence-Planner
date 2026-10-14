@@ -89,13 +89,13 @@ export default function Today() {
           onPick={(d) => nav(d === todayStr() ? "/" : `/day/${d}`)} testId="button-pick-today-day" />}
       >
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" onClick={() => nav(`/day/${addDays(day, -1)}`)} aria-label="Previous day" data-testid="button-prev-day">
+          <Button size="icon" variant="ghost" onClick={() => nav(`/day/${addDays(day, -1)}`)} aria-label="Previous day" data-swipe="prev" data-testid="button-prev-day">
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => nav("/")} disabled={isToday} data-testid="button-today">
             Today
           </Button>
-          <Button size="icon" variant="ghost" onClick={() => nav(`/day/${addDays(day, 1)}`)} aria-label="Next day" data-testid="button-next-day">
+          <Button size="icon" variant="ghost" onClick={() => nav(`/day/${addDays(day, 1)}`)} aria-label="Next day" data-swipe="next" data-testid="button-next-day">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
