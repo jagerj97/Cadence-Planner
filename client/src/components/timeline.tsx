@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Item } from "@shared/schema";
 import { useSaveItem, usePlanner } from "./planner";
 import { accentOf } from "./taskTags";
+import { TaskCheck } from "./checks";
 import { useItemMutations, useSettings } from "@/lib/data";
 import {
   KIND_META,
@@ -26,7 +27,7 @@ import type { Block } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { haptic } from "@/lib/haptics";
-import { Check, Play, Repeat, Sunrise, Sunset, Timer } from "lucide-react";
+import { Play, Repeat, Sunrise, Sunset, Timer } from "lucide-react";
 
 export const HOUR_PX = 60;
 
@@ -354,23 +355,9 @@ export function DayColumn({
           >
             <div className={cn("flex h-full gap-1.5", tiny ? "items-center px-1.5" : compact ? "px-1 py-1 sm:px-2" : "px-2 py-1")}>
               {checkable && !compact && (
-                <button
-                  type="button"
-                  onPointerDown={(ev) => ev.stopPropagation()}
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    toggle.mutate({ id: b.item.id, date: b.occDate });
-                  }}
-                  className={cn(
-                    "mt-0.5 h-4 w-4 shrink-0 rounded grid place-items-center border",
-                    tiny && "mt-0",
-                  )}
-                  style={{ borderColor: colorOf(b.item), background: b.done ? colorOf(b.item) : "transparent" }}
-                  aria-label={b.done ? "Mark not done" : "Mark done"}
-                  data-testid={`button-check-${b.key}`}
-                >
-                  {b.done && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
-                </button>
+                <TaskCheck done={b.done} color={colorOf(b.item)} onToggle={() => toggle.mutate({ id: b.item.id, date: b.occDate })}
+                  className={cn("mt-0.5 h-4 w-4 rounded border", tiny && "mt-0")} checkClassName="h-3 w-3"
+                  label={b.done ? "Mark not done" : "Mark done"} testId={`button-check-${b.key}`} />
               )}
               {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && <div className="min-w-0 flex-1 overflow-hidden">
                 <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm", b.done && "line-through")}>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
+import { HabitCheck } from "@/components/checks";
 import { ReminderSelect, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
@@ -13,7 +14,6 @@ import {
   blocksForDay,
   colorOf,
   completionsOf,
-  fillOf,
   fmtDate,
   fmtDur,
   fmtTime,
@@ -141,15 +141,10 @@ export function HabitsPage() {
                   return (
                     <div className={cn("flex items-center gap-3 py-2.5 pr-4", dueNow.length > 1 ? "pl-2" : "pl-4")} data-testid={`row-habit-${h.id}`}>
                       {dueNow.length > 1 && <GripVertical className="-mr-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
-                      <button
-                        onClick={() => cycle.mutate({ id: h.id, date: today })}
-                        className="h-7 w-7 shrink-0 rounded-full grid place-items-center border-2 transition-colors"
-                        style={{ borderColor: colorOf(h), background: fillOf(mk, colorOf(h)) }}
-                        aria-label={`${h.title}: ${MARK_LABEL[mk]}. Tap for ${MARK_LABEL[((mk + 1) % 3) as 0 | 1 | 2]}`}
-                        data-testid={`button-toggle-habit-${h.id}`}
-                      >
-                        {hit && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
-                      </button>
+                      <HabitCheck mark={mk} color={colorOf(h)} onCycle={() => cycle.mutate({ id: h.id, date: today })}
+                        className="h-7 w-7" buttonClassName="border-2" checkClassName="h-4 w-4"
+                        label={`${h.title}: ${MARK_LABEL[mk]}. Tap for ${MARK_LABEL[((mk + 1) % 3) as 0 | 1 | 2]}`}
+                        testId={`button-toggle-habit-${h.id}`} />
                       <button onClick={() => openDetails(h)} className="min-w-0 flex-1 text-left">
                         <div className={cn("text-sm font-medium truncate", hit && "text-muted-foreground")}>{h.title}</div>
                         <div className="text-xs text-muted-foreground truncate">
@@ -227,18 +222,12 @@ export function HabitsPage() {
                             return (
                               <td key={h.id} className={cn("py-1 text-center", isT && "bg-primary/5")}>
                                 {due ? (
-                                  <button
-                                    onClick={() => cycle.mutate({ id: h.id, date: d })}
-                                    className={cn(
-                                      "inline-grid h-6 w-6 place-items-center rounded-full border-[1.5px] transition-colors",
-                                      mk === 0 && "hover:bg-muted",
-                                    )}
-                                    style={{ background: fillOf(mk, colorOf(h)), borderColor: mk ? colorOf(h) : "hsl(var(--foreground) / .22)" }}
-                                    aria-label={`${h.title}, ${fmtDate(d, { weekday: "short", month: "short", day: "numeric" })}: ${MARK_LABEL[mk]}`}
-                                    data-testid={`button-habit-${h.id}-${d}`}
-                                  >
-                                    {hit && <Check className="h-3.5 w-3.5 text-background" strokeWidth={3} />}
-                                  </button>
+                                  <HabitCheck mark={mk} color={colorOf(h)} onCycle={() => cycle.mutate({ id: h.id, date: d })}
+                                    className="h-6 w-6 align-middle" buttonClassName={cn("border-[1.5px]", mk === 0 && "hover:bg-muted")}
+                                    checkClassName="h-3.5 w-3.5"
+                                    style={mk ? undefined : { borderColor: "hsl(var(--foreground) / .22)" }}
+                                    label={`${h.title}, ${fmtDate(d, { weekday: "short", month: "short", day: "numeric" })}: ${MARK_LABEL[mk]}`}
+                                    testId={`button-habit-${h.id}-${d}`} />
                                 ) : (
                                   <span className="inline-block h-1 w-1 rounded-full bg-foreground/20" aria-label="Not scheduled" />
                                 )}

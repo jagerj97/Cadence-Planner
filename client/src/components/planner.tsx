@@ -29,7 +29,6 @@ import {
   listOf,
   colorOf,
   completionsOf,
-  fillOf,
   markOf,
   occursOn,
   recLabel,
@@ -47,6 +46,7 @@ import {
   sunTimes,
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
+import { HabitCheck, TaskCheck, useStreakFlare } from "@/components/checks";
 import { WeekdayPills, choicePill } from "@/components/pills";
 import { TwoRows } from "@/components/twoRows";
 import { Linked, LocationLink } from "@/components/links";
@@ -596,23 +596,17 @@ function DetailCheck({ item: i, day }: { item: Item; day: string }) {
     const done = completionsOf(i).has(day);
     const c = taskColor(i, settings);
     return (
-      <button type="button" onClick={() => toggle.mutate({ id: i.id, date: day })}
-        className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition-colors"
-        style={{ borderColor: c, background: done ? c : "transparent" }}
-        aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`} aria-pressed={done} data-testid="button-detail-check">
-        {done && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
-      </button>
+      <TaskCheck done={done} color={c} onToggle={() => toggle.mutate({ id: i.id, date: day })}
+        className="mt-0.5 h-6 w-6 rounded-md border-2" checkClassName="h-4 w-4"
+        label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`} testId="button-detail-check" />
     );
   }
   const mk = markOf(i, day);
   const c = colorOf(i);
   return (
-    <button type="button" onClick={() => cycle.mutate({ id: i.id, date: day })}
-      className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 transition-colors"
-      style={{ borderColor: c, background: fillOf(mk, c) }}
-      aria-label={`${i.title}: ${["not done", "half done", "done"][mk]}`} data-testid="button-detail-check">
-      {mk === 2 && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
-    </button>
+    <HabitCheck mark={mk} color={c} onCycle={() => cycle.mutate({ id: i.id, date: day })}
+      className="mt-0.5 h-7 w-7" buttonClassName="border-2" checkClassName="h-4 w-4"
+      label={`${i.title}: ${["not done", "half done", "done"][mk]}`} testId="button-detail-check" />
   );
 }
 
@@ -698,14 +692,16 @@ function ItemDetails({ details, onClose, onEdit }: {
  * the days in a row it's been missed. Nothing at zero unless `zero`.
  */
 export function StreakBadge({ streak, className, zero = false }: { streak: number; className?: string; zero?: boolean }) {
+  // Going up a day, the flame flares and the new count rolls up into place.
+  const { flame, rolled } = useStreakFlare(streak);
   if (!streak && !zero) return null;
   return (
     <span className={cn("inline-flex items-center gap-0.5 font-medium tnum",
       streak > 0 ? "text-[hsl(var(--k-task))]" : "text-muted-foreground", className)}
       title={streak > 0 ? `${streak}-day streak` : streak < 0 ? `Missed ${-streak} ${streak === -1 ? "day" : "days"} in a row` : "No streak yet"}
       data-testid="text-streak">
-      <Flame className="h-3.5 w-3.5" />
-      {streak < 0 ? `−${-streak}` : streak}
+      <Flame ref={flame} className="h-3.5 w-3.5" />
+      <span key={rolled} className={cn(rolled > 0 && "animate-in fade-in slide-in-from-bottom-2 duration-300")}>{streak < 0 ? `−${-streak}` : streak}</span>
     </span>
   );
 }

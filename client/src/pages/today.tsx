@@ -7,6 +7,7 @@ import { DayPicker } from "@/pages/calendar";
 import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
 import { usePlanner, useNow, Ring, StreakBadge } from "@/components/planner";
+import { HabitCheck, TaskCheck } from "@/components/checks";
 import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
 import {
   KIND_META,
@@ -27,7 +28,6 @@ import {
   toMin,
   todayStr,
   taskAvailableFrom,
-  fillOf,
 } from "@/lib/cal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, panelShown, panelToggle, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Check, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -452,17 +452,11 @@ function TasksCard({ items, day }: { items: Item[]; day: string }) {
           {rows.map(({ i, occ, overdue, done }) => {
             return (
               <li key={`${i.id}:${occ}`} className="group flex items-center gap-2.5 px-4 py-1.5 hover:bg-muted/50" data-testid={`row-task-${i.id}`}>
-                <button
-                  onClick={() => toggle.mutate({ id: i.id, date: occ })}
-                  className="h-[18px] w-[18px] shrink-0 rounded grid place-items-center border-[1.5px]"
-                  style={{ borderColor: taskColor(i, settings), background: done ? taskColor(i, settings) : "transparent" }}
-                  aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`}
-                  data-testid={`button-toggle-task-${i.id}`}
-                >
-                  {done && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
-                </button>
+                <TaskCheck done={done} color={taskColor(i, settings)} className="h-[18px] w-[18px] rounded border-[1.5px]" checkClassName="h-3 w-3"
+                  onToggle={() => toggle.mutate({ id: i.id, date: occ })}
+                  label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`} testId={`button-toggle-task-${i.id}`} />
                 <button onClick={() => openDetails(i, occ)} className="min-w-0 flex-1 text-left">
-                  <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
+                  <div className={cn("text-sm fade-truncate transition-colors", done && "text-muted-foreground")}><span className="strike" data-on={done}>{i.title}</span></div>
                   <div className="text-xs text-muted-foreground flex gap-1.5">
                     {overdue && <span className="text-destructive">Overdue</span>}
                     {isDeadlineTask(i) && <span>Due {fmtDate(occ, { month: "short", day: "numeric" })}</span>}
@@ -553,15 +547,9 @@ function HabitsCard({ items, day }: { items: Item[]; day: string }) {
             const isDone = mk === 2;
             return (
               <li key={h.id} className="flex items-center gap-2.5 px-4 py-1.5 hover:bg-muted/50" data-testid={`row-habit-${h.id}`}>
-                <button
-                  onClick={() => cycle.mutate({ id: h.id, date: day })}
-                  className="h-[18px] w-[18px] shrink-0 rounded-full grid place-items-center border-[1.5px]"
-                  style={{ borderColor: "hsl(var(--k-habit))", background: fillOf(mk, "hsl(var(--k-habit))") }}
-                  aria-label={`${h.title}: ${["not done", "half done", "done"][mk]}`}
-                  data-testid={`button-toggle-habit-${h.id}`}
-                >
-                  {isDone && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
-                </button>
+                <HabitCheck mark={mk} color="hsl(var(--k-habit))" onCycle={() => cycle.mutate({ id: h.id, date: day })}
+                  className="h-[18px] w-[18px]" buttonClassName="border-[1.5px]" checkClassName="h-3 w-3"
+                  label={`${h.title}: ${["not done", "half done", "done"][mk]}`} testId={`button-toggle-habit-${h.id}`} />
                 <button onClick={() => openDetails(h, day)} className="min-w-0 flex-1 text-left">
                   <div className={cn("text-sm fade-truncate", isDone && "text-muted-foreground")}>{h.title}</div>
                   <div className="text-xs text-muted-foreground">{isTimed(h) ? fmtTime(h.startTime, true) + " · " : ""}{recLabel(h)}</div>
