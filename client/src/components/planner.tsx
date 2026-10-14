@@ -35,7 +35,7 @@ import {
   recOf,
   remindersOf,
   notifyTimesOf,
-  anytimeRemindersFor,
+  untimedNoticesFor,
   reminderLabel,
   MAX_REMINDER,
   toMin,
@@ -48,6 +48,7 @@ import {
 import { cn } from "@/lib/utils";
 import { HabitCheck, TaskCheck, useStreakFlare } from "@/components/checks";
 import { reducedMotion, useShown } from "@/components/motion";
+import { onDevice } from "@/lib/device";
 import { WeekdayPills, choicePill } from "@/components/pills";
 import { TwoRows } from "@/components/twoRows";
 import { Linked, LocationLink } from "@/components/links";
@@ -63,7 +64,7 @@ let audioCtx: AudioContext | null = null;
  * Cadence outside), so this does nothing there.
  */
 export function chime(kind: "soft" | "done" = "soft") {
-  if (window.CadenceAndroid) return;
+  if (onDevice()) return;
   try {
     audioCtx = audioCtx || new (window.AudioContext || (window as any).webkitAudioContext)();
     const notes = kind === "done" ? [660, 880, 1100] : [880, 660];
@@ -463,13 +464,16 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           .filter((b) => b.continues !== "before")
           .map((b) => ({ b, offset: 1440 })),
       ];
-      // Any-time tasks due today: as the day starts, and at their reminder time.
-      for (const { item, at } of anytimeRemindersFor(items, day, settings)) {
-        const key = `${item.id}:${day}:at${at}`;
-        if (nowM >= at && nowM < at + 2 && !fired.current.has(key)) {
-          fired.current.add(key);
-          if (settings.sound && !phoneOnly) chime("soft");
-          toast({ title: `Task: ${item.title}`, description: "Due today" });
+      // Items without a time: as their day starts, and at their reminders before it (as far ahead as the longest).
+      const ahead = Math.ceil(Math.max(0, ...items.map((i) => remindersOf(i)[0] ?? 0)) / 1440);
+      for (let n = 0; n <= ahead; n++) {
+        for (const { item, occ, at, body } of untimedNoticesFor(items, addDays(day, n), settings)) {
+          const key = `${item.id}:${occ}:${at}`;
+          if (now.getTime() >= at && now.getTime() < at + 120000 && !fired.current.has(key)) {
+            fired.current.add(key);
+            if (settings.sound && !phoneOnly) chime("soft");
+            toast({ title: `${KIND_META[kindOf(item)].label}: ${item.title}`, description: body });
+          }
         }
       }
       for (const { b, offset } of candidates) {
@@ -656,14 +660,14 @@ function ItemDetails({ details, onClose, onEdit }: {
               <div className="text-xs text-muted-foreground">Time</div>
               <div>{fmtTime(i.startTime, true)} – {fmtTime(i.endTime, true)}{i.endDate && i.endDate > i.date ? " (ends later)" : ""}</div>
             </div>}
-            {!i.startTime && i.remindAt && <div>
-              <div className="text-xs text-muted-foreground">Reminder</div>
-              <div>At {fmtTime(i.remindAt, true)}</div>
-            </div>}
-            {i.startTime && remindersOf(i).length > 0 && <div>
-              <div className="text-xs text-muted-foreground">{remindersOf(i).length > 1 ? "Reminders" : "Reminder"}</div>
-              <div className="first-letter:uppercase">{remindersOf(i).map(reminderLabel).join(", ")}</div>
-            </div>}
+            {(() => {
+              // Before it starts (an untimed item's day starts as the sleep routine ends), and an untimed task's own time.
+              const said = [...remindersOf(i).map(reminderLabel), ...(!i.startTime && i.remindAt ? [`at ${fmtTime(i.remindAt, true)}`] : [])];
+              return said.length > 0 && <div>
+                <div className="text-xs text-muted-foreground">{said.length > 1 ? "Reminders" : "Reminder"}</div>
+                <div className="first-letter:uppercase">{said.join(", ")}</div>
+              </div>;
+            })()}
             {recOf(i).freq !== "none" && <div>
               <div className="text-xs text-muted-foreground">Repeats</div>
               <div>{recLabel(i)}</div>
@@ -948,9 +952,9 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
       startTime: timed ? start : null,
       endTime: timed && !task ? f.endTime || fromMin(toMin(start) + 30) : null,
       recurrence: JSON.stringify(r),
-      reminder: !timed || f.reminder === "none" ? null : Number(f.reminder),
+      reminder: f.kind === "sleep" || f.reminder === "none" ? null : Number(f.reminder),
       remindAt: task && !timed && f.remindAt ? f.remindAt : null,
-      extraReminders: JSON.stringify(!timed || f.reminder === "none" ? []
+      extraReminders: JSON.stringify(f.kind === "sleep" || f.reminder === "none" ? []
         : [...new Set(f.extraReminders.map(Number))].filter((n) => n !== Number(f.reminder))),
       priority: f.priority,
       tags: JSON.stringify(task ? f.tags : []),
@@ -1170,28 +1174,9 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
               })()}
             </EditorRow>
 
-            {/* An any-time task reminds at a time of day on the day it's due. */}
-            {!timed && v.kind === "task" && (
-              <EditorRow icon={Bell}>
-                {v.remindAt ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Remind me at</span>
-                    <TimePill value={v.remindAt} onChange={(t) => setValue("remindAt", t)} testId="input-remind-at" label="Reminder time" />
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setValue("remindAt", "")}
-                      aria-label="Remove reminder" data-testid="button-remove-remind-at">
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <button type="button" className="inline-flex h-7 w-fit items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
-                    onClick={() => setValue("remindAt", "09:00")} data-testid="button-add-remind-at">
-                    <Plus className="h-3.5 w-3.5" /> add reminder
-                  </button>
-                )}
-              </EditorRow>
-            )}
 
-            {timed && v.kind !== "sleep" && (
+            {/* Reminders before it starts; an untimed item starts as the day does (when the sleep routine ends). */}
+            {v.kind !== "sleep" && (
               <EditorRow icon={Bell}>
                 {[v.reminder, ...(v.reminder === "none" ? [] : v.extraReminders)].map((value, index) => (
                   <div key={index} className="flex items-center gap-2">
@@ -1222,6 +1207,24 @@ function ItemEditor({ editing, onClose }: { editing: Editing | null; onClose: ()
                     <Plus className="h-3.5 w-3.5" /> add reminder
                   </button>
                 )}
+                {/* An untimed task can also remind at a time of day on the day it's due. */}
+                {!timed && v.kind === "task" && (<>
+                  {v.remindAt ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Remind me at</span>
+                      <TimePill value={v.remindAt} onChange={(t) => setValue("remindAt", t)} testId="input-remind-at" label="Reminder time" />
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setValue("remindAt", "")}
+                        aria-label="Remove reminder" data-testid="button-remove-remind-at">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <button type="button" className="inline-flex h-7 w-fit items-center gap-1 rounded-full border border-dashed px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                      onClick={() => setValue("remindAt", "09:00")} data-testid="button-add-remind-at">
+                      <Plus className="h-3.5 w-3.5" /> remind at a time
+                    </button>
+                  )}
+                </>)}
               </EditorRow>
             )}
 
@@ -1359,7 +1362,8 @@ function toForm(i: InsertItem | Item, defReminder: number | null): FormVals {
     days: r.days || [],
     until: r.until || "",
     // A saved item's reminders (an old "at start time" isn't one: it notifies as it starts anyway); a new one's default.
-    reminder: i.title ? String(remindersOf(i as Item)[0] ?? "none") : !defReminder ? "none" : String(defReminder),
+    // The default is for timed items: counted back from when the day starts, it'd come before waking.
+    reminder: i.title ? String(remindersOf(i as Item)[0] ?? "none") : !defReminder || !i.startTime || i.allDay ? "none" : String(defReminder),
     extraReminders: i.title ? remindersOf(i as Item).slice(1).map(String) : [],
     remindAt: i.remindAt || "",
     priority: i.priority || "normal",

@@ -148,7 +148,7 @@ function AddMenu() {
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden p-0 shadow-lg">
         <div className="p-2.5 border-b">
-          <QuickAdd appbar day={day} onDone={() => setOpen(false)} />
+          <QuickAdd day={day} onDone={() => setOpen(false)} />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-2">
           {ADD_KINDS.map((k) => (

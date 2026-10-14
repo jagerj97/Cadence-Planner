@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
 import { HabitCheck } from "@/components/checks";
 import { burst, pulse, useGlide } from "@/components/motion";
+import { onDevice } from "@/lib/device";
 import { ReminderSelect, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
@@ -219,7 +220,6 @@ export function HabitsPage() {
                           {habits.map((h) => {
                             const due = occursOn(h, d);
                             const mk = markOf(h, d);
-                            const hit = mk === 2;
                             return (
                               <td key={h.id} className={cn("py-1 text-center", isT && "bg-primary/5")}>
                                 {due ? (
@@ -1308,7 +1308,7 @@ const LOCATION_ERRORS: Record<string, string> = {
 /** Uses the phone's native location on Android (more reliable than the WebView), else the browser. */
 function getDeviceLocation(): Promise<{ lat: number; lng: number }> {
   const bridge = window.CadenceAndroid;
-  if (bridge?.requestLocation) {
+  if (onDevice() && bridge?.requestLocation) {
     return new Promise((resolve, reject) => {
       const done = (fn: () => void) => { clearTimeout(timer); window.removeEventListener("cadence-location", onResult); fn(); };
       const onResult = (event: Event) => {

@@ -55,21 +55,15 @@ export function DayColumn({
   items,
   hourPx = HOUR_PX,
   compact = false,
-  showNow = true,
-  showRoutines = true,
   labelContinued = true,
 }: {
   day: string;
   items: Item[];
   hourPx?: number;
   compact?: boolean;
-  showNow?: boolean;
-  showRoutines?: boolean;
   /** Label the part of an overnight item (or routine) carried on from the day before; the week view
    *  leaves it unlabelled after its first day, so a night reads as one item. */
   labelContinued?: boolean;
-  bedMin?: number;
-  wakeMin?: number;
 }) {
   const { settings } = useSettings();
   const sun = sunTimes(day, settings.lat, settings.lng);
@@ -79,7 +73,7 @@ export function DayColumn({
   // Overlaps are laid out like Google Calendar: an item that starts once the one under it has room
   // for its title and time (about 36px) is drawn on top, indented; closer starts go side by side.
   const blocks = useMemo(() => arrangeBlocks(blocksForDay(items, day), Math.ceil((36 / hourPx) * 60)), [items, day, hourPx]);
-  const routineBlocks = useMemo(() => showRoutines ? blocksForDay(routineSchedules(settings), day) : [], [showRoutines, settings, day]);
+  const routineBlocks = useMemo(() => blocksForDay(routineSchedules(settings), day), [settings, day]);
   const isToday = day === todayStr();
   // Only today's column keeps the time (other days have no now line to move).
   const [now, setNow] = useState(nowMin());
@@ -425,7 +419,7 @@ export function DayColumn({
         );
       })}
 
-      {isToday && showNow && (
+      {isToday && (
         <div className="pointer-events-none absolute inset-x-0 z-30 flex items-center" style={{ top: (now / 60) * hourPx }} aria-hidden>
           <div className="h-2.5 w-2.5 -ml-1 rounded-full bg-primary" />
           <div className="h-[1.5px] flex-1 bg-primary" />

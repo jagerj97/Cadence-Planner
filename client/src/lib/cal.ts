@@ -440,18 +440,35 @@ export function dayStartFor(settings: Settings, day: string) {
   return wake ? wake.end : 7 * 60;
 }
 
+/** A notification for an item without a time: when (a timestamp) and what it says. */
+export type UntimedNotice = { item: Item; occ: string; at: number; body: string };
+
 /**
- * Notifications for any-time tasks due on `day` and not yet done: "due today" as the day starts, and
- * at the time it was set to remind at (remindAt), if any.
+ * Notifications for items without a time (all-day ones, and tasks for any time) that start on `day`,
+ * the same as a timed item's: as that day starts (the end of the sleep routine, else 7:00), and at each
+ * of its reminders before then, counted back from it ("1 day before" is the day before, as it starts).
+ * A task also reminds at its own time on the day (remindAt). Done tasks, habits and sleep don't.
  */
-export function anytimeRemindersFor(list: Item[], day: string, settings: Settings): { item: Item; at: number }[] {
+export function untimedNoticesFor(list: Item[], day: string, settings: Settings): UntimedNotice[] {
   const start = dayStartFor(settings, day);
-  return list.filter((i) => i.kind === "task" && !isTimed(i) && occursOn(i, day) &&
-      !rulesOf(i).done.has(recOf(i).freq === "none" ? i.date : day))
-    .flatMap((item) => [
-      { item, at: start },
-      ...(item.remindAt && toMin(item.remindAt) !== start ? [{ item, at: toMin(item.remindAt) }] : []),
-    ]);
+  const date = parseYmd(day);
+  const at = (minutes: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, minutes).getTime();
+  const out: UntimedNotice[] = [];
+  for (const item of list) {
+    const k = kindOf(item);
+    if (isTimed(item) || k === "habit" || k === "sleep" || !occursOn(item, day)) continue;
+    const task = k === "task";
+    const occ = task && recOf(item).freq === "none" ? item.date : day;
+    if (task && rulesOf(item).done.has(occ)) continue;
+    for (const minutes of notifyTimesOf(item)) {
+      const when = at(start - minutes);
+      const ahead = dayDiff(ymd(new Date(when)), day);
+      const words = ahead <= 0 ? "today" : ahead === 1 ? "tomorrow" : `in ${ahead} days`;
+      out.push({ item, occ, at: when, body: task ? `Due ${words}` : words[0].toUpperCase() + words.slice(1) });
+    }
+    if (task && item.remindAt && toMin(item.remindAt) !== start) out.push({ item, occ, at: at(toMin(item.remindAt)), body: "Due today" });
+  }
+  return out;
 }
 
 /**

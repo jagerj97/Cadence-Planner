@@ -26,7 +26,6 @@ import {
   recLabel,
   recOf,
   routineSchedules,
-  toMin,
   todayStr,
   taskAvailableFrom,
 } from "@/lib/cal";
@@ -116,7 +115,7 @@ export default function Today() {
               <DayViewToggle view={view} onPick={pickView} wholeDay={wholeDay} onWholeDay={agenda ? undefined : toggleWholeDay} />
               {agenda ? (
                 <div key="agenda" className="px-4 pb-4 swap-in">
-                  <AgendaList list={agendaItems} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
+                  <AgendaList list={agendaItems} from={day} days={1} compact dates={false} always />
                 </div>
               ) : (
               <div key="timeline" className={cn("flex flex-col swap-in", !wholeDay && "flex-1")}>
@@ -151,8 +150,6 @@ export default function Today() {
                     <DayColumn
                       day={day}
                       items={list}
-                      wakeMin={toMin(settings.wakeTime)}
-                      bedMin={toMin(settings.bedTime)}
                     />
                   </div>
                 </div>
@@ -269,7 +266,8 @@ function GlideDur({ minutes }: { minutes: number }) {
   return <div className="font-semibold text-sm tnum">{fmtDur(Math.round(useGlide(minutes, 0, 700, true)))}</div>;
 }
 
-export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: string; appbar?: boolean; onDone?: () => void }) {
+/** The add menu's quick add: an item typed out ("#event Catnap every sat 1pm"), on `day` unless it says. */
+export function QuickAdd({ day = todayStr(), onDone }: { day?: string; onDone?: () => void }) {
   const [text, setText] = useState("");
   const { create } = useItemMutations();
   const { settings } = useSettings();
@@ -291,15 +289,15 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
     onDone?.();
   };
   return (
-    <div className={cn("relative bg-card text-card-foreground", appbar ? "rounded-full border" : "card-md !rounded-full")}>
-      <div className={cn("flex items-center", appbar ? "gap-1.5 px-3.5" : "gap-2 px-4")}>
+    <div className="relative rounded-full border bg-card text-card-foreground">
+      <div className="flex items-center gap-1.5 px-3.5">
         <Plus className="h-4 w-4 text-primary shrink-0" />
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
           placeholder={settings.plain ? "#event Art class every sat 1pm" : "#event Catnap every sat 1pm"}
-          className={cn("border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
+          className="border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-10 md:h-11"
           aria-label="Quick add"
           data-testid="input-quick-add"
         />

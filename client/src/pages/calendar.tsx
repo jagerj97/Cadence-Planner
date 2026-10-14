@@ -229,9 +229,6 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                         labelContinued={n === 0}
                         hourPx={WEEK_HOUR}
                         compact
-                        showRoutines // routine bands always show in the week view (not in month view)
-                        wakeMin={toMin(settings.wakeTime)}
-                        bedMin={toMin(settings.bedTime)}
                       />
                     </div>
                   ))}
@@ -560,7 +557,7 @@ export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
                   </div>
                   <div data-day-grid className="flex pt-2 pb-3 pr-2">
                     <HourLabels />
-                    <DayColumn day={day} items={list} wakeMin={toMin(settings.wakeTime)} bedMin={toMin(settings.bedTime)} />
+                    <DayColumn day={day} items={list} />
                   </div>
                 </section>
               );
