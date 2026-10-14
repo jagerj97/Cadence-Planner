@@ -42,7 +42,7 @@ function useNav() {
 
 const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: SettingsIcon, match: (l: string) => l.startsWith("/settings") || l.startsWith("/sync") };
 
-function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
+function DrawerLinks() {
   const [loc] = useLocation();
   const nav = useNav();
   const { focus } = usePlanner();
@@ -52,7 +52,6 @@ function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
       <Link
         key={n.href}
         href={n.href}
-        onClick={onNavigate}
         className={cn(
           "flex items-center gap-6 h-12 pl-6 pr-4 text-sm font-medium transition-colors",
           on ? "text-primary bg-sidebar-accent rounded-full mx-3 pl-3" : "text-foreground/80 hover:bg-sidebar-accent/70 hover:rounded-full mx-3 pl-3",
@@ -408,7 +407,7 @@ export function Shell({ children }: { children: ReactNode }) {
             >
               <span className={cn("grid h-7 w-11 place-items-center rounded-full transition-colors duration-300", on && "bg-primary/10")}>
                 {/* The page you're on: its icon grows a little, with a quick spring. */}
-                <n.icon className={cn("h-5 w-5 transition-transform duration-300 ease-[cubic-bezier(.3,1.6,.5,1)] motion-reduce:transition-none", on && "scale-[1.18]")} />
+                <n.icon className={cn("h-5 w-5 transition-transform duration-300 [transition-timing-function:cubic-bezier(.3,1.6,.5,1)] motion-reduce:transition-none", on && "scale-[1.18]")} />
               </span>
               <span className="truncate max-w-full tnum">{timer ? <FocusClock /> : n.label}</span>
             </Link>

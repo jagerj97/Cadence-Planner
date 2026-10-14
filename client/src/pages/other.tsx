@@ -257,13 +257,11 @@ export function HabitsPage() {
   );
 }
 
-function Empty({ icon, title, body, children }: { icon: React.ReactNode; title: string; body?: string; children?: React.ReactNode }) {
+function Empty({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="mx-auto max-w-sm text-center py-16 grid gap-2 justify-items-center">
       <div className="h-10 w-10 rounded-full bg-muted grid place-items-center text-muted-foreground">{icon}</div>
       <div className="font-medium">{title}</div>
-      {body && <p className="text-sm text-muted-foreground">{body}</p>}
-      {children}
     </div>
   );
 }
@@ -1224,8 +1222,8 @@ export function SettingsPage() {
     </>
   );
 }
-function Section({ title, hint, children, defaultOpen = false }: { title: string; hint?: string; children: React.ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
   const id = `section-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
     <section className="card-md overflow-hidden">

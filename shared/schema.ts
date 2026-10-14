@@ -142,7 +142,6 @@ export type Settings = {
   name: string;
   wakeTime: string;
   bedTime: string;
-  dayStartHour: number;
   defaultReminder: number | null;
   focusMinutes: number;
   sound: boolean;
@@ -181,7 +180,6 @@ export const DEFAULT_SETTINGS: Settings = {
   name: "",
   wakeTime: "07:00",
   bedTime: "23:00",
-  dayStartHour: 6,
   defaultReminder: 30,
   focusMinutes: 30,
   sound: true,

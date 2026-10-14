@@ -10,10 +10,13 @@ export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
   "1.6.1-beta": {
     fixes: [
-      "Smoother swiping",
+      "Smoother, quicker swiping",
+      "Bug fixes",
     ],
     changes: [
-      "Swiping dates slides the days along like one long page",
+      "Swipe left or right to change pages, and up or down to change the date on Today, the journal and the calendar",
+      "All-day items and tasks without a time can have reminders",
+      "The agenda widget shows only what's coming up",
       "Tap anywhere in a day on the month view to open it",
       "Settings has a General section",
       "UI changes",

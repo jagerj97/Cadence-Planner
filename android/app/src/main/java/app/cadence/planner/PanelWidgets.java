@@ -180,7 +180,7 @@ final class PanelWidgets {
         if (provider == Now.class) views = renderNow(context, manager, id, theme, day);
         else if (provider == Day.class) views = renderDay(context, manager, id, theme, day);
         else if (provider == Schedule.class) views = renderSchedule(context, id, theme, day);
-        else if (provider == Agenda.class) views = renderAgenda(context, id, theme, snapshot);
+        else if (provider == Agenda.class) views = renderAgenda(context, id, theme);
         else if (provider == Journal.class) views = renderJournal(context, id, theme, snapshot);
         else views = renderList(context, id, provider == Tasks.class, theme, day);
         manager.updateAppWidget(id, views);
@@ -370,7 +370,7 @@ final class PanelWidgets {
 
     // ---- Agenda ----
 
-    private static RemoteViews renderAgenda(Context context, int id, WidgetTheme theme, JSONObject snapshot) {
+    private static RemoteViews renderAgenda(Context context, int id, WidgetTheme theme) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_agenda);
         paintCard(v, theme, theme.primary);
         v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800043, "open:/"));
