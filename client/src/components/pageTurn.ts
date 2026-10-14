@@ -84,9 +84,9 @@ function copyScroll(from: Element, to: Element) {
 /** A still copy of `el` laid over `main` at `box` (it can't be tapped), so it looks unchanged while the real one changes. */
 function copyOf(el: HTMLElement, box: DOMRect, frameBox: DOMRect, look: Partial<CSSStyleDeclaration>) {
   const copy = el.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
-  copy.querySelectorAll("[data-testid]").forEach((n) => n.removeAttribute("data-testid"));
-  copy.removeAttribute("data-page");
+  // Nothing in a copy is found as the real thing (ids, the date arrows, the page and its parts).
+  const marks = ["id", "data-testid", "data-swipe", "data-page", "data-turn-body", "data-turn-head"];
+  for (const n of [copy, ...copy.querySelectorAll("*")]) for (const m of marks) n.removeAttribute(m);
   copy.setAttribute("aria-hidden", "true");
   copy.inert = true;
   copy.classList.add("page-cover");

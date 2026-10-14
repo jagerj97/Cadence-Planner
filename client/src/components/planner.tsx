@@ -454,6 +454,9 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     if (!items) return;
     // Pop-ups off: the phone's notification makes the sound, so don't chime in the app too.
     const phoneOnly = settings.inAppPopups === false;
+    // Items without a time are looked at as far ahead as their longest reminder (worked out once, not each check).
+    const untimed = items.filter((i) => !isTimed(i) && kindOf(i) !== "habit" && kindOf(i) !== "sleep");
+    const ahead = Math.ceil(Math.max(0, ...untimed.map((i) => remindersOf(i)[0] ?? 0)) / 1440);
     const check = () => {
       const now = new Date();
       const nowM = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
@@ -464,10 +467,9 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           .filter((b) => b.continues !== "before")
           .map((b) => ({ b, offset: 1440 })),
       ];
-      // Items without a time: as their day starts, and at their reminders before it (as far ahead as the longest).
-      const ahead = Math.ceil(Math.max(0, ...items.map((i) => remindersOf(i)[0] ?? 0)) / 1440);
+      // Items without a time: as their day starts, and at their reminders before it.
       for (let n = 0; n <= ahead; n++) {
-        for (const { item, occ, at, body } of untimedNoticesFor(items, addDays(day, n), settings)) {
+        for (const { item, occ, at, body } of untimedNoticesFor(untimed, addDays(day, n), settings)) {
           const key = `${item.id}:${occ}:${at}`;
           if (now.getTime() >= at && now.getTime() < at + 120000 && !fired.current.has(key)) {
             fired.current.add(key);

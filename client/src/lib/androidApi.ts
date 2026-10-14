@@ -4,7 +4,7 @@ import { exportAndroidIcs, parseAndroidIcs } from "./androidIcs";
 import { widgetSnapshot } from "./widget";
 import { queryClient } from "./queryClient";
 import { APP_VERSION } from "./changelog";
-import { addDays, untimedNoticesFor, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, notifyTimesOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
+import { addDays, isTimed, untimedNoticesFor, blocksForDay, completionsOf, fmtDur, lastDayOffset, listOf, notifyTimesOf, parseYmd, recOf, remindersOf, span, todayStr } from "./cal";
 
 export interface AndroidBridge {
   setAppearance?(mode: "light" | "dark"): void;
@@ -294,8 +294,9 @@ async function refreshNotifications(remindersToo: boolean) {
   // Items without a time (all-day ones, and tasks for any time): as their day starts, and at their
   // reminders before it. No countdown (start 0): they say "Today", "Due tomorrow" and so on.
   const settings = await pref();
+  const untimed = items.filter((i) => !isTimed(i));
   for (let offset = 0; offset < 32 + Math.ceil(longest / 1440); offset++) {
-    for (const { item, occ, at, body } of untimedNoticesFor(items, addDays(todayStr(), offset), settings)) {
+    for (const { item, occ, at, body } of untimedNoticesFor(untimed, addDays(todayStr(), offset), settings)) {
       if (at <= now || at > now + 31 * 86400000) continue;
       const kind = item.kind ? `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ` : "";
       reminders.push({ at, start: 0, title: kind + item.title, body, ...(item.kind === "task" ? { id: item.id, occ } : {}) });
