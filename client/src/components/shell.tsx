@@ -224,6 +224,19 @@ function coverOf(main: HTMLElement, page: HTMLElement) {
 /** How far above the bottom bar a drag still counts as on the bar (changing the page, not the date). */
 const BAR_REACH = 40;
 
+/** The same page turn as a drag, played through on its own: for tapping a page in the bottom bar. */
+function turnPage(main: HTMLElement, page: HTMLElement, dir: 1 | -1, change: () => void) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
+  const cover = coverOf(main, page), w = page.offsetWidth, ms = 300;
+  change();
+  requestAnimationFrame(() => {
+    const next = main.querySelector<HTMLElement>("[data-page]");
+    next?.animate([{ transform: `translateX(${dir * 0.3 * w}px)` }, { transform: "none" }], { duration: ms, easing: EASE });
+    cover.animate([{ transform: "none" }, { transform: `translateX(${-dir * w}px)` }], { duration: ms, easing: EASE })
+      .finished.finally(() => cover.remove());
+  });
+}
+
 /**
  * What a drag toward `dir` does. A page turn brings the next page in underneath as the drag begins
  * (`undo` goes back if it's let go of early); a date slide (`slide`) changes the date once let go.
@@ -431,6 +444,12 @@ export function Shell({ children }: { children: ReactNode }) {
             <Link
               key={n.href}
               href={n.href}
+              onClick={(ev) => {
+                const to = pages.indexOf(n), main = mainRef.current, el = pageRef.current;
+                if (on || page < 0 || to === page || !main || !el || ev.metaKey || ev.ctrlKey) return;
+                ev.preventDefault();
+                turnPage(main, el, to > page ? 1 : -1, () => nav(n.href));
+              }}
               className={cn("flex-1 min-w-0 flex flex-col items-center gap-0.5 py-2 text-[12px]", on || timer ? "text-primary font-semibold" : "text-muted-foreground")}
               aria-current={on ? "page" : undefined}
               data-testid={`link-mnav-${n.label.toLowerCase()}`}
