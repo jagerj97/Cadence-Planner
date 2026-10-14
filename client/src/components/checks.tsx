@@ -59,7 +59,7 @@ export function TaskCheck({ done, color, onToggle, label, className, checkClassN
       }}
       onPointerDown={(e) => e.stopPropagation()}
       className={cn("relative shrink-0 grid place-items-center overflow-hidden transition-colors", className)}
-      style={{ borderColor: color, background: done ? color : "transparent" }}
+      style={{ borderColor: color, background: done ? color : "transparent", willChange: "transform" }}
       aria-label={label} aria-pressed={done} data-testid={testId}>
       <DrawnCheck on={done} className={checkClassName} />
     </button>
@@ -75,7 +75,8 @@ const FILL = [
 
 /**
  * A habit's circle: tapped, it goes half done, done, then clear. Its fill sweeps across on the
- * diagonal, with a small bounce for half done and a full one, and a ring bursting out, once done.
+ * diagonal, with a small bounce for half done and a full one, and a ring bursting out, once done;
+ * cleared, the fill slides back off to the top left.
  */
 export function HabitCheck({ mark, color, onCycle, label, className, buttonClassName, checkClassName, style, testId }: {
   mark: 0 | 1 | 2; color: string; onCycle: () => void; label: string;
@@ -83,6 +84,7 @@ export function HabitCheck({ mark, color, onCycle, label, className, buttonClass
   className?: string; buttonClassName?: string; checkClassName?: string; style?: CSSProperties; testId?: string;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
+  const fill = useRef<HTMLSpanElement>(null);
   return (
     <span className={cn("relative inline-grid shrink-0", className)}>
       <button ref={ref} type="button"
@@ -91,14 +93,17 @@ export function HabitCheck({ mark, color, onCycle, label, className, buttonClass
           const next = (mark + 1) % 3;
           if (next) void bounce(ref.current, next === 1 ? 0.5 : 1);
           if (next === 2) burst(ref.current, color);
+          // Clearing goes back the way it came: along the diagonal, through half, to the top left.
+          if (!next && !reduced()) fill.current?.animate([{ clipPath: FILL[2] }, { clipPath: FILL[1] }, { clipPath: FILL[0] }], { duration: 380, easing: "ease-in-out" });
           onCycle();
         }}
         onPointerDown={(e) => e.stopPropagation()}
         className={cn("relative grid h-full w-full place-items-center overflow-hidden rounded-full transition-colors", buttonClassName)}
-        style={{ borderColor: color, ...style }}
+        // Its own layer throughout, so it doesn't flicker as a bounce ends and it's drawn again.
+        style={{ borderColor: color, willChange: "transform", ...style }}
         aria-label={label} data-testid={testId}>
-        <span className="absolute inset-0" aria-hidden
-          style={{ background: color, clipPath: FILL[mark], transition: "clip-path .45s cubic-bezier(.3,1.25,.5,1)" }} />
+        <span ref={fill} className="absolute inset-0" aria-hidden
+          style={{ background: color, clipPath: FILL[mark], transition: mark ? "clip-path .4s cubic-bezier(.2,.8,.3,1)" : "none" }} />
         <DrawnCheck on={mark === 2} className={checkClassName} />
       </button>
     </span>

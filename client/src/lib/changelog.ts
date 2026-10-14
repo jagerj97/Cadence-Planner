@@ -8,6 +8,17 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  */
 export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
+  "1.6.1-beta": {
+    fixes: [
+      "Smoother swiping",
+    ],
+    changes: [
+      "Swiping dates slides the days along like one long page",
+      "Tap anywhere in a day on the month view to open it",
+      "Settings has a General section",
+      "UI changes",
+    ],
+  },
   "1.6.0-beta": {
     changes: [
       "Swipe the top half of a page to change its date, and the bottom half to change pages",

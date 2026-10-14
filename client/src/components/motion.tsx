@@ -99,3 +99,33 @@ export function Morph({ k, children, className }: { k: string; children: ReactNo
     </div>
   );
 }
+
+/**
+ * A highlight that slides, with a little bounce, to whichever tab in `ref`'s element is selected
+ * (aria-selected), instead of jumping there. Draw it with <SlidePill>; the tabs sit above it.
+ */
+export function useSlidePill<T extends HTMLElement>(selected: unknown) {
+  const ref = useRef<T>(null);
+  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const on = el.querySelector<HTMLElement>('[aria-selected="true"]');
+      if (on) setBox({ x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [selected]);
+  return [ref, box] as const;
+}
+
+export function SlidePill({ box, className }: { box: { x: number; y: number; w: number; h: number } | null; className?: string }) {
+  if (!box) return null;
+  return (
+    <span aria-hidden className={cn("pointer-events-none absolute transition-[left,top,width,height] duration-300 motion-reduce:transition-none", className)}
+      style={{ left: box.x, top: box.y, width: box.w, height: box.h, transitionTimingFunction: "cubic-bezier(.3,1.3,.5,1)" }} />
+  );
+}

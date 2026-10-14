@@ -837,7 +837,10 @@ export default function JournalPage() {
           <JournalTagManager open={managing} onOpenChange={setManaging} tags={savedTagCounts} counts={new Map(tagCounts)}
             onRenamed={(from, to) => setQ((q) => toggleTerm(q, `#${from}`, to ? `#${to}` : null))} />
 
-          <section className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">
+          {/* The day's entries: what slides when the day changes (search and tags stay; see pageTurn). */}
+          <section data-turn-body className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">
+            {/* Switching between the day, a search and the archive fades the new one in. */}
+            <div key={query ? "search" : inArchive ? "archive" : "day"} className="grid min-w-0 grid-cols-1 content-start gap-4 animate-in fade-in duration-200">
             {query ? (
               <>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
@@ -903,6 +906,7 @@ export default function JournalPage() {
                 )}
               </>
             )}
+            </div>
           </section>
         </div>
       </div>

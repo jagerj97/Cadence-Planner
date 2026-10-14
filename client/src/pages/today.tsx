@@ -8,7 +8,7 @@ import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
 import { usePlanner, useNow, Ring, StreakBadge } from "@/components/planner";
 import { HabitCheck, TaskCheck } from "@/components/checks";
-import { Morph, useGlide, useShown } from "@/components/motion";
+import { Morph, SlidePill, useGlide, useShown, useSlidePill } from "@/components/motion";
 import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
 import {
   KIND_META,
@@ -102,22 +102,23 @@ export default function Today() {
         </div>
       </PageHeader>
 
-      <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
+      {/* The day itself: what slides when the day changes (data-turn-body, see pageTurn). */}
+      <div data-turn-body className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
           <section className={cn("contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3", wholeDay && "lg:overflow-y-auto scroll-thin lg:pr-1")} aria-label="Day timeline">
             {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
             {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
-            {shows("schedule") && (agenda ? (
-              <div className="card-md" style={at("schedule")} data-testid="card-day">
-                <DayViewToggle view={view} onPick={pickView} />
-                <div className="px-4 pb-4">
+            {/* One card for both views: switching keeps the toggle (its highlight slides) and fades the view in. */}
+            {shows("schedule") && (
+            <div className={cn("flex flex-col card-md overflow-hidden", !agenda && (wholeDay ? "shrink-0" : "flex-1 min-h-[420px]"))} style={at("schedule")} data-testid="card-day">
+              <DayViewToggle view={view} onPick={pickView} wholeDay={wholeDay} onWholeDay={agenda ? undefined : toggleWholeDay} />
+              {agenda ? (
+                <div key="agenda" className="px-4 pb-4 animate-in fade-in duration-200">
                   <AgendaList list={agendaItems} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
                 </div>
-              </div>
-            ) : (
-            <div className={cn("flex flex-col card-md overflow-hidden", wholeDay ? "shrink-0" : "flex-1 min-h-[420px]")} style={at("schedule")} data-testid="card-day">
-              <DayViewToggle view={view} onPick={pickView} wholeDay={wholeDay} onWholeDay={toggleWholeDay} />
+              ) : (
+              <div key="timeline" className={cn("flex flex-col animate-in fade-in duration-200", !wholeDay && "flex-1")}>
               {/* All-day items and ones for anytime that day, inside the card above the timeline. */}
               {allDay.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 border-b px-2 pb-2" aria-label="All-day">
@@ -156,7 +157,9 @@ export default function Today() {
                 </div>
               )}
               </div>
-            </div>))}
+              </div>
+              )}
+            </div>)}
           </section>
 
           {/* right rail */}
@@ -508,13 +511,15 @@ function DayViewToggle({ view, onPick, wholeDay, onWholeDay }: {
   /** The timeline's whole-day chevron: all 24 hours at once instead of scrolling inside the card. */
   wholeDay?: boolean; onWholeDay?: () => void;
 }) {
+  const [tabs, pill] = useSlidePill<HTMLDivElement>(view);
   return (
     <div className="flex items-center justify-between gap-2 px-2 pt-2 pb-2">
-      <div className="inline-flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Show the day as">
+      <div ref={tabs} className="relative inline-flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Show the day as">
+        <SlidePill box={pill} className="rounded-full bg-primary" />
         {(["timeline", "agenda"] as const).map((v) => (
           <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => onPick(v)}
-            className={cn("h-7 px-3 rounded-full text-xs font-medium transition-colors",
-              view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+            className={cn("relative h-7 px-3 rounded-full text-xs font-medium transition-colors duration-300",
+              view === v ? "text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
             data-testid={`tab-day-${v}`}>
             {v === "timeline" ? "Timeline" : "Agenda"}
           </button>

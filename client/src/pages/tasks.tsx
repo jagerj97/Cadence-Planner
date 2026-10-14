@@ -3,6 +3,7 @@ import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { usePlanner, useToday } from "@/components/planner";
 import { leaveRow, TaskCheck } from "@/components/checks";
+import { SlidePill, useSlidePill } from "@/components/motion";
 import { TagManager, tagTint, taskColor, taskTagsOf } from "@/components/taskTags";
 import { TwoRows } from "@/components/twoRows";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
@@ -46,6 +47,7 @@ function nextOcc(i: Item, from: string): string | null {
 export default function TasksPage() {
   const { data: items, isLoading } = useItems();
   const [filter, setFilter] = useState<Filter>("today");
+  const [tabsRef, tabPill] = useSlidePill<HTMLDivElement>(filter);
   const [showOlder, setShowOlder] = useState(false);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [managing, setManaging] = useState(false);
@@ -125,7 +127,9 @@ export default function TasksPage() {
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="max-w-3xl grid grid-cols-1 gap-4">
           <TaskQuickAdd />
-          <div className="flex gap-1 card-md rounded-[20px] p-1 w-full sm:w-fit" role="tablist" aria-label="Filter tasks">
+          {/* The highlight slides over to the filter picked. */}
+          <div ref={tabsRef} className="relative flex gap-1 card-md rounded-[20px] p-1 w-full sm:w-fit" role="tablist" aria-label="Filter tasks">
+            <SlidePill box={tabPill} className="rounded-[15px] bg-primary" />
             {(
               [
                 ["today", "Today"],
@@ -140,8 +144,8 @@ export default function TasksPage() {
                 aria-selected={filter === k}
                 onClick={() => setFilter(k)}
                 className={cn(
-                  "flex-1 sm:flex-none min-w-0 min-h-12 flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 rounded-[15px] px-1.5 sm:px-3 py-1.5 text-[13px] sm:text-sm leading-tight transition-colors",
-                  filter === k ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover-elevate",
+                  "relative flex-1 sm:flex-none min-w-0 min-h-12 flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 rounded-[15px] px-1.5 sm:px-3 py-1.5 text-[13px] sm:text-sm leading-tight transition-colors duration-300",
+                  filter === k ? "text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted/60",
                 )}
                 data-testid={`tab-tasks-${k}`}
               >
@@ -176,6 +180,8 @@ export default function TasksPage() {
           </TwoRows>
           <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => setTagFilter((f) => f.map((n) => (n === from ? to : n)))} />
 
+          {/* Changing the filter fades the new list in. */}
+          <div key={filter} className="grid grid-cols-1 gap-4 animate-in fade-in duration-200">
           {isLoading ? (
             <div className="grid gap-2">
               {[0, 1, 2].map((k) => (
@@ -222,6 +228,7 @@ export default function TasksPage() {
               </section>
             ))
           )}
+          </div>
         </div>
       </div>
     </>

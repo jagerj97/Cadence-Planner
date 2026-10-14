@@ -5,7 +5,7 @@ import { GripHorizontal } from "lucide-react";
 
 /**
  * The bottom bar's pages drawn like the bar itself, to reorder: hold one and drag it along. Used in
- * Today's Customize window and in Settings → Appearance. The app still opens on Today, wherever it sits.
+ * Today's Customize window and in Settings → General → Appearance. The app still opens on Today, wherever it sits.
  */
 export function NavOrderEditor({ order, onReorder }: { order: string[] | undefined; onReorder: (next: string[]) => void }) {
   const pages = orderNav(order);
