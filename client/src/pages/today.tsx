@@ -39,7 +39,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, panelShown, panelToggle, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
+import { ChevronDown, Plus, Play, CornerDownLeft, SlidersHorizontal, GripVertical, ChevronUp } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
@@ -92,19 +92,19 @@ export default function Today() {
       >
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => nav(`/day/${addDays(day, -1)}`)} aria-label="Previous day" data-swipe="prev" data-testid="button-prev-day">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronDown className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => nav("/")} disabled={isToday} data-testid="button-today">
             Today
           </Button>
           <Button size="icon" variant="ghost" onClick={() => nav(`/day/${addDays(day, 1)}`)} aria-label="Next day" data-swipe="next" data-testid="button-next-day">
-            <ChevronRight className="h-4 w-4" />
+            <ChevronUp className="h-4 w-4" />
           </Button>
         </div>
       </PageHeader>
 
-      {/* The day itself: what slides when the day changes (data-turn-body, see pageTurn). */}
-      <div data-turn-body className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
+      {/* The day itself: what slides (up and down) when the day changes (data-turn-body, see pageTurn). */}
+      <div data-turn-body="y" className="flex-1 min-h-0 overflow-y-auto overscroll-y-none lg:overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
           <section className={cn("contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3", wholeDay && "lg:overflow-y-auto scroll-thin lg:pr-1")} aria-label="Day timeline">

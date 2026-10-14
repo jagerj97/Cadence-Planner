@@ -211,8 +211,9 @@ export default function TasksPage() {
                     <>
                       <ul className="pb-1.5">
                         {shown.map((r) => (
-                          // Done, a task leaves every list but Today's (and a past day's, Today's too).
-                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} leaves={filter !== "today" || r.occ !== today} />
+                          // Whether checking (or, done, unchecking) it takes it out of this list: done, a task
+                          // leaves every list but Today's (and a past day's, Today's too); undone, Completed.
+                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} leaves={r.done ? filter === "done" : filter !== "today" || r.occ !== today} />
                         ))}
                       </ul>
                       {older > 0 && (
@@ -238,9 +239,9 @@ export default function TasksPage() {
 function TaskRow({ r, leaves }: { r: Row; leaves: boolean }) {
   const { i, occ } = r;
   const { toggle } = useItemMutations();
-  // Checked off but still here for a moment, while it bounces and leaves.
+  // Checked (or unchecked) but still here for a moment, while it bounces and leaves.
   const [leaving, setLeaving] = useState(false);
-  const done = r.done || leaving;
+  const done = leaving ? !r.done : r.done;
   const rowRef = useRef<HTMLLIElement>(null);
   const { openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
@@ -258,9 +259,9 @@ function TaskRow({ r, leaves }: { r: Row; leaves: boolean }) {
         onToggle={() => {
           if (leaving) return;
           const change = () => toggle.mutate({ id: i.id, date: recOf(i).freq === "none" ? i.date : occ });
-          if (done || !leaves) return change();
+          if (!leaves) return change();
           setLeaving(true);
-          void leaveRow(rowRef.current, change);
+          void leaveRow(rowRef.current, change, r.done ? 300 : 480);
         }} />
       <button onClick={() => openDetails(i, occ)} className="min-w-0 flex-1 text-left">
         <div className={cn("text-sm fade-truncate transition-colors", done && "text-muted-foreground")}><span className="strike" data-on={done}>{i.title}</span></div>

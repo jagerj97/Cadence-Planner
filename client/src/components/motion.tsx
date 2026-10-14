@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { cn } from "@/lib/utils";
 
 /** Whether the device asks for less motion: every animation here (and in pageTurn) is skipped then. */
-export const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const lessMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+export const reducedMotion = () => lessMotion.matches;
 
 /** A quick squeeze and spring back, `big` from 0 (none) to 1 (a full bounce): a box checked, a circle filled. */
 export function bounce(el: Element | null, big = 1) {

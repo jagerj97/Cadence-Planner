@@ -336,11 +336,6 @@ export function FocusPage() {
   const sessionWhen = (s: Session) =>
     `${new Date(s.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${fmtDur(s.actualSec / 60)}`;
   const totalToday = todays.reduce((a, s) => a + s.actualSec, 0) / 60;
-  const week = Array.from({ length: 7 }, (_, n) => addDays(today, n - 6)).map((d) => ({
-    d,
-    min: (sessions ?? []).filter((s) => s.date === d).reduce((a, s) => a + s.actualSec, 0) / 60,
-  }));
-  const maxWeek = Math.max(60, ...week.map((w) => w.min));
 
   return (
     <>
@@ -437,24 +432,6 @@ export function FocusPage() {
                   ))}
                 </ul>
               )}
-            </div>
-
-            <div className="card-md p-4">
-              <h2 className="text-sm font-semibold mb-3">Last 7 days</h2>
-              <div className="flex items-end gap-2 h-28" role="img" aria-label="Focus minutes per day">
-                {week.map((w) => (
-                  <div key={w.d} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-                    <div
-                      className="w-full rounded-sm"
-                      style={{ height: `${Math.max(3, (w.min / maxWeek) * 100)}%`, background: w.min ? "hsl(var(--k-focus))" : "hsl(var(--border))" }}
-                      title={`${fmtDur(w.min)} on ${w.d}`}
-                    />
-                    <span className={cn("text-xs", w.d === today ? "text-foreground font-medium" : "text-muted-foreground")}>
-                      {DAY_SHORT[parseYmd(w.d).getDay()].slice(0, 2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="card-md">

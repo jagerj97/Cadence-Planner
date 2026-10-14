@@ -185,41 +185,61 @@ function AddIcon({ open = false }: { open?: boolean }) {
 
 let lastPage = "/"; // where the gear returns to when leaving Settings
 
-/** Whether a touch began on something that scrolls sideways itself, or takes sideways drags. */
+/** Whether a touch began on something that scrolls sideways itself (a row of filters, the habit tracker). */
 function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
   for (let el = target as HTMLElement | null; el && el !== root; el = el.parentElement) {
-    if (el.matches("input, textarea, [contenteditable=true], [data-no-swipe]")) return true;
     const x = getComputedStyle(el).overflowX;
     if ((x === "auto" || x === "scroll") && el.scrollWidth > el.clientWidth + 1) return true;
   }
   return false;
 }
 
+/**
+ * Whether everything that scrolls up and down under a touch (up to `root`) is already as far as it
+ * goes toward `dir` (1: the bottom, -1: the top), so pulling on past it moves to the next or last date.
+ */
+function atScrollEnd(target: EventTarget | null, root: HTMLElement, dir: 1 | -1) {
+  for (let el = target as HTMLElement | null; el && el !== root.parentElement; el = el.parentElement) {
+    const y = getComputedStyle(el).overflowY;
+    if ((y !== "auto" && y !== "scroll") || el.scrollHeight <= el.clientHeight + 1) continue;
+    if (dir > 0 ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0) return false;
+  }
+  return true;
+}
+
 /** What a drag toward `dir` does: the change, how to take it back if it's let go of early, and whether it's a date. */
 type Turn = { change: () => void; undo: () => void; mode: TurnMode };
+type Axis = "x" | "y";
 
 /**
- * Dragging sideways across `ref` turns the page (or its date) with the finger (see pageTurn), then
- * finishes when let go past a third of the way (or flicked), or settles back (and is undone) if not.
- * The change is made, under the copy of the old page, as soon as the drag is clearly sideways.
- * Holds (which pick items up to drag them), pinches, mostly-vertical moves and things that scroll or
- * drag sideways themselves are left alone. The pages only scroll up and down (touch-action: pan-y),
+ * Dragging across `ref` turns the page with the finger (see pageTurn): sideways, to the next or last
+ * page; up and down (with `vertical`, where `plan` allows it), to the next or last date. It finishes
+ * when let go past a third of the way (or flicked), or settles back (and is undone) if not. The change
+ * is made, under the copy of the old page, as soon as the drag's direction is clear.
+ * Holds (which pick items up to drag them), pinches, typing fields, diagonal moves and things that
+ * scroll sideways themselves are left alone. The pages scroll only up and down (touch-action: pan-y),
  * so these listeners can be passive and never hold up scrolling.
  */
 function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HTMLElement>, page: React.RefObject<HTMLElement>,
-  plan: (dir: 1 | -1, startY: number) => Turn | null) {
+  plan: (axis: Axis, dir: 1 | -1, target: EventTarget | null) => Turn | null, vertical: boolean) {
   const planRef = useRef(plan);
   planRef.current = plan;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    type Drag = { x: number; y: number; t0: number; dir?: 1 | -1; turn?: Turn; s?: TurnState; off: number; v: number; at: number; lastX: number };
+    type Drag = {
+      x: number; y: number; t0: number; target: EventTarget | null; sideways: boolean;
+      axis?: Axis; dir?: 1 | -1; turn?: Turn; s?: TurnState;
+      /** Where the drag took hold along its axis, how far it's gone, and how fast. */
+      o: number; off: number; v: number; at: number; last: number;
+    };
     let g: Drag | null = null;
+    const along = (d: Drag, t: Touch) => (d.axis === "y" ? t.clientY : t.clientX);
     // Moves come faster than frames: only the latest is drawn, once a frame.
     let pending = 0;
     const drawSoon = (d: Drag) => {
       if (pending) return;
-      pending = requestAnimationFrame(() => { pending = 0; if (g === d) frame(d.s!, Math.min(1, Math.abs(d.off) / d.s!.w)); });
+      pending = requestAnimationFrame(() => { pending = 0; if (g === d) frame(d.s!, Math.min(1, Math.abs(d.off) / d.s!.size)); });
     };
     // The rest of a touch goes to the element it began on, even once the change takes that element
     // away with the old page (when it no longer reaches `el`), so it's listened to there.
@@ -236,21 +256,26 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
     const down = (e: TouchEvent) => {
       const t = e.touches[0];
       if (g?.turn) return; // a second finger mid-drag
-      g = !turning() && e.touches.length === 1 && !sidewaysOwner(e.target, el)
-        ? { x: t.clientX, y: t.clientY, t0: e.timeStamp, off: 0, v: 0, at: e.timeStamp, lastX: t.clientX } : null;
+      const typing = (e.target as HTMLElement | null)?.closest?.("input, textarea, [contenteditable=true]");
+      g = !turning() && e.touches.length === 1 && !typing
+        ? { x: t.clientX, y: t.clientY, t0: e.timeStamp, target: e.target, sideways: sidewaysOwner(e.target, el), o: 0, off: 0, v: 0, at: e.timeStamp, last: 0 }
+        : null;
       listen(g ? e.target : null);
     };
     function move(e: TouchEvent) {
       const d = g;
       if (!d) return;
       if (e.touches.length > 1) return end();
-      const t = e.touches[0], dx = t.clientX - d.x, dy = t.clientY - d.y;
+      const t = e.touches[0];
       if (!d.turn) {
+        const dx = t.clientX - d.x, dy = t.clientY - d.y;
         // A finger resting first is a hold (which picks an item up to drag it), not a swipe.
         if (e.defaultPrevented || e.timeStamp - d.t0 > 450) { g = null; return; }
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-        if (Math.abs(dx) < Math.abs(dy) * 1.5) { g = null; return; }
-        const dir = dx < 0 ? 1 : -1, turn = planRef.current(dir, d.y), m = main.current, p = page.current;
+        const axis: Axis | null = Math.abs(dx) >= Math.abs(dy) * 1.5 ? "x" : Math.abs(dy) >= Math.abs(dx) * 1.5 ? "y" : null;
+        if (!axis || (axis === "x" && d.sideways) || (axis === "y" && !vertical)) { g = null; return; }
+        const dir = (axis === "x" ? dx : dy) < 0 ? 1 : -1;
+        const turn = planRef.current(axis, dir, d.target), m = main.current, p = page.current;
         if (!turn || !m || !p || turning() || reducedMotion()) {
           g = null;
           // Without motion, a swipe still makes its change, all at once.
@@ -258,16 +283,17 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
           return;
         }
         // Measured from here on, so the page doesn't jump the few pixels it took to tell it's a swipe.
-        Object.assign(d, { dir, turn, s: startTurn(m, p, dir, turn.mode), x: t.clientX });
+        Object.assign(d, { axis, dir, turn, s: startTurn(m, p, dir, turn.mode) });
+        d.o = d.last = along(d, t);
         // The copy shows first; the next page is drawn under it a frame later, so the drag starts at once.
         requestAnimationFrame(() => turn.change());
       }
       // Only toward the side it started; back past the start it just rests there.
-      const along = t.clientX - d.x;
-      d.off = d.dir! > 0 ? Math.min(0, along) : Math.max(0, along);
-      if (e.timeStamp > d.at) d.v = 0.6 * d.v + 0.4 * ((t.clientX - d.lastX) / (e.timeStamp - d.at));
+      const pos = along(d, t), gone = pos - d.o;
+      d.off = d.dir! > 0 ? Math.min(0, gone) : Math.max(0, gone);
+      if (e.timeStamp > d.at) d.v = 0.6 * d.v + 0.4 * ((pos - d.last) / (e.timeStamp - d.at));
       d.at = e.timeStamp;
-      d.lastX = t.clientX;
+      d.last = pos;
       drawSoon(d);
     }
     function end() {
@@ -277,9 +303,9 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
       if (!d?.turn) return;
       cancelAnimationFrame(pending);
       pending = 0;
-      const w = d.s!.w, side = -d.dir!; // the way the old page (or date) leaves
-      const done = Math.abs(d.off) > w / 3 ? d.v * side > -0.3 : d.v * side > 0.4;
-      const left = done ? w - Math.abs(d.off) : Math.abs(d.off);
+      const size = d.s!.size, side = -d.dir!; // the way the old page (or date) leaves
+      const done = Math.abs(d.off) > size / 3 ? d.v * side > -0.3 : d.v * side > 0.4;
+      const left = done ? size - Math.abs(d.off) : Math.abs(d.off);
       endTurn(d.s!, done, Math.round(Math.max(140, Math.min(280, left * 0.85))), d.turn.undo);
     }
     el.addEventListener("touchstart", down, { passive: true });
@@ -287,7 +313,7 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
       el.removeEventListener("touchstart", down);
       listen(null);
     };
-  }, [ref, main, page]);
+  }, [ref, main, page, vertical]);
 }
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -297,29 +323,31 @@ export function Shell({ children }: { children: ReactNode }) {
   const page = pages.findIndex((n) => n.match(loc));
   const pageRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
-  // Dragging the bottom half of the page (or the bottom bar) goes to the next or previous page in the
-  // bar (in the user's order; the end pages go no further). Dragging the top half steps the page's
-  // date, pressing its own next or previous day (week, month) button, marked `data-swipe`; on a page
-  // without dates, the top half does nothing.
-  const plan = (dir: 1 | -1, startY: number): Turn | null => {
+  // Dragging sideways (on a page or the bottom bar) goes to the next or previous page in the bar (in
+  // the user's order; the end pages go no further). On a page whose dates go up and down (Today, the
+  // calendar's weeks and months: data-turn-body="y"), dragging up past the end of what scrolls goes to
+  // the next date, and down past the top to the last, pressing the page's own next or previous button
+  // (marked data-swipe).
+  const plan = (axis: Axis, dir: 1 | -1, target: EventTarget | null): Turn | null => {
     const main = mainRef.current;
     if (!main) return null;
-    const box = main.getBoundingClientRect();
-    const dateZone = startY < box.top + box.height / 2;
     const stepSel = `[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`;
     const before = window.location.hash;
     // Back the way it came: through history if the change moved there, else (a date the page keeps
     // itself, like the calendar's) its other step button.
     const undo = () => (window.location.hash !== before ? window.history.back()
       : main.querySelector<HTMLButtonElement>(`[data-swipe="${dir > 0 ? "prev" : "next"}"]`)?.click());
-    if (dateZone) return main.querySelector(stepSel) ? { change: () => main.querySelector<HTMLButtonElement>(stepSel)?.click(), undo, mode: "date" } : null;
+    if (axis === "y") {
+      if (!main.querySelector('[data-turn-body="y"]') || !main.querySelector(stepSel) || !atScrollEnd(target, main, dir)) return null;
+      return { change: () => main.querySelector<HTMLButtonElement>(stepSel)?.click(), undo, mode: "date" };
+    }
     const next = page < 0 ? undefined : pages[page + dir];
     return next ? { change: () => nav(next.href), undo, mode: "page" } : null;
   };
   // Taps and links turn the page too (pageTurn), in the bar's order.
   setTurnOrder(pages);
-  usePageDrag(mainRef, mainRef, pageRef, plan);
-  usePageDrag(barRef, mainRef, pageRef, plan);
+  usePageDrag(mainRef, mainRef, pageRef, plan, true);
+  usePageDrag(barRef, mainRef, pageRef, plan, false);
   const { settings } = useSettings();
   const { focus } = usePlanner();
   const inSettings = SETTINGS_NAV.match(loc);

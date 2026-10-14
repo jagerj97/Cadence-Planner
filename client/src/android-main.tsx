@@ -5,7 +5,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { Toaster } from "./components/ui/toaster";
 import { PlannerProvider } from "./components/planner";
 import { Router } from "wouter";
-import { useHashLocation } from "wouter/use-hash-location";
+import { useTransitionHashLocation } from "./lib/hashLocation";
 import { queryClient } from "./lib/queryClient";
 import { AppRouter } from "./App";
 import "./index.css";
@@ -23,7 +23,7 @@ createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <PlannerProvider>
-        <Router hook={useHashLocation}>
+        <Router hook={useTransitionHashLocation}>
           <AppRouter />
         </Router>
       </PlannerProvider>

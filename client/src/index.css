@@ -220,21 +220,6 @@
  * need to be distinguished from eachother visually.
  */
 @layer utilities {
-  /* A page turn (components/pageTurn.ts): the real page moves by these, whichever page React shows. */
-  main[data-turn="page"] > [data-page] {
-    position: relative;
-    z-index: 1;
-    transform: translateX(var(--turn-x, 0px));
-    transition: var(--turn-t, none);
-    background: hsl(var(--background));
-    box-shadow: var(--turn-shadow, none);
-    will-change: transform;
-  }
-  main[data-turn="date"] [data-turn-body] {
-    transform: translateX(var(--turn-x, 0px));
-    transition: var(--turn-t, none);
-    will-change: transform;
-  }
   /* The copy of the old page: still, as it was (its own animations don't start over). */
   .page-cover, .page-cover * { animation: none !important; }
   /* Pages only scroll up and down, so sideways drags are theirs to turn without holding up scrolling. */

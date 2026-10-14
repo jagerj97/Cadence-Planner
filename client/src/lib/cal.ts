@@ -105,8 +105,13 @@ export function fmtDur(min: number) {
   if (!r) return `${h}h`;
   return `${h}h ${r}m`;
 }
+/** A date in words ("Wednesday, October 14"). Each format's formatter is made once (making one is slow). */
+const formatters = new Map<string, Intl.DateTimeFormat>();
 export function fmtDate(s: string, opts: Intl.DateTimeFormatOptions = { weekday: "long", month: "long", day: "numeric" }) {
-  return parseYmd(s).toLocaleDateString("en-US", opts);
+  const key = `${opts.weekday}|${opts.month}|${opts.day}|${opts.year}`;
+  let f = formatters.get(key);
+  if (!f) formatters.set(key, (f = new Intl.DateTimeFormat("en-US", opts)));
+  return f.format(parseYmd(s));
 }
 export function startOfWeek(s: string, weekStartsOn = 0) {
   const d = dow(s);

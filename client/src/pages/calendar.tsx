@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { accentOf } from "@/components/taskTags";
 import { AgendaList, DayHeading } from "@/components/agendaList";
-import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const WEEK_HOUR = 60;
@@ -133,19 +133,19 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
       <PageHeader title={<WeekPicker title={title} start={start} weekStartsOn={settings.weekStartsOn} onPick={setAnchor} />}>
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Previous week" data-swipe="prev" data-testid="button-prev-week">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronDown className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => setAnchor(todayStr())} data-testid="button-this-week">
             This week
           </Button>
           <Button size="icon" variant="ghost" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Next week" data-swipe="next" data-testid="button-next-week">
-            <ChevronRight className="h-4 w-4" />
+            <ChevronUp className="h-4 w-4" />
           </Button>
         </div>
         {toggle}
       </PageHeader>
       {filters}
-      <div data-turn-body className="swap-in flex-1 min-h-0 pt-3 md:p-6">
+      <div data-turn-body="y" className="swap-in flex-1 min-h-0 pt-3 md:p-6">
         <div className="h-full card-md card-flush flex flex-col overflow-hidden">
           <div className="flex min-w-0 flex-1 flex-col min-h-0">
             <div className="min-w-0 flex flex-col flex-1 min-h-0">
@@ -216,7 +216,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
                   })}
                 </div>
               </div>
-              <div ref={scroller} className="flex-1 overflow-y-auto scroll-thin">
+              <div ref={scroller} className="flex-1 overflow-y-auto overscroll-y-none scroll-thin">
                 <div className="flex pt-2 pb-2">
                   <HourLabels hourPx={WEEK_HOUR} narrow />
                   {days.map((d, n) => (
@@ -269,7 +269,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
       <PageHeader title={<MonthPicker month={month} onPick={setMonth} />}>
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => shift(-1)} aria-label="Previous month" data-swipe="prev" data-testid="button-prev-month">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronDown className="h-4 w-4" />
           </Button>
           <Button
             variant="outline"
@@ -283,13 +283,13 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
             This month
           </Button>
           <Button size="icon" variant="ghost" onClick={() => shift(1)} aria-label="Next month" data-swipe="next" data-testid="button-next-month">
-            <ChevronRight className="h-4 w-4" />
+            <ChevronUp className="h-4 w-4" />
           </Button>
         </div>
         {toggle}
       </PageHeader>
       {filters}
-      <div data-turn-body className="swap-in flex-1 min-h-0 pt-3 md:p-6 overflow-y-auto md:overflow-auto">
+      <div data-turn-body="y" className="swap-in flex-1 min-h-0 pt-3 md:p-6 overflow-y-auto overscroll-y-none md:overflow-auto">
         <div className="card-md card-flush flex overflow-hidden min-w-0 min-h-full flex-col">
           <div className="grid grid-cols-7 border-b">
             {weekdays.map((w) => (
@@ -678,11 +678,11 @@ export function StepHeader({ label, onPrev, onNext, unit }: { label: string; onP
   return (
     <div className="mb-2 flex items-center justify-between">
       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onPrev} aria-label={`Previous ${unit}`} data-testid={`button-picker-prev-${unit}`}>
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronDown className="h-4 w-4" />
       </Button>
       <span className="text-sm font-semibold tnum">{label}</span>
       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onNext} aria-label={`Next ${unit}`} data-testid={`button-picker-next-${unit}`}>
-        <ChevronRight className="h-4 w-4" />
+        <ChevronUp className="h-4 w-4" />
       </Button>
     </div>
   );
@@ -770,8 +770,9 @@ export function DayPicker({ day, label, marked, onPick, testId = "button-pick-jo
   const monthStart = ymd(view);
   const monthEnd = ymd(new Date(view.getFullYear(), view.getMonth() + 1, 0));
   const gridStart = startOfWeek(monthStart, settings.weekStartsOn);
+  // The month's days are only worked out while it's open (it's in every dated page's header).
   const cells: string[] = [];
-  for (let d = gridStart; d <= monthEnd || cells.length % 7; d = addDays(d, 1)) cells.push(d);
+  if (open) for (let d = gridStart; d <= monthEnd || cells.length % 7; d = addDays(d, 1)) cells.push(d);
   const today = todayStr();
   return (
     <PickerTitle label={label} open={open} onOpenChange={setOpen} testId={testId}>

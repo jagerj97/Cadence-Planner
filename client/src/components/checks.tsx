@@ -3,13 +3,13 @@ import { cn } from "@/lib/utils";
 import { bounce, burst, reducedMotion as reduced } from "@/components/motion";
 
 /**
- * A row that's just been checked off and won't stay in its list: once the bounce has played, it fades
+ * A row that's just been checked (or unchecked) and won't stay in its list: after `wait` (the bounce), it fades
  * and its gap closes, then `then` makes the change that takes it away.
  */
-export async function leaveRow(row: HTMLElement | null, then: () => void) {
+export async function leaveRow(row: HTMLElement | null, then: () => void, wait = 480) {
   if (!row || reduced()) return then();
-  // It starts going once the check has drawn in and the line has crossed it out, and closes up as it fades.
-  await new Promise((r) => setTimeout(r, 480));
+  // It starts going once the check has drawn in (or out) and the line has crossed it, and closes up as it fades.
+  await new Promise((r) => setTimeout(r, wait));
   const h = row.offsetHeight;
   const opts = { easing: "cubic-bezier(.3,.7,.3,1)", fill: "forwards" as const };
   await row.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, ...opts }).finished;
@@ -19,23 +19,23 @@ export async function leaveRow(row: HTMLElement | null, then: () => void) {
   setTimeout(() => row.isConnected && row.getAnimations().forEach((a) => a.cancel()), 1500);
 }
 
-/** A check mark that draws itself in when `on` (pathLength 1, so the dash is the whole stroke). */
+/** A check mark that draws itself in when `on`, and quickly back out when not (pathLength 1, so the dash is the whole stroke). */
 function DrawnCheck({ on, className }: { on: boolean; className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={cn("relative text-background", className)} aria-hidden fill="none" stroke="currentColor"
       strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 6 9 17l-5-5" pathLength={1} strokeDasharray={1} strokeDashoffset={on ? 0 : 1}
-        style={{ transition: "stroke-dashoffset .3s ease-out .08s" }} />
+        style={{ transition: on ? "stroke-dashoffset .3s ease-out .08s" : "stroke-dashoffset .2s ease-in" }} />
     </svg>
   );
 }
 
 /**
- * A task's checkbox. Checking it bounces the box as the check draws in; unchecking just clears it.
- * `onToggle` gets the box, so a row that leaves once done can let the bounce play first.
+ * A task's checkbox. Checking it bounces the box as the check draws in; unchecking gives a smaller
+ * bounce as the check draws back out and the box's color fades.
  */
 export function TaskCheck({ done, color, onToggle, label, className, checkClassName, testId }: {
-  done: boolean; color: string; onToggle: (box: HTMLButtonElement) => void; label: string;
+  done: boolean; color: string; onToggle: () => void; label: string;
   className?: string; checkClassName?: string; testId?: string;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -43,11 +43,11 @@ export function TaskCheck({ done, color, onToggle, label, className, checkClassN
     <button ref={ref} type="button"
       onClick={(e) => {
         e.stopPropagation();
-        if (!done) void bounce(ref.current);
-        onToggle(ref.current!);
+        void bounce(ref.current, done ? 0.45 : 1);
+        onToggle();
       }}
       onPointerDown={(e) => e.stopPropagation()}
-      className={cn("relative shrink-0 grid place-items-center overflow-hidden transition-colors", className)}
+      className={cn("relative shrink-0 grid place-items-center overflow-hidden transition-colors duration-300", className)}
       style={{ borderColor: color, background: done ? color : "transparent", willChange: "transform" }}
       aria-label={label} aria-pressed={done} data-testid={testId}>
       <DrawnCheck on={done} className={checkClassName} />
