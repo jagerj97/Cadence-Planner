@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Item } from "@shared/schema";
 import { useSaveItem, usePlanner } from "./planner";
 import { accentOf } from "./taskTags";
+import { TaskCheck } from "./checks";
 import { useItemMutations, useSettings } from "@/lib/data";
 import {
   KIND_META,
@@ -26,7 +27,7 @@ import type { Block } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { haptic } from "@/lib/haptics";
-import { Check, Play, Repeat, Sunrise, Sunset, Timer } from "lucide-react";
+import { Play, Repeat, Sunrise, Sunset, Timer } from "lucide-react";
 
 export const HOUR_PX = 60;
 
@@ -42,7 +43,11 @@ export function HourLabels({ hourPx = HOUR_PX, narrow = false }: { hourPx?: numb
   );
 }
 
-type Drag = { key: string; mode: "move" | "resize"; y0: number; s0: number; e0: number; delta: number; moved: boolean };
+/** `delta` is the change snapped to the quarter hour (where it'll land); `dy` how far the finger has gone. */
+type Drag = { key: string; mode: "move" | "resize"; y0: number; s0: number; e0: number; delta: number; dy: number; moved: boolean };
+/** How long a dropped item takes to settle into its place. */
+const SETTLE_MS = 220;
+const SETTLE_EASE = "cubic-bezier(.2,.8,.3,1)";
 type PendingDrag = Drag & { x0: number; pointerId: number; timer: ReturnType<typeof setTimeout> | null };
 
 export function DayColumn({
@@ -90,6 +95,22 @@ export function DayColumn({
   const suppressClickRef = useRef(false);
   const colRef = useRef<HTMLDivElement>(null);
   useEffect(() => () => { if (pendingRef.current?.timer) clearTimeout(pendingRef.current.timer); }, []);
+  // A dropped item stays where it was dropped until it's saved there (or it's put back), and glides
+  // into place meanwhile (`settling`), rather than jumping back for a moment.
+  const [drop, setDrop] = useState<{ key: string; s: number; e: number } | null>(null);
+  const [settling, setSettling] = useState<string | null>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout>>();
+  const settle = (key: string) => {
+    setSettling(key);
+    clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => setSettling(null), SETTLE_MS + 60);
+  };
+  useEffect(() => () => clearTimeout(settleTimer.current), []);
+  useEffect(() => {
+    if (!drop) return;
+    const now = blocks.find((x) => x.b.key === drop.key)?.b;
+    if (!now || (now.start === drop.s && now.end === drop.e)) setDrop(null);
+  }, [blocks, drop]);
   // Dragging on the timeline, items included, scrolls it; only once a hold has picked an item up does
   // moving drag the item instead. (Scrolling first cancels the hold, through pointercancel.)
   useEffect(() => {
@@ -119,7 +140,7 @@ export function DayColumn({
       // Synced items are read-only: a long hold warns instead of starting a drag.
       const locked: PendingDrag = {
         key: b.key, mode, x0: e.clientX, y0: e.clientY, s0: b.start, e0: b.end,
-        delta: 0, moved: false, pointerId: e.pointerId, timer: null,
+        delta: 0, dy: 0, moved: false, pointerId: e.pointerId, timer: null,
       };
       locked.timer = setTimeout(() => {
         if (pendingRef.current !== locked) return;
@@ -134,7 +155,7 @@ export function DayColumn({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const pending: PendingDrag = {
       key: b.key, mode, x0: e.clientX, y0: e.clientY, s0: b.start, e0: b.end,
-      delta: 0, moved: false, pointerId: e.pointerId, timer: null,
+      delta: 0, dy: 0, moved: false, pointerId: e.pointerId, timer: null,
     };
     pending.timer = setTimeout(() => {
       if (pendingRef.current !== pending) return;
@@ -160,10 +181,11 @@ export function DayColumn({
     const current = dragRef.current;
     if (!current) return;
     // Snap to the quarter hour: the new start (moving) or end (resizing) lands on :00, :15, :30 or :45.
+    // A moving item follows the finger and shows the time it'll land on; a resized one's end sits on it.
     const edge = current.mode === "move" ? current.s0 : current.e0;
     const delta = Math.round((edge + pxToMin(dy)) / 15) * 15 - edge;
     if (Math.abs(dy) > 4 || current.moved) {
-      dragRef.current = { ...current, delta, moved: true };
+      dragRef.current = { ...current, delta, dy, moved: true };
       setDrag(dragRef.current);
     }
   };
@@ -179,6 +201,7 @@ export function DayColumn({
       openDetails(b.item, b.occDate);
       return;
     }
+    settle(b.key);
     if (d.delta === 0) return;
     haptic("tick");
     const i = b.item;
@@ -187,16 +210,26 @@ export function DayColumn({
       const s = toMin(i.startTime) + d.delta;
       const e = toMin(i.endTime || fromMin(toMin(i.startTime) + 30)) + d.delta;
       changes = { startTime: fromMin(Math.max(0, Math.min(1425, s))), endTime: kindOf(i) === "task" ? null : fromMin(e) };
+      setDrop({ key: b.key, s: b.start + d.delta, e: b.end + d.delta });
     } else {
       const e = Math.max(b.start + 15, d.e0 + d.delta);
       changes = { endTime: fromMin(Math.min(e, 1440 - 1)) };
+      setDrop({ key: b.key, s: b.start, e });
     }
-    // A repeating item asks whether to move just this day or every repeat.
-    void saveItem(i, changes, b.occDate);
+    // A repeating item asks whether to move just this day or every repeat; left as it was, it glides back.
+    void saveItem(i, changes, b.occDate).then((scope) => {
+      if (scope) return;
+      settle(b.key);
+      setDrop(null);
+    }, () => {
+      settle(b.key);
+      setDrop(null);
+    });
   };
   const cancelDrag = () => {
     if (pendingRef.current?.timer) clearTimeout(pendingRef.current.timer);
     pendingRef.current = null;
+    if (dragRef.current?.moved) settle(dragRef.current.key);
     dragRef.current = null;
     setDrag(null);
     suppressClickRef.current = true;
@@ -254,12 +287,15 @@ export function DayColumn({
         const live = drag?.key === b.key && drag.moved ? drag : null;
         // Picked up once the hold completes: grows and lifts like items being reordered (SortableList).
         const lifted = drag?.key === b.key;
-        let s = b.start, e = b.end;
+        const dropped = drop?.key === b.key ? drop : null;
+        let s = dropped?.s ?? b.start, e = dropped?.e ?? b.end;
         if (live?.mode === "move") {
           s += live.delta;
           e += live.delta;
         } else if (live?.mode === "resize") e = Math.max(s + 15, e + live.delta);
-        const top = (s / 60) * hourPx;
+        // Moving, the item is drawn under the finger (kept within the day); it lands on `s` when let go.
+        const follow = live?.mode === "move" ? Math.max(-b.start, Math.min(1440 - b.end, pxToMin(live.dy))) - live.delta : 0;
+        const top = ((s + follow) / 60) * hourPx;
         const h = Math.max(((e - s) / 60) * hourPx - 2, 18);
         const tiny = h < 34;
         const checkable = k === "task" || k === "habit";
@@ -306,7 +342,12 @@ export function DayColumn({
               // While lifted, a solid card under the tint keeps what's behind from showing through. On top of
               // another item it stays see-through like the rest, over a light veil of the card so its text reads.
               background: lifted ? `linear-gradient(${fill}, ${fill}), hsl(var(--card))` : nested ? `linear-gradient(${fill}, ${fill}), hsl(var(--card) / .55)` : fill,
-              transform: lifted ? "scale(1.04)" : undefined,
+              // Lifted to move, it grows a little; resizing, it keeps its size so its end sits right on its time.
+              transform: lifted && drag?.mode === "move" ? "scale(1.03)" : undefined,
+              // Resizing glides from quarter hour to quarter hour; let go, it settles where it lands.
+              transition: settling === b.key
+                ? ["top", "height", "left", "width", "transform"].map((x) => `${x} ${SETTLE_MS}ms ${SETTLE_EASE}`).join(", ")
+                : lifted ? `height 90ms ease-out, transform ${SETTLE_MS}ms ${SETTLE_EASE}` : undefined,
               borderLeft: `3px solid ${accentOf(b.item, settings)}`,
               boxShadow: [active && `inset 0 0 0 1.5px ${accentOf(b.item, settings)}`, nested && "0 0 0 1px hsl(var(--card))"].filter(Boolean).join(", ") || undefined,
             }}
@@ -314,23 +355,9 @@ export function DayColumn({
           >
             <div className={cn("flex h-full gap-1.5", tiny ? "items-center px-1.5" : compact ? "px-1 py-1 sm:px-2" : "px-2 py-1")}>
               {checkable && !compact && (
-                <button
-                  type="button"
-                  onPointerDown={(ev) => ev.stopPropagation()}
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    toggle.mutate({ id: b.item.id, date: b.occDate });
-                  }}
-                  className={cn(
-                    "mt-0.5 h-4 w-4 shrink-0 rounded grid place-items-center border",
-                    tiny && "mt-0",
-                  )}
-                  style={{ borderColor: colorOf(b.item), background: b.done ? colorOf(b.item) : "transparent" }}
-                  aria-label={b.done ? "Mark not done" : "Mark done"}
-                  data-testid={`button-check-${b.key}`}
-                >
-                  {b.done && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
-                </button>
+                <TaskCheck done={b.done} color={colorOf(b.item)} onToggle={() => toggle.mutate({ id: b.item.id, date: b.occDate })}
+                  className={cn("mt-0.5 h-4 w-4 rounded border", tiny && "mt-0")} checkClassName="h-3 w-3"
+                  label={b.done ? "Mark not done" : "Mark done"} testId={`button-check-${b.key}`} />
               )}
               {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && <div className="min-w-0 flex-1 overflow-hidden">
                 <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm", b.done && "line-through")}>

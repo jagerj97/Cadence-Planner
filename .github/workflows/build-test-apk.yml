@@ -1,0 +1,58 @@
+name: Build Cadence Test APK
+
+# "Cadence Test" is its own app beside Cadence (app.cadence.planner.test), for trying changes before
+# they go to main. Builds whenever the test branch is pushed, or on demand from the Actions tab.
+on:
+  push:
+    branches: [claude/brave-hamilton-hmqitc-test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Build the app's web files
+        run: |
+          npm ci
+          npm run build:android:web
+          echo "APP_VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build the APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assemblePreviewRelease -PtestBuild --no-daemon
+          cp app/build/outputs/apk/preview/release/app-preview-release.apk "../cadence_test_${APP_VERSION}.apk"
+
+      - name: Keep the APK with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cadence-test-apk
+          path: cadence_test_${{ env.APP_VERSION }}.apk
+
+      # A pre-release, so it never shows as the latest Cadence; pushing again replaces its APK.
+      - name: Publish a test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION }}-test
+          target_commitish: ${{ github.sha }}
+          name: Cadence Test v${{ env.APP_VERSION }}
+          body: Built from commit ${{ github.sha }}. Cadence Test installs beside Cadence as its own app, with its own data (bring yours over with Settings › Backup & restore). Download cadence_test_${{ env.APP_VERSION }}.apk below and open it on your device to install.
+          files: cadence_test_${{ env.APP_VERSION }}.apk
+          prerelease: true
+          make_latest: false

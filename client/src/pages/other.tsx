@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
+import { HabitCheck } from "@/components/checks";
+import { burst, useGlide } from "@/components/motion";
 import { ReminderSelect, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
@@ -13,7 +15,6 @@ import {
   blocksForDay,
   colorOf,
   completionsOf,
-  fillOf,
   fmtDate,
   fmtDur,
   fmtTime,
@@ -141,15 +142,10 @@ export function HabitsPage() {
                   return (
                     <div className={cn("flex items-center gap-3 py-2.5 pr-4", dueNow.length > 1 ? "pl-2" : "pl-4")} data-testid={`row-habit-${h.id}`}>
                       {dueNow.length > 1 && <GripVertical className="-mr-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
-                      <button
-                        onClick={() => cycle.mutate({ id: h.id, date: today })}
-                        className="h-7 w-7 shrink-0 rounded-full grid place-items-center border-2 transition-colors"
-                        style={{ borderColor: colorOf(h), background: fillOf(mk, colorOf(h)) }}
-                        aria-label={`${h.title}: ${MARK_LABEL[mk]}. Tap for ${MARK_LABEL[((mk + 1) % 3) as 0 | 1 | 2]}`}
-                        data-testid={`button-toggle-habit-${h.id}`}
-                      >
-                        {hit && <Check className="h-4 w-4 text-background" strokeWidth={3} />}
-                      </button>
+                      <HabitCheck mark={mk} color={colorOf(h)} onCycle={() => cycle.mutate({ id: h.id, date: today })}
+                        className="h-7 w-7" buttonClassName="border-2" checkClassName="h-4 w-4"
+                        label={`${h.title}: ${MARK_LABEL[mk]}. Tap for ${MARK_LABEL[((mk + 1) % 3) as 0 | 1 | 2]}`}
+                        testId={`button-toggle-habit-${h.id}`} />
                       <button onClick={() => openDetails(h)} className="min-w-0 flex-1 text-left">
                         <div className={cn("text-sm font-medium truncate", hit && "text-muted-foreground")}>{h.title}</div>
                         <div className="text-xs text-muted-foreground truncate">
@@ -227,18 +223,12 @@ export function HabitsPage() {
                             return (
                               <td key={h.id} className={cn("py-1 text-center", isT && "bg-primary/5")}>
                                 {due ? (
-                                  <button
-                                    onClick={() => cycle.mutate({ id: h.id, date: d })}
-                                    className={cn(
-                                      "inline-grid h-6 w-6 place-items-center rounded-full border-[1.5px] transition-colors",
-                                      mk === 0 && "hover:bg-muted",
-                                    )}
-                                    style={{ background: fillOf(mk, colorOf(h)), borderColor: mk ? colorOf(h) : "hsl(var(--foreground) / .22)" }}
-                                    aria-label={`${h.title}, ${fmtDate(d, { weekday: "short", month: "short", day: "numeric" })}: ${MARK_LABEL[mk]}`}
-                                    data-testid={`button-habit-${h.id}-${d}`}
-                                  >
-                                    {hit && <Check className="h-3.5 w-3.5 text-background" strokeWidth={3} />}
-                                  </button>
+                                  <HabitCheck mark={mk} color={colorOf(h)} onCycle={() => cycle.mutate({ id: h.id, date: d })}
+                                    className="h-6 w-6 align-middle" buttonClassName={cn("border-[1.5px]", mk === 0 && "hover:bg-muted")}
+                                    checkClassName="h-3.5 w-3.5"
+                                    style={mk ? undefined : { borderColor: "hsl(var(--foreground) / .22)" }}
+                                    label={`${h.title}, ${fmtDate(d, { weekday: "short", month: "short", day: "numeric" })}: ${MARK_LABEL[mk]}`}
+                                    testId={`button-habit-${h.id}-${d}`} />
                                 ) : (
                                   <span className="inline-block h-1 w-1 rounded-full bg-foreground/20" aria-label="Not scheduled" />
                                 )}
@@ -314,22 +304,37 @@ export function FocusPage() {
   const maxWeek = Math.max(60, ...week.map((w) => w.min));
 
   const remaining = focus ? focus.plannedSec - elapsed : (validDuration ? minutes : 0) * 60;
-  const pct = focus ? elapsed / focus.plannedSec : 0;
+  // The ring is the time left: starting, it sweeps round to full, then winds down as the time runs.
+  const pct = focus ? Math.max(0, remaining) / focus.plannedSec : 0;
   const ringColor = "hsl(var(--k-focus))";
+  // The time shown counts over to a new one (a finished session's back to the set length, +5 min)
+  // rather than jumping; ticking by the second is as it is.
+  const shownRemaining = Math.round(useGlide(remaining, 2, 600));
+  // Finishing, the ring bursts and the timer gives a little pulse.
+  const timerRef = useRef<HTMLDivElement>(null);
+  const hadFocus = useRef(!!focus);
+  useEffect(() => {
+    if (hadFocus.current && !focus && timerRef.current) {
+      burst(timerRef.current, ringColor, 6, 1.35);
+      timerRef.current.animate?.([{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }],
+        { duration: 520, easing: "ease-out" });
+    }
+    hadFocus.current = !!focus;
+  }, [focus]);
 
   return (
     <>
       <PageHeader title="Focus" sub={`${fmtDur(totalToday)} focused today · ${todays.length} session${todays.length === 1 ? "" : "s"}`} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
-          <section className="card-md focus-hero min-w-0 p-4 md:p-6 grid gap-5" aria-label="Timer">
+          <section className="card-md focus-hero relative min-w-0 p-4 md:p-6 grid gap-5" aria-label="Timer">
             <h2 className="text-sm font-semibold tracking-tight">Timer</h2>
-            <div className="relative justify-self-center">
+            <div ref={timerRef} className="relative justify-self-center rounded-full">
               <Ring pct={pct} size={236} stroke={12} color={ringColor} track="hsl(var(--k-focus) / .14)" />
               <div className="absolute inset-0 grid place-items-center text-center">
                 <div className="grid justify-items-center gap-1.5">
                   <div className="text-[56px] font-semibold leading-none tracking-tight tnum" data-testid="text-timer">
-                    {clock(remaining)}
+                    {clock(shownRemaining)}
                   </div>
                   <div className="flex max-w-[170px] items-center gap-1 text-sm text-muted-foreground">
                     <Target className="h-3.5 w-3.5 shrink-0" style={{ color: ringColor }} aria-hidden />

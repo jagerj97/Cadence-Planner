@@ -14,7 +14,7 @@
     <application
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
-        android:label="Cadence"
+        android:label="${appLabel}"
         android:icon="@mipmap/ic_launcher_plain"
         android:roundIcon="@mipmap/ic_launcher_plain"
         android:theme="@style/CadenceTheme">

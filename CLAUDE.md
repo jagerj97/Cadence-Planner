@@ -14,6 +14,13 @@ when a version lands on `main`.
 3. Run `npm run build:android:web` and commit the result.
 4. Push, open a PR to `main`, and merge it.
 
+## Test build ("Cadence Test")
+
+Changes to try out before they go to everyone (like new animations) go on the
+`claude/brave-hamilton-hmqitc-test` branch, kept up to date with `main`. Each push there builds
+"Cadence Test" (`.github/workflows/build-test-apk.yml`, Gradle's `-PtestBuild`): its own app
+(`app.cadence.planner.test`) beside Cadence, published as a pre-release `cadence_test_<version>.apk`.
+
 ## Web version
 
 The same app also runs in a browser, published to GitHub Pages by `.github/workflows/pages.yml` on

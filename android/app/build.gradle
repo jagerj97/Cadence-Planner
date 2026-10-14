@@ -6,6 +6,9 @@ plugins {
 // with every APK so each installs as an update; that's the CI run number, and it isn't shown.
 def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).version
 def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '0') as int
+// `-PtestBuild` makes "Cadence Test": its own app beside Cadence (its own data and widgets), for
+// trying changes out before they go to everyone. Its shortcuts come from src/preview.
+def testBuild = project.hasProperty('testBuild')
 
 android {
     namespace 'app.cadence.planner'
@@ -17,6 +20,19 @@ android {
         targetSdk 35
         versionCode 4 + Math.max(buildNumber, 1)
         versionName appVersion
+        manifestPlaceholders = [appLabel: 'Cadence']
+    }
+
+    if (testBuild) {
+        flavorDimensions 'build'
+        productFlavors {
+            preview {
+                dimension 'build'
+                applicationId 'app.cadence.planner.test'
+                versionNameSuffix '-test'
+                manifestPlaceholders = [appLabel: 'Cadence Test']
+            }
+        }
     }
 
     // One fixed signing key so every new build installs over the last one without erasing data.
