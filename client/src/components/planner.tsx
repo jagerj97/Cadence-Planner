@@ -1412,11 +1412,18 @@ function TimePill({ value, onChange, testId, label }: { value: string; onChange:
 export function useNow(intervalMs = 30000) {
   const [n, setN] = useState(() => new Date());
   useEffect(() => {
-    const t = setInterval(() => setN(new Date()), intervalMs);
+    // On the clock's own beat (every :00 and :30 for 30 seconds), so a new minute, and whatever
+    // starts in it, shows as it arrives.
+    let t: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setN(new Date());
+      t = setTimeout(tick, intervalMs - (Date.now() % intervalMs) + 20);
+    };
+    t = setTimeout(tick, intervalMs - (Date.now() % intervalMs) + 20);
     // Timers pause while the app is in the background, so catch up when it comes back.
     const back = () => { if (!document.hidden) setN(new Date()); };
     document.addEventListener("visibilitychange", back);
-    return () => { clearInterval(t); document.removeEventListener("visibilitychange", back); };
+    return () => { clearTimeout(t); document.removeEventListener("visibilitychange", back); };
   }, [intervalMs]);
   return n;
 }

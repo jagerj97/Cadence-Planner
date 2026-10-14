@@ -85,12 +85,16 @@ final class Notifications {
         manager.notify(id, builder.build());
     }
 
-    /** "Starts in 7m", counting whole minutes up (so a 10 minute reminder reads 10m, not 9m). */
-    static String startsIn(long start, long now) {
+    /** "Starts in 7m" (a task's "Due in 7m"), counting whole minutes up (so a 10 minute reminder reads 10m, not 9m). */
+    static String startsIn(long start, long now, boolean due) {
         long minutes = (start - now + 59999) / 60000;
-        if (minutes <= 0) return "Starting now";
+        if (minutes <= 0) return due ? "Due now" : "Starting now";
         long h = minutes / 60, m = minutes % 60;
-        return "Starts in " + (h == 0 ? m + "m" : m == 0 ? h + "h" : h + "h " + m + "m");
+        return (due ? "Due in " : "Starts in ") + (h == 0 ? m + "m" : m == 0 ? h + "h" : h + "h " + m + "m");
+    }
+
+    private static int countdownId(String title, long start) {
+        return 1000000 + ((title + "\0" + start).hashCode() & 0x3fffffff) % 1000000000;
     }
 
     /**
@@ -98,17 +102,18 @@ final class Notifications {
      * minutes left drop, until it says "Starting now". Two reminders for the same start share one
      * notification. Swiping it away stops the countdown.
      */
-    private static void countdown(Context context, String title, long start, long when, boolean first) {
-        int id = 1000000 + ((title + "\0" + start).hashCode() & 0x3fffffff) % 1000000000;
+    private static void countdown(Context context, String title, long start, long when, boolean first, boolean due) {
+        int id = countdownId(title, start);
         long now = System.currentTimeMillis();
         if (!first && !showing(context, id)) return;
-        post(context, title, startsIn(start, now), id, when);
+        post(context, title, startsIn(start, now, due), id, when);
         long minutes = (start - now + 59999) / 60000;
         if (minutes <= 0) return;
         Intent tick = new Intent(context, AlarmReceiver.class).setAction(TICK);
         tick.putExtra("title", title);
         tick.putExtra("start", start);
         tick.putExtra("when", when);
+        tick.putExtra("due", due);
         PendingIntent pending = PendingIntent.getBroadcast(context, id, tick,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         exact(context, start - (minutes - 1) * 60000, pending);
@@ -123,15 +128,16 @@ final class Notifications {
     }
 
     private static PendingIntent intent(Context context, int code, String title, String body) {
-        return intent(context, code, title, body, 0);
+        return intent(context, code, title, body, 0, false);
     }
 
-    private static PendingIntent intent(Context context, int code, String title, String body, long start) {
+    private static PendingIntent intent(Context context, int code, String title, String body, long start, boolean due) {
         Intent alarm = new Intent(context, AlarmReceiver.class);
         alarm.putExtra("title", title);
         alarm.putExtra("body", body);
         alarm.putExtra("id", code);
         alarm.putExtra("start", start);
+        alarm.putExtra("due", due);
         return PendingIntent.getBroadcast(context, code, alarm,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
@@ -141,9 +147,9 @@ final class Notifications {
      * come several minutes late. Exact alarms need USE_EXACT_ALARM (Android 13+) or
      * SCHEDULE_EXACT_ALARM (Android 12); if the system still refuses, fall back to an inexact one.
      */
-    private static void set(Context context, int code, long at, String title, String body, long start) {
+    private static void set(Context context, int code, long at, String title, String body, long start, boolean due) {
         if (at <= System.currentTimeMillis()) return;
-        exact(context, at, intent(context, code, title, body, start));
+        exact(context, at, intent(context, code, title, body, start, due));
     }
 
     private static void exact(Context context, long at, PendingIntent pending) {
@@ -160,20 +166,59 @@ final class Notifications {
         manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending);
     }
 
+    /**
+     * Sets the app's reminders (up to 128), replacing the last set. Entries marked `cancel` are tasks
+     * that were checked off: a countdown already showing for one is taken back. Ones marked `skip` were
+     * checked off on a widget since (see taskToggled).
+     */
     static void scheduleItems(Context context, String json) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         AlarmManager manager = context.getSystemService(AlarmManager.class);
         int oldCount = prefs.getInt("count", 0);
         for (int i = 0; i < oldCount; i++) manager.cancel(intent(context, i + 1, "", ""));
         try {
-            JSONArray events = new JSONArray(json);
-            int count = Math.min(128, events.length());
-            for (int i = 0; i < count; i++) {
+            JSONArray events = new JSONArray(json), kept = new JSONArray();
+            for (int i = 0; i < events.length(); i++) {
                 JSONObject event = events.getJSONObject(i);
-                set(context, i + 1, event.getLong("at"),
-                    event.optString("title", "Cadence"), event.optString("body", ""), event.optLong("start", 0));
+                if (event.optBoolean("cancel")) stopCountdown(context, event.optString("title", ""), event.optLong("start", 0));
+                else if (kept.length() < 128) kept.put(event);
             }
-            prefs.edit().putString("items", json).putInt("count", count).apply();
+            for (int i = 0; i < kept.length(); i++) {
+                JSONObject event = kept.getJSONObject(i);
+                if (event.optBoolean("skip")) continue;
+                set(context, i + 1, event.getLong("at"), event.optString("title", "Cadence"), event.optString("body", ""),
+                    event.optLong("start", 0), event.optBoolean("due"));
+            }
+            prefs.edit().putString("items", kept.toString()).putInt("count", kept.length()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** Takes back a reminder's countdown: its notification and the alarm that ticks it down. */
+    private static void stopCountdown(Context context, String title, long start) {
+        if (start <= 0) return;
+        int id = countdownId(title, start);
+        context.getSystemService(NotificationManager.class).cancel(id);
+        context.getSystemService(AlarmManager.class).cancel(PendingIntent.getBroadcast(context, id,
+            new Intent(context, AlarmReceiver.class).setAction(TICK), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+    }
+
+    /**
+     * A task checked off (or back on) on a widget while the app may be closed: its reminders for that
+     * day stop (or come back) now, rather than when the app next opens and sets them all again.
+     */
+    static void taskToggled(Context context, int itemId, String occ, boolean done) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        try {
+            JSONArray events = new JSONArray(prefs.getString("items", "[]"));
+            boolean changed = false;
+            for (int i = 0; i < events.length(); i++) {
+                JSONObject event = events.getJSONObject(i);
+                if (event.optInt("id", -1) != itemId || !occ.equals(event.optString("occ"))) continue;
+                event.put("skip", done);
+                changed = true;
+                if (done) stopCountdown(context, event.optString("title", ""), event.optLong("start", 0));
+            }
+            if (changed) scheduleItems(context, events.toString());
         } catch (Exception ignored) {}
     }
 
@@ -183,7 +228,7 @@ final class Notifications {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putLong("focusAt", at).putLong("firedFocusAt", 0)
             .putString("focusTitle", title).putString("focusBody", body).apply();
-        set(context, FOCUS_CODE, at, title, body, 0);
+        set(context, FOCUS_CODE, at, title, body, 0, false);
     }
 
     static void cancelFocus(Context context) {
@@ -204,12 +249,12 @@ final class Notifications {
         @Override public void onReceive(Context context, Intent intent) {
             String title = intent.getStringExtra("title");
             if (TICK.equals(intent.getAction())) {
-                countdown(context, title, intent.getLongExtra("start", 0), intent.getLongExtra("when", 0), false);
+                countdown(context, title, intent.getLongExtra("start", 0), intent.getLongExtra("when", 0), false, intent.getBooleanExtra("due", false));
                 return;
             }
             long start = intent.getLongExtra("start", 0);
             if (start > 0) {
-                countdown(context, title, start, System.currentTimeMillis(), true);
+                countdown(context, title, start, System.currentTimeMillis(), true, intent.getBooleanExtra("due", false));
                 return;
             }
             if (intent.getIntExtra("id", 1) == FOCUS_CODE) {
@@ -231,7 +276,7 @@ final class Notifications {
             long focusAt = prefs.getLong("focusAt", 0);
             if (focusAt > System.currentTimeMillis()) set(context, FOCUS_CODE, focusAt,
                 prefs.getString("focusTitle", "Focus session complete"),
-                prefs.getString("focusBody", ""), 0);
+                prefs.getString("focusBody", ""), 0, false);
         }
     }
 }

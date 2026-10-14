@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Home,
@@ -195,16 +195,14 @@ function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
 }
 
 /**
- * Swiping left or right across a page goes to the next or previous page in the bar (in the user's
- * order); the end pages go no further. Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
+ * Calls `onSwipe` for a quick swipe left (1) or right (-1) on `el`, with where it began. Holds (which pick items up to drag them), pinches and mostly-vertical
+ * moves are left alone, as are swipes on things that scroll or drag sideways themselves.
  */
-function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typeof NAV)[number][], go: (href: string, dir: 1 | -1) => void) {
-  const locRef = useRef(loc);
-  locRef.current = loc;
-  const navRef = useRef(nav);
-  navRef.current = nav;
+function useSwipe(ref: React.RefObject<HTMLElement>, onSwipe: (dir: 1 | -1, startY: number) => void) {
+  const handler = useRef(onSwipe);
+  handler.current = onSwipe;
   useEffect(() => {
-    const el = main.current;
+    const el = ref.current;
     if (!el) return;
     let start: { x: number; y: number; t: number } | null = null;
     const down = (e: TouchEvent) => {
@@ -218,17 +216,12 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typ
       if (!s || !t || Date.now() - s.t > 700) return;
       const dx = t.clientX - s.x, dy = t.clientY - s.y;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      const pages = navRef.current;
-      const at = pages.findIndex((n) => n.match(locRef.current));
-      if (at < 0) return;
-      const dir = dx < 0 ? 1 : -1;
-      const next = pages[at + dir];
-      if (next) go(next.href, dir);
+      handler.current(dx < 0 ? 1 : -1, s.y);
     };
+    const cancel = () => { start = null; };
     el.addEventListener("touchstart", down, { passive: true });
     el.addEventListener("touchmove", move, { passive: true });
     el.addEventListener("touchend", up, { passive: true });
-    const cancel = () => { start = null; };
     el.addEventListener("touchcancel", cancel, { passive: true });
     return () => {
       el.removeEventListener("touchstart", down);
@@ -236,7 +229,19 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typ
       el.removeEventListener("touchend", up);
       el.removeEventListener("touchcancel", cancel);
     };
-  }, [main, go]);
+  }, [ref]);
+}
+
+/** How far above the bottom bar a swipe still counts as on the bar (changing the page, not the date). */
+const BAR_REACH = 40;
+
+/** Makes the change a swipe asks for, and slides what comes in from that side. */
+function slideIn(main: HTMLElement, dir: 1 | -1, change: () => void) {
+  change();
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  // The next page (a new one once React has drawn it, or this one with its new date).
+  requestAnimationFrame(() => main.querySelector<HTMLElement>("[data-page]")
+    ?.animate([{ transform: `translateX(${dir * 32}px)`, opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 200, easing: "ease-out" }));
 }
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -244,20 +249,25 @@ export function Shell({ children }: { children: ReactNode }) {
   const mainRef = useRef<HTMLElement>(null);
   const pages = useNav();
   const page = pages.findIndex((n) => n.match(loc));
-  // The page a swipe brings in slides in from that side.
-  const [slide, setSlide] = useState<{ dir: 1 | -1; to: string } | null>(null);
-  const slideTimer = useRef<ReturnType<typeof setTimeout>>();
-  const go = useCallback((href: string, dir: 1 | -1) => {
-    setSlide({ dir, to: href });
-    nav(href);
-    clearTimeout(slideTimer.current);
-    slideTimer.current = setTimeout(() => setSlide(null), 300);
-  }, [nav]);
-  usePageSwipe(mainRef, loc, pages, go);
-  const slid = slide && pages[page]?.href === slide.to ? slide.dir : 0;
+  const barRef = useRef<HTMLElement>(null);
+  // Swiping the bottom bar (or just above it) goes to the next or previous page in it (in the user's
+  // order; the end pages go no further). Swiping a page steps its date, pressing its own next or
+  // previous day (week, month) button, marked `data-swipe`; a page with no dates goes to the next page instead.
+  const swipe = (dir: 1 | -1, startY: number) => {
+    const main = mainRef.current, bar = barRef.current;
+    if (!main) return;
+    const onPage = !bar?.offsetHeight || startY < bar.getBoundingClientRect().top - BAR_REACH;
+    const step = onPage ? main.querySelector<HTMLButtonElement>(`[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`) : null;
+    if (step) return slideIn(main, dir, () => step.click());
+    if (onPage && main.querySelector("[data-swipe]")) return; // dates, but none further that way
+    const next = page < 0 ? undefined : pages[page + dir];
+    if (next) slideIn(main, dir, () => nav(next.href));
+  };
+  useSwipe(mainRef, swipe);
+  useSwipe(barRef, swipe);
+  const { settings } = useSettings();
   const { focus } = usePlanner();
   const elapsed = useFocusElapsed();
-  const { settings } = useSettings();
   const inSettings = SETTINGS_NAV.match(loc);
   if (!inSettings) lastPage = loc;
 
@@ -291,10 +301,10 @@ export function Shell({ children }: { children: ReactNode }) {
         <aside className="wellness-rail hidden md:flex w-56 shrink-0 flex-col overflow-y-auto bg-sidebar border-r z-20">
           <DrawerLinks />
         </aside>
-        <main ref={mainRef} className="flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
+        <main ref={mainRef} className="relative flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
           {/* Keyed by the page (not its place in the bar, which reordering the bar changes). */}
-          <div key={pages[page]?.href ?? (inSettings ? "/settings" : "other")}
-            className={cn("flex flex-1 min-h-0 flex-col", slid !== 0 && "animate-in fade-in duration-200", slid > 0 ? "slide-in-from-right-8" : slid < 0 && "slide-in-from-left-8")}>
+          <div key={pages[page]?.href ?? (inSettings ? "/settings" : "other")} data-page
+            className="flex flex-1 min-h-0 flex-col">
             {children}
           </div>
         </main>
@@ -302,7 +312,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       {/* bottom bar (phones) */}
       {/* Runs down behind the phone's navigation bar (--safe-bottom), its color filling that strip. */}
-      <nav className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[var(--safe-bottom,env(safe-area-inset-bottom,0px))]" aria-label="Main">
+      <nav ref={barRef} className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[var(--safe-bottom,env(safe-area-inset-bottom,0px))]" aria-label="Main">
         {pages.map((n) => {
           const on = n.match(loc);
           const timer = n.href === "/focus" && focus;

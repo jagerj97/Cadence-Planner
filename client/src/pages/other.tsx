@@ -1021,41 +1021,65 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Routines" hint={`Background things for your days. Sleeping, eating, ${draft.plain ? "etc" : "grooming"}...`}>
-            <div className="grid gap-3">
-              {draft.routines.map((r) => (
-                <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
-                  <div className="flex items-center gap-2">
-                    <Input className="min-w-0 flex-1 font-medium" value={r.name} aria-label="Routine name"
-                      onChange={(e) => updateRoutine(r.id, { name: e.target.value })} data-testid={`input-routine-name-${r.id}`} />
-                    <Button size="icon" variant="ghost" className="shrink-0" aria-label={`Remove ${r.name} routine`}
-                      onClick={() => setDraft((d) => ({ ...d, routines: d.routines.filter((entry) => entry.id !== r.id) }))}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  {/* The same colors as task tags. */}
-                  <ColorSwatches value={r.color} onChange={(color) => updateRoutine(r.id, { color })} defaultColor="hsl(var(--k-sleep))" defaultReplaces="#3f51b5" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="From">
-                      <Input type="time" step={60} className="min-w-0" value={r.startTime} aria-label={`${r.name} start time`}
-                        onChange={(e) => updateRoutine(r.id, { startTime: e.target.value })} data-testid={`input-routine-start-${r.id}`} />
-                    </Field>
-                    <Field label="To">
-                      <Input type="time" step={60} className="min-w-0" value={r.endTime} aria-label={`${r.name} end time`}
-                        onChange={(e) => updateRoutine(r.id, { endTime: e.target.value })} data-testid={`input-routine-end-${r.id}`} />
-                    </Field>
-                  </div>
-                  <WeekdayPills value={r.days ?? [0, 1, 2, 3, 4, 5, 6]} weekStartsOn={draft.weekStartsOn} minOne label={`${r.name} days`}
-                    onChange={(days) => updateRoutine(r.id, { days: days.length === 7 ? undefined : days })} testId={`button-routine-day-${r.id}-`} />
-                  <p className="text-xs text-muted-foreground">{fmtDur((toMin(r.endTime) - toMin(r.startTime) + 1440) % 1440)} · {routineDaysLabel(r.days)}{r.endTime < r.startTime ? " · crosses midnight" : ""}</p>
-                </div>
-              ))}
-              <Button variant="outline" className="justify-self-start" onClick={() => setDraft((d) => ({
-                ...d,
-                routines: [...d.routines, { id: crypto.randomUUID(), name: "New routine", startTime: "09:00", endTime: "10:00",
-                  color: "#3f51b5" }],
-              }))} data-testid="button-add-routine"><Plus className="h-4 w-4 mr-1.5" /> Add routine</Button>
+          <Section title="Behavior" hint="How Cadence works for you">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Week starts on">
+                <Select value={String(draft.weekStartsOn)} onValueChange={(v) => setDraft({ ...draft, weekStartsOn: Number(v) as WeekDay })}>
+                  <SelectTrigger data-testid="select-week-start">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, n) => (
+                      <SelectItem key={d} value={String(n)}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
             </div>
+            <SubSection title="Routines" hint={`Background things for your days. Sleeping, eating, ${draft.plain ? "etc" : "grooming"}...`}>
+              <div className="grid gap-3">
+                {draft.routines.map((r) => (
+                  <div key={r.id} className="rounded-xl border bg-background/70 p-3 grid gap-3" data-testid={`routine-${r.id}`}>
+                    <div className="flex items-center gap-2">
+                      <Input className="min-w-0 flex-1 font-medium" value={r.name} aria-label="Routine name"
+                        onChange={(e) => updateRoutine(r.id, { name: e.target.value })} data-testid={`input-routine-name-${r.id}`} />
+                      <Button size="icon" variant="ghost" className="shrink-0" aria-label={`Remove ${r.name} routine`}
+                        onClick={() => setDraft((d) => ({ ...d, routines: d.routines.filter((entry) => entry.id !== r.id) }))}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {/* The same colors as task tags. */}
+                    <ColorSwatches value={r.color} onChange={(color) => updateRoutine(r.id, { color })} defaultColor="hsl(var(--k-sleep))" defaultReplaces="#3f51b5" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="From">
+                        <Input type="time" step={60} className="min-w-0" value={r.startTime} aria-label={`${r.name} start time`}
+                          onChange={(e) => updateRoutine(r.id, { startTime: e.target.value })} data-testid={`input-routine-start-${r.id}`} />
+                      </Field>
+                      <Field label="To">
+                        <Input type="time" step={60} className="min-w-0" value={r.endTime} aria-label={`${r.name} end time`}
+                          onChange={(e) => updateRoutine(r.id, { endTime: e.target.value })} data-testid={`input-routine-end-${r.id}`} />
+                      </Field>
+                    </div>
+                    <WeekdayPills value={r.days ?? [0, 1, 2, 3, 4, 5, 6]} weekStartsOn={draft.weekStartsOn} minOne label={`${r.name} days`}
+                      onChange={(days) => updateRoutine(r.id, { days: days.length === 7 ? undefined : days })} testId={`button-routine-day-${r.id}-`} />
+                    <p className="text-xs text-muted-foreground">{fmtDur((toMin(r.endTime) - toMin(r.startTime) + 1440) % 1440)} · {routineDaysLabel(r.days)}{r.endTime < r.startTime ? " · crosses midnight" : ""}</p>
+                  </div>
+                ))}
+                <Button variant="outline" className="justify-self-start" onClick={() => setDraft((d) => ({
+                  ...d,
+                  routines: [...d.routines, { id: crypto.randomUUID(), name: "New routine", startTime: "09:00", endTime: "10:00",
+                    color: "#3f51b5" }],
+                }))} data-testid="button-add-routine"><Plus className="h-4 w-4 mr-1.5" /> Add routine</Button>
+              </div>
+            </SubSection>
+            <SubSection title="Focus timer">
+              <Field label="Default focus (hrs:mins)">
+                {/* Saved as it's typed; left empty, it goes back to 30 minutes. */}
+                <DurationInput value={draft.focusMinutes || null} className="max-w-32" testId="input-focus-min"
+                  onChange={(m) => m && m <= 720 && setDraft((d) => ({ ...d, focusMinutes: m }))}
+                  onBlur={(m) => setDraft((d) => ({ ...d, focusMinutes: m && m <= 720 ? m : 30 }))} />
+              </Field>
+            </SubSection>
           </Section>
 
           <Section title="Sunrise & sunset">
@@ -1139,15 +1163,6 @@ export function SettingsPage() {
             </Row>
           </Section>
 
-          <Section title="Focus timer">
-            <Field label="Default focus (hrs:mins)">
-              {/* Saved as it's typed; left empty, it goes back to 30 minutes. */}
-              <DurationInput value={draft.focusMinutes || null} className="max-w-32" testId="input-focus-min"
-                onChange={(m) => m && m <= 720 && setDraft((d) => ({ ...d, focusMinutes: m }))}
-                onBlur={(m) => setDraft((d) => ({ ...d, focusMinutes: m && m <= 720 ? m : 30 }))} />
-            </Field>
-          </Section>
-
           <Section title="Calendar links" hint="Connect, import and export calendars">
             <CalendarLinks />
           </Section>
@@ -1156,23 +1171,6 @@ export function SettingsPage() {
             <BackupRestore beforeBackup={flushAndroidSettings} />
           </Section>
 
-          <Section title="Calendar view">
-            <div className="grid sm:grid-cols-2 gap-3">
-              <Field label="Week starts on">
-                <Select value={String(draft.weekStartsOn)} onValueChange={(v) => setDraft({ ...draft, weekStartsOn: Number(v) as WeekDay })}>
-                  <SelectTrigger data-testid="select-week-start">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, n) => (
-                      <SelectItem key={d} value={String(n)}>{d}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-
-            </div>
-          </Section>
           <Section title="Appearance">
             <div className="flex flex-wrap gap-2" role="group" aria-label="App color theme">
               {COLOR_THEMES.map((name) => (
