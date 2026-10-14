@@ -628,14 +628,14 @@ export default function JournalPage() {
     return () => window.removeEventListener("cadence:journal-compose", f);
   }, []);
   const all = entries ?? [];
-  // Archived entries stay on their day but are left out of tag counts, and out of searches unless asked for.
+  // Archived entries only show in the archive: not on their day, in tag counts, or in searches unless asked for.
   const live = useMemo(() => all.filter((e) => !e.archived), [all]);
   const archivedEntries = useMemo(() => all.filter((e) => e.archived).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)), [all]);
   const [inArchive, setInArchive] = useState(false);
   const [withArchived, setWithArchived] = useState(false);
-  const entryDays = useMemo(() => new Set(all.map((e) => e.date)), [all]);
+  const entryDays = useMemo(() => new Set(live.map((e) => e.date)), [live]);
 
-  const dayEntries = all.filter((e) => e.date === day).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const dayEntries = live.filter((e) => e.date === day).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const tagsOfEntry = (e: JournalEntry) => entryTags(e, itemOf(e), settings);
   const count = (tags: (e: JournalEntry) => string[], from = live) => {
     const m = new Map<string, number>();
@@ -648,9 +648,9 @@ export default function JournalPage() {
   const savedTagCounts = useMemo(() => count(ownTags, all), [all]); // eslint-disable-line react-hooks/exhaustive-deps
   const recentDays = useMemo(() => {
     const m = new Map<string, number>();
-    for (const e of all) m.set(e.date, (m.get(e.date) ?? 0) + 1);
+    for (const e of live) m.set(e.date, (m.get(e.date) ?? 0) + 1);
     return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 8);
-  }, [all]);
+  }, [live]);
 
   const query = q.trim().toLowerCase();
   const matches = (e: JournalEntry) => query.split(/\s+/).every((t) =>
