@@ -194,45 +194,6 @@ function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
   return false;
 }
 
-/**
- * Calls `onSwipe` for a quick swipe left (1) or right (-1) on `el`, with whether it was on the page itself
- * (rather than the bottom bar). Holds (which pick items up to drag them), pinches and mostly-vertical
- * moves are left alone, as are swipes on things that scroll or drag sideways themselves.
- */
-function useSwipe(ref: React.RefObject<HTMLElement>, onSwipe: (dir: 1 | -1) => void) {
-  const handler = useRef(onSwipe);
-  handler.current = onSwipe;
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    let start: { x: number; y: number; t: number } | null = null;
-    const down = (e: TouchEvent) => {
-      start = e.touches.length === 1 && !sidewaysOwner(e.target, el) ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null;
-    };
-    const move = (e: TouchEvent) => { if (e.touches.length > 1 || e.defaultPrevented) start = null; };
-    const up = (e: TouchEvent) => {
-      const s = start;
-      start = null;
-      const t = e.changedTouches[0];
-      if (!s || !t || Date.now() - s.t > 700) return;
-      const dx = t.clientX - s.x, dy = t.clientY - s.y;
-      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      handler.current(dx < 0 ? 1 : -1);
-    };
-    const cancel = () => { start = null; };
-    el.addEventListener("touchstart", down, { passive: true });
-    el.addEventListener("touchmove", move, { passive: true });
-    el.addEventListener("touchend", up, { passive: true });
-    el.addEventListener("touchcancel", cancel, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", down);
-      el.removeEventListener("touchmove", move);
-      el.removeEventListener("touchend", up);
-      el.removeEventListener("touchcancel", cancel);
-    };
-  }, [ref]);
-}
-
 /** Gives a copied page the scroll positions of the original (copies start scrolled to the top). */
 function copyScroll(from: Element, to: Element) {
   const a = document.createTreeWalker(from, NodeFilter.SHOW_ELEMENT), b = document.createTreeWalker(to, NodeFilter.SHOW_ELEMENT);
@@ -242,13 +203,8 @@ function copyScroll(from: Element, to: Element) {
   }
 }
 
-/**
- * A page turn: a picture of the page as it is (a copy, which can't be tapped) slides away toward
- * `dir`'s side, uncovering the next page as `change` brings it in, which drifts over from that side
- * underneath. Used for swipes between pages and between dates alike.
- */
-function turnPage(main: HTMLElement, page: HTMLElement, dir: 1 | -1, change: () => void) {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { change(); return; }
+/** A copy of the page as it is, laid over it (it can't be tapped), to be dragged away. */
+function coverOf(main: HTMLElement, page: HTMLElement) {
   const cover = page.cloneNode(true) as HTMLElement;
   cover.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
   cover.querySelectorAll("[data-testid]").forEach((el) => el.removeAttribute("data-testid"));
@@ -258,19 +214,144 @@ function turnPage(main: HTMLElement, page: HTMLElement, dir: 1 | -1, change: () 
   Object.assign(cover.style, {
     position: "absolute", left: `${page.offsetLeft}px`, top: `${page.offsetTop}px`, width: `${page.offsetWidth}px`,
     height: `${page.offsetHeight}px`, zIndex: "10", pointerEvents: "none", background: "hsl(var(--background))",
-    boxShadow: "0 0 24px rgb(0 0 0 / .25)",
+    boxShadow: "0 0 12px rgb(0 0 0 / .22)", willChange: "transform",
   });
   main.appendChild(cover);
   copyScroll(page, cover);
-  change();
-  const timing = { duration: 340, easing: "cubic-bezier(.25,.8,.25,1)" };
-  cover.animate([{ transform: "none" }, { transform: `translateX(${-dir * 100}%)` }], timing).finished
-    .finally(() => cover.remove());
-  // The next page (a new one once React has drawn it, or this one with its new date) drifts in beneath.
-  requestAnimationFrame(() => {
-    const next = main.querySelector<HTMLElement>("[data-page]");
-    next?.animate([{ transform: `translateX(${dir * 30}%)`, opacity: 0.6 }, { transform: "none", opacity: 1 }], timing);
-  });
+  return cover;
+}
+
+/** How far above the bottom bar a drag still counts as on the bar (changing the page, not the date). */
+const BAR_REACH = 40;
+
+/**
+ * What a drag toward `dir` does. A page turn brings the next page in underneath as the drag begins
+ * (`undo` goes back if it's let go of early); a date slide (`slide`) changes the date once let go.
+ */
+type Turn = { change: () => void; undo?: () => void; slide?: boolean };
+
+const EASE = "cubic-bezier(.2,.7,.3,1)";
+
+/**
+ * Dragging sideways across `ref` follows the finger, then finishes when let go past a third of the
+ * way (or flicked), or settles back if not.
+ * - A page turn: a copy of the old page is dragged away (a small shadow under it), uncovering the next
+ *   one, which drifts over from that side.
+ * - A date slide: the page itself slides and fades, and the new date slides in faded from the other side.
+ * Holds (which pick items up to drag them), pinches, mostly-vertical moves and things that scroll or
+ * drag sideways themselves are left alone.
+ */
+function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HTMLElement>, page: React.RefObject<HTMLElement>,
+  plan: (dir: 1 | -1, startY: number) => Turn | null) {
+  const planRef = useRef(plan);
+  planRef.current = plan;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    type Drag = { x: number; y: number; t0: number; dir?: 1 | -1; turn?: Turn; cover?: HTMLElement; w: number; off: number; v: number; at: number; lastX: number };
+    let g: Drag | null = null;
+    let settling = false;
+    const current = () => main.current?.querySelector<HTMLElement>("[data-page]") ?? null;
+    const style = (node: HTMLElement | null, transform: string, opacity: string, ms: number) => {
+      if (!node) return;
+      node.style.transition = ms ? `transform ${ms}ms ${EASE}, opacity ${ms}ms ${EASE}` : "none";
+      node.style.transform = transform;
+      node.style.opacity = opacity;
+    };
+    const place = (d: Drag, off: number, ms = 0) => {
+      const p = Math.min(1, Math.abs(off) / d.w);
+      if (d.turn!.slide) return style(current(), `translateX(${off}px)`, String(1 - 0.7 * p), ms);
+      style(d.cover!, `translateX(${off}px)`, "", ms);
+      style(current(), p >= 1 ? "" : `translateX(${d.dir! * 0.3 * d.w * (1 - p)}px)`, "", ms);
+    };
+    // The rest of a touch goes to the element it began on, even once a page turn takes that element
+    // away with the old page (when it no longer reaches `el`), so it's listened to there.
+    let target: EventTarget | null = null;
+    const listen = (on: EventTarget | null) => {
+      target?.removeEventListener("touchmove", move as EventListener);
+      target?.removeEventListener("touchend", end);
+      target?.removeEventListener("touchcancel", end);
+      target = on;
+      on?.addEventListener("touchmove", move as EventListener, { passive: false });
+      on?.addEventListener("touchend", end, { passive: true });
+      on?.addEventListener("touchcancel", end, { passive: true });
+    };
+    const down = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (g?.turn) return; // a second finger mid-drag
+      g = !settling && e.touches.length === 1 && !sidewaysOwner(e.target, el)
+        ? { x: t.clientX, y: t.clientY, t0: e.timeStamp, w: 1, off: 0, v: 0, at: e.timeStamp, lastX: t.clientX } : null;
+      listen(g ? e.target : null);
+    };
+    function move(e: TouchEvent) {
+      const d = g;
+      if (!d) return;
+      if (e.touches.length > 1) return end();
+      const t = e.touches[0], dx = t.clientX - d.x, dy = t.clientY - d.y;
+      if (!d.turn) {
+        // A finger resting first is a hold (which picks an item up to drag it), not a swipe.
+        if (e.defaultPrevented || e.timeStamp - d.t0 > 450) { g = null; return; }
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        if (Math.abs(dx) < Math.abs(dy) * 1.5) { g = null; return; }
+        const dir = dx < 0 ? 1 : -1, turn = planRef.current(dir, d.y), m = main.current, p = page.current;
+        if (!turn || !m || !p) { g = null; return; }
+        Object.assign(d, { dir, turn, w: p.offsetWidth });
+        if (!turn.slide) {
+          d.cover = coverOf(m, p);
+          turn.change();
+        }
+      }
+      if (e.cancelable) e.preventDefault();
+      // Only toward the side it started; back past the start it just rests there.
+      d.off = d.dir! > 0 ? Math.min(0, dx) : Math.max(0, dx);
+      if (e.timeStamp > d.at) d.v = 0.6 * d.v + 0.4 * ((t.clientX - d.lastX) / (e.timeStamp - d.at));
+      d.at = e.timeStamp;
+      d.lastX = t.clientX;
+      place(d, d.off);
+    }
+    function end() {
+      const d = g;
+      g = null;
+      listen(null);
+      if (!d?.turn) return;
+      settling = true;
+      const side = -d.dir!; // the way the old page (or date) leaves
+      const done = Math.abs(d.off) > d.w / 3 ? d.v * side > -0.3 : d.v * side > 0.4;
+      const tidy = () => { style(current(), "", "", 0); settling = false; };
+      if (d.turn.slide) {
+        if (!done) {
+          style(current(), "", "", 200);
+          setTimeout(tidy, 220);
+          return;
+        }
+        // Out the rest of the way, then the new date in from the other side.
+        style(current(), `translateX(${side * d.w * 0.5}px)`, "0", 120);
+        setTimeout(() => {
+          d.turn!.change();
+          requestAnimationFrame(() => {
+            style(current(), `translateX(${-side * d.w * 0.25}px)`, "0", 0);
+            requestAnimationFrame(() => {
+              style(current(), "", "", 220);
+              setTimeout(tidy, 240);
+            });
+          });
+        }, 130);
+        return;
+      }
+      const ms = Math.round(Math.max(140, Math.min(300, (done ? d.w - Math.abs(d.off) : Math.abs(d.off)) * 0.9)));
+      place(d, done ? side * d.w : 0, ms);
+      setTimeout(() => {
+        if (!done) d.turn!.undo?.();
+        // Back to as it was once the undone page is drawn under the cover.
+        setTimeout(() => { d.cover!.remove(); tidy(); }, done ? 0 : 80);
+      }, ms + 20);
+    }
+    el.addEventListener("touchstart", down, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", down);
+      listen(null);
+    };
+  }, [ref, main, page]);
 }
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -280,20 +361,21 @@ export function Shell({ children }: { children: ReactNode }) {
   const page = pages.findIndex((n) => n.match(loc));
   const pageRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
-  // Swiping the bottom bar goes to the next or previous page in it (in the user's order; the end pages
-  // go no further). Swiping a page steps its date, pressing its own next or previous day (week, month)
-  // button, marked `data-swipe`; a page with no dates goes to the next page instead.
-  const swipe = (onPage: boolean) => (dir: 1 | -1) => {
-    const main = mainRef.current, el = pageRef.current;
-    if (!main || !el) return;
-    const step = onPage ? main.querySelector<HTMLButtonElement>(`[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`) : null;
-    if (step) return turnPage(main, el, dir, () => step.click());
-    if (onPage && main.querySelector("[data-swipe]")) return; // dates, but none further that way
+  // Dragging the bottom bar (or just above it) goes to the next or previous page in it (in the user's
+  // order; the end pages go no further). Dragging a page steps its date, pressing its own next or
+  // previous day (week, month) button, marked `data-swipe`; a page with no dates goes to the next page instead.
+  const plan = (dir: 1 | -1, startY: number): Turn | null => {
+    const main = mainRef.current, bar = barRef.current;
+    if (!main) return null;
+    const onPage = !bar?.offsetHeight || startY < bar.getBoundingClientRect().top - BAR_REACH;
+    const stepSel = `[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`;
+    if (onPage && main.querySelector(stepSel)) return { change: () => main.querySelector<HTMLButtonElement>(stepSel)?.click(), slide: true };
+    if (onPage && main.querySelector("[data-swipe]")) return null; // dates, but none further that way
     const next = page < 0 ? undefined : pages[page + dir];
-    if (next) turnPage(main, el, dir, () => nav(next.href));
+    return next ? { change: () => nav(next.href), undo: () => window.history.back() } : null;
   };
-  useSwipe(mainRef, swipe(true));
-  useSwipe(barRef, swipe(false));
+  usePageDrag(mainRef, mainRef, pageRef, plan);
+  usePageDrag(barRef, mainRef, pageRef, plan);
   const { settings } = useSettings();
   const { focus } = usePlanner();
   const elapsed = useFocusElapsed();
