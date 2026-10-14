@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
 import { HabitCheck } from "@/components/checks";
-import { burst, useGlide } from "@/components/motion";
+import { burst, pulse, useGlide } from "@/components/motion";
 import { ReminderSelect, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
@@ -269,9 +269,48 @@ function Empty({ icon, title, body, children }: { icon: React.ReactNode; title: 
 }
 
 /* ====================== FOCUS ====================== */
+/**
+ * The timer's ring and time, the one part of the Focus page that changes each second (so the rest
+ * isn't drawn again with it). The ring is the time left: starting, it sweeps round to full, then winds
+ * down as the time runs; finishing, it bursts and the timer gives a little pulse. The time counts over
+ * to a new one (back to the set length, +5 min) rather than jumping; ticking by the second is as it is.
+ */
+function TimerFace({ idleSec, title }: { idleSec: number; title: string }) {
+  const { focus } = usePlanner();
+  const elapsed = useFocusElapsed();
+  const remaining = focus ? focus.plannedSec - elapsed : idleSec;
+  const pct = focus ? Math.max(0, remaining) / focus.plannedSec : 0;
+  const ringColor = "hsl(var(--k-focus))";
+  const shownRemaining = Math.round(useGlide(remaining, 2, 600));
+  const timerRef = useRef<HTMLDivElement>(null);
+  const hadFocus = useRef(!!focus);
+  useEffect(() => {
+    if (hadFocus.current && !focus && timerRef.current) {
+      burst(timerRef.current, ringColor, 6, 1.35);
+      pulse(timerRef.current, 1.04, 520);
+    }
+    hadFocus.current = !!focus;
+  }, [focus]);
+  return (
+    <div ref={timerRef} className="relative justify-self-center rounded-full">
+      <Ring pct={pct} size={236} stroke={12} color={ringColor} track="hsl(var(--k-focus) / .14)" />
+      <div className="absolute inset-0 grid place-items-center text-center">
+        <div className="grid justify-items-center gap-1.5">
+          <div className="text-[56px] font-semibold leading-none tracking-tight tnum" data-testid="text-timer">
+            {clock(shownRemaining)}
+          </div>
+          <div className="flex max-w-[170px] items-center gap-1 text-sm text-muted-foreground">
+            <Target className="h-3.5 w-3.5 shrink-0" style={{ color: ringColor }} aria-hidden />
+            <span className="truncate">{focus ? focus.title : title}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FocusPage() {
   const { focus, startFocus, pauseFocus, resumeFocus, stopFocus, addFocusTime } = usePlanner();
-  const elapsed = useFocusElapsed();
   const { settings } = useSettings();
   const { data: items } = useItems();
   const { data: sessions } = useSessions();
@@ -303,25 +342,6 @@ export function FocusPage() {
   }));
   const maxWeek = Math.max(60, ...week.map((w) => w.min));
 
-  const remaining = focus ? focus.plannedSec - elapsed : (validDuration ? minutes : 0) * 60;
-  // The ring is the time left: starting, it sweeps round to full, then winds down as the time runs.
-  const pct = focus ? Math.max(0, remaining) / focus.plannedSec : 0;
-  const ringColor = "hsl(var(--k-focus))";
-  // The time shown counts over to a new one (a finished session's back to the set length, +5 min)
-  // rather than jumping; ticking by the second is as it is.
-  const shownRemaining = Math.round(useGlide(remaining, 2, 600));
-  // Finishing, the ring bursts and the timer gives a little pulse.
-  const timerRef = useRef<HTMLDivElement>(null);
-  const hadFocus = useRef(!!focus);
-  useEffect(() => {
-    if (hadFocus.current && !focus && timerRef.current) {
-      burst(timerRef.current, ringColor, 6, 1.35);
-      timerRef.current.animate?.([{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }],
-        { duration: 520, easing: "ease-out" });
-    }
-    hadFocus.current = !!focus;
-  }, [focus]);
-
   return (
     <>
       <PageHeader title="Focus" sub={`${fmtDur(totalToday)} focused today · ${todays.length} session${todays.length === 1 ? "" : "s"}`} />
@@ -329,20 +349,7 @@ export function FocusPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
           <section className="card-md focus-hero relative min-w-0 p-4 md:p-6 grid gap-5" aria-label="Timer">
             <h2 className="text-sm font-semibold tracking-tight">Timer</h2>
-            <div ref={timerRef} className="relative justify-self-center rounded-full">
-              <Ring pct={pct} size={236} stroke={12} color={ringColor} track="hsl(var(--k-focus) / .14)" />
-              <div className="absolute inset-0 grid place-items-center text-center">
-                <div className="grid justify-items-center gap-1.5">
-                  <div className="text-[56px] font-semibold leading-none tracking-tight tnum" data-testid="text-timer">
-                    {clock(shownRemaining)}
-                  </div>
-                  <div className="flex max-w-[170px] items-center gap-1 text-sm text-muted-foreground">
-                    <Target className="h-3.5 w-3.5 shrink-0" style={{ color: ringColor }} aria-hidden />
-                    <span className="truncate">{focus ? focus.title : label.trim() || "Focus session"}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <TimerFace idleSec={(validDuration ? minutes : 0) * 60} title={label.trim() || "Focus session"} />
 
             {focus ? (
               <div className="flex items-center justify-center gap-3">
@@ -1254,7 +1261,7 @@ function Section({ title, hint, children, defaultOpen = false }: { title: string
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && <div id={id} className="grid grid-cols-1 gap-4 border-t px-4 pb-4 pt-4 animate-in fade-in duration-200">{children}</div>}
+      {open && <div id={id} className="grid grid-cols-1 gap-4 border-t px-4 pb-4 pt-4 swap-in">{children}</div>}
     </section>
   );
 }
@@ -1273,7 +1280,7 @@ function SubSection({ title, hint, children }: { title: string; hint?: string; c
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && <div id={id} className="grid grid-cols-1 gap-4 px-4 pt-4 animate-in fade-in duration-200">{children}</div>}
+      {open && <div id={id} className="grid grid-cols-1 gap-4 px-4 pt-4 swap-in">{children}</div>}
     </div>
   );
 }

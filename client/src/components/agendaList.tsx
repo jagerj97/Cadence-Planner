@@ -26,9 +26,9 @@ export const AgendaItem = memo(function AgendaItem({ e, settings, compact = fals
       className={cn("block w-full min-w-0 rounded-md text-left hover-elevate", compact ? "px-2.5 py-1.5" : "px-3 py-2", e.done && "opacity-55")}
       style={{ background: tint(e.i, k === "sleep" ? 0.1 : 0.15), borderLeft: `3px solid ${accentOf(e.i, settings)}` }}
       data-testid={`agenda-item-${e.key}`}>
-      <div className={cn("flex items-center gap-1.5 font-medium leading-tight", e.done && "line-through")}>
+      <div className="flex items-center gap-1.5 font-medium leading-tight">
         <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: colorOf(e.i) }} />
-        <span className="truncate text-sm">{e.i.title}</span>
+        <span className="truncate text-sm"><span className="strike" data-on={e.done}>{e.i.title}</span></span>
       </div>
       {(e.time || e.i.location) && (
         <div className="mt-0.5 truncate text-xs text-muted-foreground tnum">

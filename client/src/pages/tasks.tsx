@@ -181,7 +181,7 @@ export default function TasksPage() {
           <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => setTagFilter((f) => f.map((n) => (n === from ? to : n)))} />
 
           {/* Changing the filter fades the new list in. */}
-          <div key={filter} className="grid grid-cols-1 gap-4 animate-in fade-in duration-200">
+          <div key={filter} className="grid grid-cols-1 gap-4 swap-in">
           {isLoading ? (
             <div className="grid gap-2">
               {[0, 1, 2].map((k) => (

@@ -360,10 +360,10 @@ export function DayColumn({
                   label={b.done ? "Mark not done" : "Mark done"} testId={`button-check-${b.key}`} />
               )}
               {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && <div className="min-w-0 flex-1 overflow-hidden">
-                <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm", b.done && "line-through")}>
+                <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm")}>
                   {!checkable && !compact && <M.icon className="h-3.5 w-3.5 shrink-0" style={{ color: colorOf(b.item) }} />}
                   {/* Narrow columns (the week) let a title take two lines when there's room. */}
-                  <span className={cn(compact && !tiny && h >= 44 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate whitespace-nowrap")}>{b.item.title}</span>
+                  <span className={cn(compact && !tiny && h >= 44 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate whitespace-nowrap")}><span className="strike" data-on={b.done}>{b.item.title}</span></span>
                   {recurring && !compact && !tiny && <Repeat className="h-3 w-3 shrink-0 text-muted-foreground" />}
                   {b.item.autoTimer && !tiny && <Timer className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Timer starts automatically" />}
                 </div>

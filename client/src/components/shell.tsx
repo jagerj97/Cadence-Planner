@@ -11,7 +11,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { usePlanner, useFocusElapsed, clock, requestJournalCompose } from "./planner";
+import { usePlanner, FocusClock, requestJournalCompose } from "./planner";
 import { KIND_META, fromMin, todayStr } from "@/lib/cal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Kind } from "@shared/schema";
@@ -19,6 +19,7 @@ import { useSettings } from "@/lib/data";
 import { QuickAdd } from "@/pages/today";
 import { cn } from "@/lib/utils";
 import { endTurn, frame, setTurnOrder, startTurn, turning, type TurnMode, type TurnState } from "./pageTurn";
+import { reducedMotion } from "./motion";
 
 
 export const NAV = [
@@ -45,7 +46,6 @@ function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
   const [loc] = useLocation();
   const nav = useNav();
   const { focus } = usePlanner();
-  const elapsed = useFocusElapsed();
   const row = (n: (typeof NAV)[number]) => {
     const on = n.match(loc);
     return (
@@ -62,7 +62,7 @@ function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
       >
         <n.icon className={cn("h-5 w-5", on ? "text-primary" : "text-muted-foreground")} />
         {n.label}
-        {n.href === "/focus" && focus && <span className="ml-auto font-mono text-xs tnum text-primary">{clock(focus.plannedSec - elapsed)}</span>}
+        {n.href === "/focus" && focus && <span className="ml-auto font-mono text-xs tnum text-primary"><FocusClock /></span>}
       </Link>
     );
   };
@@ -251,7 +251,7 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
         if (Math.abs(dx) < Math.abs(dy) * 1.5) { g = null; return; }
         const dir = dx < 0 ? 1 : -1, turn = planRef.current(dir, d.y), m = main.current, p = page.current;
-        if (!turn || !m || !p || turning() || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        if (!turn || !m || !p || turning() || reducedMotion()) {
           g = null;
           // Without motion, a swipe still makes its change, all at once.
           if (turn && !turning()) turn.change();
@@ -322,7 +322,6 @@ export function Shell({ children }: { children: ReactNode }) {
   usePageDrag(barRef, mainRef, pageRef, plan);
   const { settings } = useSettings();
   const { focus } = usePlanner();
-  const elapsed = useFocusElapsed();
   const inSettings = SETTINGS_NAV.match(loc);
   if (!inSettings) lastPage = loc;
 
@@ -383,7 +382,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 {/* The page you're on: its icon grows a little, with a quick spring. */}
                 <n.icon className={cn("h-5 w-5 transition-transform duration-300 ease-[cubic-bezier(.3,1.6,.5,1)] motion-reduce:transition-none", on && "scale-[1.18]")} />
               </span>
-              <span className="truncate max-w-full tnum">{timer ? clock(focus.plannedSec - elapsed) : n.label}</span>
+              <span className="truncate max-w-full tnum">{timer ? <FocusClock /> : n.label}</span>
             </Link>
           );
         })}

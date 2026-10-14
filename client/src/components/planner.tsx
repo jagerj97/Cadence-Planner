@@ -47,7 +47,7 @@ import {
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { HabitCheck, TaskCheck, useStreakFlare } from "@/components/checks";
-import { useShown } from "@/components/motion";
+import { reducedMotion, useShown } from "@/components/motion";
 import { WeekdayPills, choicePill } from "@/components/pills";
 import { TwoRows } from "@/components/twoRows";
 import { Linked, LocationLink } from "@/components/links";
@@ -111,7 +111,7 @@ function applyTheme(theme: Theme, fade: boolean) {
   const set = () => root.classList.toggle("dark", theme === "dark");
   const doc = document as Document & { startViewTransition?: (update: () => void) => { finished: Promise<void> } };
   if (!fade || root.classList.contains("dark") === (theme === "dark") || !doc.startViewTransition ||
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      reducedMotion()) {
     set();
     return;
   }
@@ -745,6 +745,13 @@ export const clock = (sec: number) => {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`;
 };
+
+/** The running focus timer's time left, ticking on its own, so what shows it isn't drawn again each second. */
+export function FocusClock() {
+  const { focus } = usePlanner();
+  const elapsed = useFocusElapsed();
+  return focus ? <>{clock(focus.plannedSec - elapsed)}</> : null;
+}
 
 /* ============ item editor ============ */
 /** "Save for tomorrow" and the like: where a habit's repeating count starts instead of today. */

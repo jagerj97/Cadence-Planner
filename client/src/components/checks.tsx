@@ -1,17 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
-import { burst } from "@/components/motion";
-
-const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/** A quick squeeze and spring back, `big` from 0 (none) to 1 (a full bounce). */
-export function bounce(el: Element | null, big = 1) {
-  if (!el || reduced()) return Promise.resolve();
-  return el.animate([
-    { transform: "scale(1)" }, { transform: `scale(${1 - 0.22 * big})`, offset: 0.25 },
-    { transform: `scale(${1 + 0.18 * big})`, offset: 0.6 }, { transform: "scale(.97)", offset: 0.82 }, { transform: "scale(1)" },
-  ], { duration: 420, easing: "ease-out" }).finished.then(() => {}, () => {});
-}
+import { bounce, burst, reducedMotion as reduced } from "@/components/motion";
 
 /**
  * A row that's just been checked off and won't stay in its list: once the bounce has played, it fades

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
+import { reducedMotion } from "./motion";
 
 const HOLD_MS = 500; // Android's long press; a finger resting briefly before a scroll still scrolls
 const SLOP_PX = 8; // moving farther than this before the hold completes means the user is scrolling
@@ -106,7 +107,7 @@ export function SortableList<T extends string | number>({ items, onReorder, rend
     if (!drop || dragRef.current) return;
     dropped.current = null;
     const el = refs.current[shown.indexOf(drop.item)];
-    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!el || reducedMotion()) return;
     const box = el.getBoundingClientRect();
     const dx = drop.x - (box.left + box.width / 2), dy = drop.y - (box.top + box.height / 2);
     el.animate([

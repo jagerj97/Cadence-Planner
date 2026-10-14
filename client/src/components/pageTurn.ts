@@ -13,16 +13,19 @@
  * mid-turn picks up where the last one was instead of flashing in.
  */
 
+import { reducedMotion as reduced } from "./motion";
+
 export type TurnMode = "page" | "date";
 export type TurnState = { main: HTMLElement; cover: HTMLElement; dir: 1 | -1; mode: TurnMode; w: number; marked?: HTMLElement; held?: HTMLElement };
 
 const EASE = "cubic-bezier(.2,.7,.3,1)";
 const SHADOW = "0 0 32px 2px rgb(0 0 0 / .45)";
-const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Whether a turn is under way (or settling): another can't start, and navigating doesn't add one. */
 let busy = false;
 export const turning = () => busy;
+/** Until when an address change is a drag being taken back (history.back() arrives later), not a new turn. */
+let quietUntil = 0;
 
 /** Gives a copied page the scroll positions of the original (copies start scrolled to the top). */
 function copyScroll(from: Element, to: Element) {
@@ -115,7 +118,10 @@ export function frame(s: TurnState, p: number, ms = 0) {
 export function endTurn(s: TurnState, done: boolean, ms: number, undo?: () => void) {
   frame(s, done ? 1 : 0, ms);
   setTimeout(() => {
-    if (!done) undo?.();
+    if (!done) {
+      quietUntil = performance.now() + 600;
+      undo?.();
+    }
     // Back to as it was once an undone page is drawn under the copy.
     setTimeout(() => {
       s.cover.remove();
@@ -147,7 +153,7 @@ const pathOf = (url: string) => "/" + (new URL(url).hash.replace(/^#?\/?/, "").s
 const dateOf = (path: string) => /\d{4}-\d{2}-\d{2}/.exec(path)?.[0];
 
 function onAddress(e: Event) {
-  if (busy) return;
+  if (busy || performance.now() < quietUntil) return;
   const { oldURL, newURL } = e as HashChangeEvent;
   if (!oldURL || !newURL) return;
   const from = pathOf(oldURL), to = pathOf(newURL);

@@ -145,7 +145,7 @@ export function WeekPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggle
         {toggle}
       </PageHeader>
       {filters}
-      <div data-turn-body className="animate-in fade-in duration-200 flex-1 min-h-0 pt-3 md:p-6">
+      <div data-turn-body className="swap-in flex-1 min-h-0 pt-3 md:p-6">
         <div className="h-full card-md card-flush flex flex-col overflow-hidden">
           <div className="flex min-w-0 flex-1 flex-col min-h-0">
             <div className="min-w-0 flex flex-col flex-1 min-h-0">
@@ -289,7 +289,7 @@ export function MonthPage({ toggle, filters, visibility = ALL_VISIBLE }: { toggl
         {toggle}
       </PageHeader>
       {filters}
-      <div data-turn-body className="animate-in fade-in duration-200 flex-1 min-h-0 pt-3 md:p-6 overflow-y-auto md:overflow-auto">
+      <div data-turn-body className="swap-in flex-1 min-h-0 pt-3 md:p-6 overflow-y-auto md:overflow-auto">
         <div className="card-md card-flush flex overflow-hidden min-w-0 min-h-full flex-col">
           <div className="grid grid-cols-7 border-b">
             {weekdays.map((w) => (
@@ -489,7 +489,7 @@ export function AgendaPage({ toggle, filters, visibility = ALL_VISIBLE }: { togg
         {toggle}
       </PageHeader>
       {filters}
-      <div className="animate-in fade-in duration-200 flex-1 min-h-0 pt-3 md:p-6">
+      <div className="swap-in flex-1 min-h-0 pt-3 md:p-6">
         <div className="card-md card-flush mx-auto h-full max-w-3xl overflow-hidden">
           <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto scroll-thin [overflow-anchor:none]" data-testid="agenda-scroller">
             <div ref={topEdge} className="h-px" aria-hidden />
@@ -534,7 +534,7 @@ export function TimelinePage({ toggle, filters, visibility = ALL_VISIBLE }: { to
         {toggle}
       </PageHeader>
       {filters}
-      <div className="animate-in fade-in duration-200 flex-1 min-h-0 pt-3 md:p-6">
+      <div className="swap-in flex-1 min-h-0 pt-3 md:p-6">
         <div className="card-md card-flush mx-auto h-full max-w-3xl overflow-hidden">
           <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto scroll-thin [overflow-anchor:none]" data-testid="timeline-scroller">
             <div ref={topEdge} className="h-px" aria-hidden />

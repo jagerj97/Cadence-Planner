@@ -6,7 +6,7 @@ import { NavOrderEditor } from "@/components/navOrder";
 import { DayPicker } from "@/pages/calendar";
 import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
-import { usePlanner, useNow, Ring, StreakBadge } from "@/components/planner";
+import { usePlanner, useNow, useToday, Ring, StreakBadge } from "@/components/planner";
 import { HabitCheck, TaskCheck } from "@/components/checks";
 import { Morph, SlidePill, useGlide, useShown, useSlidePill } from "@/components/motion";
 import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
@@ -44,12 +44,13 @@ import { ChevronDown, ChevronLeft, ChevronRight, Plus, Play, CornerDownLeft, Sli
 export default function Today() {
   const [, params] = useRoute("/day/:date");
   const [, nav] = useLocation();
-  const day = params?.date ?? todayStr();
-  const isToday = day === todayStr();
+  // The page follows the date (at midnight too); only the Right now card keeps the time.
+  const today = useToday();
+  const day = params?.date ?? today;
+  const isToday = day === today;
   const { data: items, isLoading } = useItems();
   const { settings } = useSettings();
   const { openDetails, startFocus } = usePlanner();
-  const now = useNow(30000);
   const list = items ?? [];
 
   const shows = (panel: TodayPanel) => panelShown(settings, panel);
@@ -107,18 +108,18 @@ export default function Today() {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
           <section className={cn("contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3", wholeDay && "lg:overflow-y-auto scroll-thin lg:pr-1")} aria-label="Day timeline">
-            {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
+            {isToday && shows("now") && <div style={at("now")}><NowCard items={list} onStart={startFocus} /></div>}
             {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
             {/* One card for both views: switching keeps the toggle (its highlight slides) and fades the view in. */}
             {shows("schedule") && (
             <div className={cn("flex flex-col card-md overflow-hidden", !agenda && (wholeDay ? "shrink-0" : "flex-1 min-h-[420px]"))} style={at("schedule")} data-testid="card-day">
               <DayViewToggle view={view} onPick={pickView} wholeDay={wholeDay} onWholeDay={agenda ? undefined : toggleWholeDay} />
               {agenda ? (
-                <div key="agenda" className="px-4 pb-4 animate-in fade-in duration-200">
+                <div key="agenda" className="px-4 pb-4 swap-in">
                   <AgendaList list={agendaItems} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
                 </div>
               ) : (
-              <div key="timeline" className={cn("flex flex-col animate-in fade-in duration-200", !wholeDay && "flex-1")}>
+              <div key="timeline" className={cn("flex flex-col swap-in", !wholeDay && "flex-1")}>
               {/* All-day items and ones for anytime that day, inside the card above the timeline. */}
               {allDay.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 border-b px-2 pb-2" aria-label="All-day">
@@ -360,8 +361,9 @@ function CardHeaderLink({ to, title, testId, children }: { to: string; title: st
   );
 }
 
-function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: ReturnType<typeof usePlanner>["startFocus"] }) {
+function NowCard({ items, onStart }: { items: Item[]; onStart: ReturnType<typeof usePlanner>["startFocus"] }) {
   const { focus, openDetails } = usePlanner();
+  const now = useNow(30000);
   const nm = now.getHours() * 60 + now.getMinutes();
   const today = todayStr();
   const { settings } = useSettings();

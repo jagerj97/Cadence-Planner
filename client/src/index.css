@@ -220,7 +220,6 @@
  * need to be distinguished from eachother visually.
  */
 @layer utilities {
-  /* One line of text that fades out at the right edge instead of pushing its container wider */
   /* A page turn (components/pageTurn.ts): the real page moves by these, whichever page React shows. */
   main[data-turn="page"] > [data-page] {
     position: relative;
@@ -241,6 +240,11 @@
   /* Pages only scroll up and down, so sideways drags are theirs to turn without holding up scrolling. */
   main[data-pages], main[data-pages] [class*="overflow-y-auto"] { touch-action: pan-y; }
 
+  /* Content swapped for other content (a view, a filter, a section opened): a quick fade in. */
+  .swap-in { animation: swap-in .2s ease-out; }
+  @keyframes swap-in { from { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .swap-in { animation: none; } }
+
   /* A line drawn through a done title, sweeping in from the left. */
   .strike {
     background-image: linear-gradient(currentColor, currentColor);
@@ -248,10 +252,14 @@
     background-position: 0 55%;
     background-size: 0% 1.5px;
     transition: background-size .25s cubic-bezier(.3, .7, .3, 1);
+    /* Wrapped over lines, each line gets its own line through it. */
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
   }
   .strike[data-on="true"] { background-size: 100% 1.5px; }
   @media (prefers-reduced-motion: reduce) { .strike { transition: none; } }
 
+  /* One line of text that fades out at the right edge instead of pushing its container wider */
   .fade-truncate {
     overflow: hidden;
     white-space: nowrap;
