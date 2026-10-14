@@ -196,11 +196,13 @@ function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
 
 /** Gives a copied page the scroll positions of the original (copies start scrolled to the top). */
 function copyScroll(from: Element, to: Element) {
-  const a = document.createTreeWalker(from, NodeFilter.SHOW_ELEMENT), b = document.createTreeWalker(to, NodeFilter.SHOW_ELEMENT);
-  for (let x: Node | null = a.currentNode, y: Node | null = b.currentNode; x && y; x = a.nextNode(), y = b.nextNode()) {
-    const ex = x as Element, ey = y as Element;
-    if (ex.scrollTop || ex.scrollLeft) { ey.scrollTop = ex.scrollTop; ey.scrollLeft = ex.scrollLeft; }
-  }
+  // Only what can scroll (the copy has the same elements in the same order), not every element.
+  const sel = '[class*="overflow-"]';
+  const a = from.querySelectorAll(sel), b = to.querySelectorAll(sel);
+  a.forEach((x, n) => {
+    const y = b[n];
+    if (y && (x.scrollTop || x.scrollLeft)) { y.scrollTop = x.scrollTop; y.scrollLeft = x.scrollLeft; }
+  });
 }
 
 /** A copy of the page as it is, laid over it (it can't be tapped), to be dragged away. */
@@ -214,7 +216,7 @@ function coverOf(main: HTMLElement, page: HTMLElement) {
   Object.assign(cover.style, {
     position: "absolute", left: `${page.offsetLeft}px`, top: `${page.offsetTop}px`, width: `${page.offsetWidth}px`,
     height: `${page.offsetHeight}px`, zIndex: "10", pointerEvents: "none", background: "hsl(var(--background))",
-    boxShadow: "0 0 12px rgb(0 0 0 / .22)", willChange: "transform",
+    boxShadow: "0 0 12px rgb(0 0 0 / .22)", willChange: "transform, opacity", contain: "layout paint",
   });
   main.appendChild(cover);
   copyScroll(page, cover);
@@ -237,20 +239,18 @@ function turnPage(main: HTMLElement, page: HTMLElement, dir: 1 | -1, change: () 
   });
 }
 
-/**
- * What a drag toward `dir` does. A page turn brings the next page in underneath as the drag begins
- * (`undo` goes back if it's let go of early); a date slide (`slide`) changes the date once let go.
- */
-type Turn = { change: () => void; undo?: () => void; slide?: boolean };
+/** What a drag toward `dir` does: the change, how to take it back if it's let go of early, and whether it's a date (`slide`). */
+type Turn = { change: () => void; undo: () => void; slide?: boolean };
 
 const EASE = "cubic-bezier(.2,.7,.3,1)";
 
 /**
  * Dragging sideways across `ref` follows the finger, then finishes when let go past a third of the
- * way (or flicked), or settles back if not.
- * - A page turn: a copy of the old page is dragged away (a small shadow under it), uncovering the next
- *   one, which drifts over from that side.
- * - A date slide: the page itself slides and fades, and the new date slides in faded from the other side.
+ * way (or flicked), or settles back (and is undone) if not. Either way, once the drag is clearly
+ * sideways a copy of the page is laid over it and the change is made underneath:
+ * - A page turn: the copy is dragged away (a small shadow under it), uncovering the next page, which
+ *   drifts over from that side.
+ * - A date slide: the copy slides and fades as the new date fades in under it.
  * Holds (which pick items up to drag them), pinches, mostly-vertical moves and things that scroll or
  * drag sideways themselves are left alone.
  */
@@ -271,13 +271,24 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
       node.style.transform = transform;
       node.style.opacity = opacity;
     };
+    // Where the copy and the page under it are, `off` along the way.
     const place = (d: Drag, off: number, ms = 0) => {
-      const p = Math.min(1, Math.abs(off) / d.w);
-      if (d.turn!.slide) return style(current(), `translateX(${off}px)`, String(1 - 0.7 * p), ms);
-      style(d.cover!, `translateX(${off}px)`, "", ms);
-      style(current(), p >= 1 ? "" : `translateX(${d.dir! * 0.3 * d.w * (1 - p)}px)`, "", ms);
+      const p = Math.min(1, Math.abs(off) / d.w), under = current();
+      if (d.turn!.slide) {
+        style(d.cover!, `translateX(${off}px)`, String(1 - p), ms);
+        style(under, `translateX(${d.dir! * 0.15 * d.w * (1 - p)}px)`, String(Math.min(1, p * 1.4)), ms);
+      } else {
+        style(d.cover!, `translateX(${off}px)`, "", ms);
+        style(under, p >= 1 ? "" : `translateX(${d.dir! * 0.3 * d.w * (1 - p)}px)`, "", ms);
+      }
     };
-    // The rest of a touch goes to the element it began on, even once a page turn takes that element
+    // Moves come faster than frames: only the latest is drawn, once a frame.
+    let frame = 0;
+    const placeSoon = (d: Drag) => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => { frame = 0; if (g === d) place(d, d.off); });
+    };
+    // The rest of a touch goes to the element it began on, even once the change takes that element
     // away with the old page (when it no longer reaches `el`), so it's listened to there.
     let target: EventTarget | null = null;
     const listen = (on: EventTarget | null) => {
@@ -308,11 +319,14 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
         if (Math.abs(dx) < Math.abs(dy) * 1.5) { g = null; return; }
         const dir = dx < 0 ? 1 : -1, turn = planRef.current(dir, d.y), m = main.current, p = page.current;
         if (!turn || !m || !p) { g = null; return; }
-        Object.assign(d, { dir, turn, w: p.offsetWidth });
-        if (!turn.slide) {
-          d.cover = coverOf(m, p);
-          turn.change();
+        Object.assign(d, { dir, turn, w: p.offsetWidth, cover: coverOf(m, p) });
+        // A date's copy is see-through, with no edge: the two dates simply crossfade.
+        if (turn.slide) {
+          Object.assign(d.cover!.style, { background: "transparent", boxShadow: "none" });
+          style(p, "", "0", 0);
         }
+        // The copy shows first; the next page is drawn under it a frame later, so the drag starts at once.
+        requestAnimationFrame(() => turn.change());
       }
       if (e.cancelable) e.preventDefault();
       // Only toward the side it started; back past the start it just rests there.
@@ -320,43 +334,31 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
       if (e.timeStamp > d.at) d.v = 0.6 * d.v + 0.4 * ((t.clientX - d.lastX) / (e.timeStamp - d.at));
       d.at = e.timeStamp;
       d.lastX = t.clientX;
-      place(d, d.off);
+      placeSoon(d);
     }
     function end() {
       const d = g;
       g = null;
       listen(null);
       if (!d?.turn) return;
+      cancelAnimationFrame(frame);
+      frame = 0;
       settling = true;
       const side = -d.dir!; // the way the old page (or date) leaves
       const done = Math.abs(d.off) > d.w / 3 ? d.v * side > -0.3 : d.v * side > 0.4;
-      const tidy = () => { style(current(), "", "", 0); settling = false; };
-      if (d.turn.slide) {
-        if (!done) {
-          style(current(), "", "", 200);
-          setTimeout(tidy, 220);
-          return;
-        }
-        // Out the rest of the way, then the new date in from the other side.
-        style(current(), `translateX(${side * d.w * 0.5}px)`, "0", 120);
-        setTimeout(() => {
-          d.turn!.change();
-          requestAnimationFrame(() => {
-            style(current(), `translateX(${-side * d.w * 0.25}px)`, "0", 0);
-            requestAnimationFrame(() => {
-              style(current(), "", "", 220);
-              setTimeout(tidy, 240);
-            });
-          });
-        }, 130);
-        return;
-      }
-      const ms = Math.round(Math.max(140, Math.min(300, (done ? d.w - Math.abs(d.off) : Math.abs(d.off)) * 0.9)));
-      place(d, done ? side * d.w : 0, ms);
+      const left = done ? d.w - Math.abs(d.off) : Math.abs(d.off);
+      const ms = Math.round(Math.max(140, Math.min(280, left * 0.85)));
+      // Done, a date's copy only needs to go halfway, as it's faded out by then.
+      place(d, done ? side * d.w * (d.turn.slide ? 0.5 : 1) : 0, ms);
+      if (d.turn.slide && done) style(d.cover!, `translateX(${side * d.w * 0.5}px)`, "0", ms);
       setTimeout(() => {
-        if (!done) d.turn!.undo?.();
-        // Back to as it was once the undone page is drawn under the cover.
-        setTimeout(() => { d.cover!.remove(); tidy(); }, done ? 0 : 80);
+        if (!done) d.turn!.undo();
+        // Back to as it was once the undone page is drawn under the copy.
+        setTimeout(() => {
+          d.cover!.remove();
+          style(current(), "", "", 0);
+          settling = false;
+        }, done ? 0 : 80);
       }, ms + 20);
     }
     el.addEventListener("touchstart", down, { passive: true });
@@ -382,10 +384,15 @@ export function Shell({ children }: { children: ReactNode }) {
     if (!main) return null;
     const onPage = !bar?.offsetHeight || startY < bar.getBoundingClientRect().top - BAR_REACH;
     const stepSel = `[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`;
-    if (onPage && main.querySelector(stepSel)) return { change: () => main.querySelector<HTMLButtonElement>(stepSel)?.click(), slide: true };
+    const before = window.location.hash;
+    // Back the way it came: through history if the change moved there, else (a date the page keeps
+    // itself, like the calendar's) its other step button.
+    const undo = () => (window.location.hash !== before ? window.history.back()
+      : main.querySelector<HTMLButtonElement>(`[data-swipe="${dir > 0 ? "prev" : "next"}"]`)?.click());
+    if (onPage && main.querySelector(stepSel)) return { change: () => main.querySelector<HTMLButtonElement>(stepSel)?.click(), undo, slide: true };
     if (onPage && main.querySelector("[data-swipe]")) return null; // dates, but none further that way
     const next = page < 0 ? undefined : pages[page + dir];
-    return next ? { change: () => nav(next.href), undo: () => window.history.back() } : null;
+    return next ? { change: () => nav(next.href), undo } : null;
   };
   usePageDrag(mainRef, mainRef, pageRef, plan);
   usePageDrag(barRef, mainRef, pageRef, plan);

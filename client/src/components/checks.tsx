@@ -19,11 +19,12 @@ export function bounce(el: Element | null, big = 1) {
  */
 export async function leaveRow(row: HTMLElement | null, then: () => void) {
   if (!row || reduced()) return then();
-  await new Promise((r) => setTimeout(r, 560));
+  // It starts going as the line finishes crossing it out, and closes up as it fades.
+  await new Promise((r) => setTimeout(r, 280));
   const h = row.offsetHeight;
   const opts = { easing: "cubic-bezier(.3,.7,.3,1)", fill: "forwards" as const };
-  await row.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, ...opts }).finished;
-  await row.animate([{ height: `${h}px` }, { height: "0px", paddingTop: "0px", paddingBottom: "0px" }], { duration: 220, ...opts }).finished;
+  await row.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, ...opts }).finished;
+  await row.animate([{ height: `${h}px` }, { height: "0px", paddingTop: "0px", paddingBottom: "0px" }], { duration: 170, ...opts }).finished;
   then();
   // Back as it was if the change didn't take it away after all.
   setTimeout(() => row.isConnected && row.getAnimations().forEach((a) => a.cancel()), 1500);
@@ -114,12 +115,13 @@ export function useStreakFlare(streak: number) {
     last.current = streak;
     if (!up || reduced()) return;
     setRolled((n) => n + 1);
+    // Transforms only (a glow filter stutters on phones), so it plays right as the tap lands.
     flame.current?.animate([
-      { transform: "scale(1) rotate(0)", filter: "none" },
-      { transform: "scale(1.7) rotate(-8deg)", filter: "drop-shadow(0 0 4px currentColor)", offset: 0.35 },
-      { transform: "scale(1.2) rotate(6deg)", offset: 0.65 },
-      { transform: "scale(1) rotate(0)", filter: "none" },
-    ], { duration: 640, easing: "ease-out" });
+      { transform: "scale(1) rotate(0)" },
+      { transform: "scale(1.7) rotate(-10deg)", offset: 0.3 },
+      { transform: "scale(1.15) rotate(6deg)", offset: 0.65 },
+      { transform: "scale(1) rotate(0)" },
+    ], { duration: 460, easing: "ease-out" });
   }, [streak]);
   return { flame, rolled };
 }
