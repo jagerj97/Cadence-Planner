@@ -394,7 +394,8 @@ export function Shell({ children }: { children: ReactNode }) {
 
 export function PageHeader({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
   return (
-    <header className="grid gap-3 px-4 md:px-6 pt-5 md:pt-7 pb-1">
+    // data-turn-head: held as it is while a date slides (see pageTurn).
+    <header data-turn-head className="grid gap-3 px-4 md:px-6 pt-5 md:pt-7 pb-1">
       <div className="min-w-0">
         <h1 className="text-[26px] md:text-[31px] font-semibold tracking-tight leading-tight truncate" data-testid="text-page-title">
           {title}

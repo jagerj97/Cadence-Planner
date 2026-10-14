@@ -5,8 +5,8 @@
  *   drifts over from the right;
  * - going back, the new one slides in over the old from the left, the old drifting off to the right.
  * A date changes as if the days (weeks, months) were one long page: only the page's content (marked
- * data-turn-body; its header, with the date and filters, just updates) slides along, the next date's
- * right beside the last.
+ * data-turn-body) slides along, the next date's right beside the last. Its header (data-turn-head,
+ * with the date) is held as it was until the new date has slid all the way in, then updates.
  *
  * The old page (or content) is a copy laid over `main` (which can't be tapped); the real one moves
  * through CSS variables on `main` (see `main[data-turn]` in index.css), so a page React swaps in
@@ -14,7 +14,7 @@
  */
 
 export type TurnMode = "page" | "date";
-export type TurnState = { main: HTMLElement; cover: HTMLElement; dir: 1 | -1; mode: TurnMode; w: number; marked?: HTMLElement };
+export type TurnState = { main: HTMLElement; cover: HTMLElement; dir: 1 | -1; mode: TurnMode; w: number; marked?: HTMLElement; held?: HTMLElement };
 
 const EASE = "cubic-bezier(.2,.7,.3,1)";
 const SHADOW = "0 0 32px 2px rgb(0 0 0 / .45)";
@@ -33,6 +33,23 @@ function copyScroll(from: Element, to: Element) {
     const y = b[n];
     if (y && (x.scrollTop || x.scrollLeft)) { y.scrollTop = x.scrollTop; y.scrollLeft = x.scrollLeft; }
   });
+}
+
+/** A still copy of `el` laid over it in `main` (it can't be tapped), so it looks unchanged while the real one updates. */
+function hold(main: HTMLElement, el: HTMLElement, z: string) {
+  const copy = el.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
+  copy.querySelectorAll("[data-testid]").forEach((n) => n.removeAttribute("data-testid"));
+  copy.setAttribute("aria-hidden", "true");
+  copy.inert = true;
+  copy.classList.add("page-cover");
+  const box = el.getBoundingClientRect(), frameBox = main.getBoundingClientRect();
+  Object.assign(copy.style, {
+    position: "absolute", left: `${box.left - frameBox.left}px`, top: `${box.top - frameBox.top}px`, width: `${box.width}px`,
+    height: `${box.height}px`, margin: "0", zIndex: z, pointerEvents: "none", background: "hsl(var(--background))",
+  });
+  main.appendChild(copy);
+  return copy;
 }
 
 /** Lays a copy of `page` over `main`, and sets the turn going with nothing moved yet. */
@@ -62,7 +79,10 @@ export function startTurn(main: HTMLElement, page: HTMLElement, dir: 1 | -1, mod
   });
   main.appendChild(cover);
   copyScroll(moving, cover);
-  const s: TurnState = { main, cover, dir, mode, w: box.width, marked };
+  // A date's header stays as it was until the turn is over.
+  const head = mode === "date" ? page.querySelector<HTMLElement>("[data-turn-head]") : null;
+  const held = head ? hold(main, head, "3") : undefined;
+  const s: TurnState = { main, cover, dir, mode, w: box.width, marked, held };
   main.dataset.turn = mode;
   main.style.setProperty("--turn-shadow", under ? SHADOW : "none");
   frame(s, 0);
@@ -99,6 +119,7 @@ export function endTurn(s: TurnState, done: boolean, ms: number, undo?: () => vo
     // Back to as it was once an undone page is drawn under the copy.
     setTimeout(() => {
       s.cover.remove();
+      s.held?.remove();
       s.marked?.removeAttribute("data-turn-body");
       delete s.main.dataset.turn;
       for (const v of ["--turn-t", "--turn-x", "--turn-shadow"]) s.main.style.removeProperty(v);
