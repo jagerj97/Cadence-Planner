@@ -26,9 +26,9 @@ export const AgendaItem = memo(function AgendaItem({ e, settings, compact = fals
       className={cn("block w-full min-w-0 rounded-md text-left hover-elevate", compact ? "px-2.5 py-1.5" : "px-3 py-2", e.done && "opacity-55")}
       style={{ background: tint(e.i, k === "sleep" ? 0.1 : 0.15), borderLeft: `3px solid ${accentOf(e.i, settings)}` }}
       data-testid={`agenda-item-${e.key}`}>
-      <div className={cn("flex items-center gap-1.5 font-medium leading-tight", e.done && "line-through")}>
+      <div className="flex items-center gap-1.5 font-medium leading-tight">
         <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: colorOf(e.i) }} />
-        <span className="truncate text-sm">{e.i.title}</span>
+        <span className="truncate text-sm"><span className="strike" data-on={e.done}>{e.i.title}</span></span>
       </div>
       {(e.time || e.i.location) && (
         <div className="mt-0.5 truncate text-xs text-muted-foreground tnum">
@@ -73,12 +73,11 @@ function useNowMinutes(on: boolean) {
 }
 
 /**
- * Days from `from` for `days` days. `limit` stops after that many items. Each day's row carries
- * data-day, so a page can find which day is in view or scroll to one. With `now`, today's row shows
- * where the current time falls among its items.
+ * Days from `from` for `days` days. Each day's row carries data-day, so a page can find which day is
+ * in view or scroll to one. Today's row shows where the current time falls among its items.
  */
-export function AgendaList({ list, keep, from, days, limit, compact = false, emptyToday = "Nothing planned", dates = true, always = false, now = true }: {
-  list: Item[]; from: string; days: number; limit?: number; compact?: boolean; emptyToday?: string;
+export function AgendaList({ list, keep, from, days, compact = false, dates = true, always = false }: {
+  list: Item[]; from: string; days: number; compact?: boolean;
   /**
    * Which of `list`'s items to show (the calendar's filters). The days are worked out from all of
    * `list` once, so changing this only hides or shows entries.
@@ -88,7 +87,6 @@ export function AgendaList({ list, keep, from, days, limit, compact = false, emp
   dates?: boolean;
   /** Show every day in the range, even with nothing on (not just today). */
   always?: boolean;
-  now?: boolean;
 }) {
   const { settings } = useSettings();
   const today = useToday();
@@ -100,26 +98,21 @@ export function AgendaList({ list, keep, from, days, limit, compact = false, emp
       return { day, entries: agendaFor(pool, day) };
     });
   }, [list, from, days]);
-  const shown = keep;
   const rows = useMemo(() => {
     const out: { day: string; entries: Entry[] }[] = [];
-    let count = 0;
     for (const { day, entries: all } of allDays) {
-      if (limit != null && count >= limit) break;
-      let entries = shown ? all.filter((e) => shown(e.i)) : all;
-      if (limit != null) entries = entries.slice(0, limit - count);
-      count += entries.length;
+      const entries = keep ? all.filter((e) => keep(e.i)) : all;
       if (entries.length || day === today || always) out.push({ day, entries });
     }
     return out;
-  }, [allDays, shown, limit, always, today]);
-  const nowMin = useNowMinutes(now && rows.some((r) => r.day === today));
+  }, [allDays, keep, always, today]);
+  const nowMin = useNowMinutes(rows.some((r) => r.day === today));
   return (
     <div className={cn("grid", !dates && "gap-3")} data-testid="agenda-list">
       {rows.map(({ day, entries }) => {
         const isToday = day === today;
         // Now goes before the first item still to start (all-day ones sit above it).
-        const at = !now || !isToday ? -1 : (() => { const k = entries.findIndex((e) => e.start > nowMin); return k < 0 ? entries.length : k; })();
+        const at = !isToday ? -1 : (() => { const k = entries.findIndex((e) => e.start > nowMin); return k < 0 ? entries.length : k; })();
         return (
           <div key={day} data-day={day}>
             {/* The date above the day's items, pinned while they're in view (as in the timeline view). */}
@@ -129,7 +122,7 @@ export function AgendaList({ list, keep, from, days, limit, compact = false, emp
               </div>
             )}
             <div className={cn("grid min-w-0 gap-1.5", dates && "px-4 pt-3 pb-4")} data-testid={`agenda-day-${day}`}>
-              {entries.length === 0 && <div className="py-2 text-sm text-muted-foreground">{emptyToday}</div>}
+              {entries.length === 0 && <div className="py-2 text-sm text-muted-foreground">Nothing planned</div>}
               {entries.map((e, k) => (
                 <Fragment key={e.key}>
                   {k === at && <NowMarker />}

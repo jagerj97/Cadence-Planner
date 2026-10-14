@@ -11,13 +11,15 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { usePlanner, useFocusElapsed, clock, requestJournalCompose } from "./planner";
+import { usePlanner, FocusClock, requestJournalCompose } from "./planner";
 import { KIND_META, fromMin, todayStr } from "@/lib/cal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Kind } from "@shared/schema";
 import { useSettings } from "@/lib/data";
 import { QuickAdd } from "@/pages/today";
 import { cn } from "@/lib/utils";
+import { endTurn, frame, setTurnOrder, startTurn, turning, type TurnMode, type TurnState } from "./pageTurn";
+import { reducedMotion } from "./motion";
 
 
 export const NAV = [
@@ -40,18 +42,16 @@ function useNav() {
 
 const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: SettingsIcon, match: (l: string) => l.startsWith("/settings") || l.startsWith("/sync") };
 
-function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
+function DrawerLinks() {
   const [loc] = useLocation();
   const nav = useNav();
   const { focus } = usePlanner();
-  const elapsed = useFocusElapsed();
   const row = (n: (typeof NAV)[number]) => {
     const on = n.match(loc);
     return (
       <Link
         key={n.href}
         href={n.href}
-        onClick={onNavigate}
         className={cn(
           "flex items-center gap-6 h-12 pl-6 pr-4 text-sm font-medium transition-colors",
           on ? "text-primary bg-sidebar-accent rounded-full mx-3 pl-3" : "text-foreground/80 hover:bg-sidebar-accent/70 hover:rounded-full mx-3 pl-3",
@@ -61,7 +61,7 @@ function DrawerLinks({ onNavigate }: { onNavigate?: () => void }) {
       >
         <n.icon className={cn("h-5 w-5", on ? "text-primary" : "text-muted-foreground")} />
         {n.label}
-        {n.href === "/focus" && focus && <span className="ml-auto font-mono text-xs tnum text-primary">{clock(focus.plannedSec - elapsed)}</span>}
+        {n.href === "/focus" && focus && <span className="ml-auto font-mono text-xs tnum text-primary"><FocusClock /></span>}
       </Link>
     );
   };
@@ -147,7 +147,7 @@ function AddMenu() {
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,440px)] overflow-hidden p-0 shadow-lg">
         <div className="p-2.5 border-b">
-          <QuickAdd appbar day={day} onDone={() => setOpen(false)} />
+          <QuickAdd day={day} onDone={() => setOpen(false)} />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-2">
           {ADD_KINDS.map((k) => (
@@ -184,106 +184,61 @@ function AddIcon({ open = false }: { open?: boolean }) {
 
 let lastPage = "/"; // where the gear returns to when leaving Settings
 
-/** Whether a touch began on something that scrolls sideways itself, or takes sideways drags. */
+/** Whether a touch began on something that scrolls sideways itself (a row of filters, the habit tracker). */
 function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
   for (let el = target as HTMLElement | null; el && el !== root; el = el.parentElement) {
-    if (el.matches("input, textarea, [contenteditable=true], [data-no-swipe]")) return true;
     const x = getComputedStyle(el).overflowX;
     if ((x === "auto" || x === "scroll") && el.scrollWidth > el.clientWidth + 1) return true;
   }
   return false;
 }
 
-/** Gives a copied page the scroll positions of the original (copies start scrolled to the top). */
-function copyScroll(from: Element, to: Element) {
-  // Only what can scroll (the copy has the same elements in the same order), not every element.
-  const sel = '[class*="overflow-"]';
-  const a = from.querySelectorAll(sel), b = to.querySelectorAll(sel);
-  a.forEach((x, n) => {
-    const y = b[n];
-    if (y && (x.scrollTop || x.scrollLeft)) { y.scrollTop = x.scrollTop; y.scrollLeft = x.scrollLeft; }
-  });
+/**
+ * Whether everything that scrolls up and down under a touch (up to `root`) is already as far as it
+ * goes toward `dir` (1: the bottom, -1: the top), so pulling on past it moves to the next or last date.
+ */
+function atScrollEnd(target: EventTarget | null, root: HTMLElement, dir: 1 | -1) {
+  for (let el = target as HTMLElement | null; el && el !== root.parentElement; el = el.parentElement) {
+    const y = getComputedStyle(el).overflowY;
+    if ((y !== "auto" && y !== "scroll") || el.scrollHeight <= el.clientHeight + 1) continue;
+    if (dir > 0 ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0) return false;
+  }
+  return true;
 }
 
-/** A copy of the page as it is, laid over it (it can't be tapped), to be dragged away. */
-function coverOf(main: HTMLElement, page: HTMLElement) {
-  const cover = page.cloneNode(true) as HTMLElement;
-  cover.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
-  cover.querySelectorAll("[data-testid]").forEach((el) => el.removeAttribute("data-testid"));
-  cover.removeAttribute("data-page");
-  cover.setAttribute("aria-hidden", "true");
-  cover.inert = true;
-  Object.assign(cover.style, {
-    position: "absolute", left: `${page.offsetLeft}px`, top: `${page.offsetTop}px`, width: `${page.offsetWidth}px`,
-    height: `${page.offsetHeight}px`, zIndex: "10", pointerEvents: "none", background: "hsl(var(--background))",
-    boxShadow: "0 0 12px rgb(0 0 0 / .22)", willChange: "transform, opacity", contain: "layout paint",
-  });
-  main.appendChild(cover);
-  copyScroll(page, cover);
-  return cover;
-}
-
-/** The same page turn as a drag, played through on its own: for tapping a page in the bottom bar. */
-function turnPage(main: HTMLElement, page: HTMLElement, dir: 1 | -1, change: () => void) {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
-  const cover = coverOf(main, page), w = page.offsetWidth, ms = 300;
-  change();
-  requestAnimationFrame(() => {
-    const next = main.querySelector<HTMLElement>("[data-page]");
-    next?.animate([{ transform: `translateX(${dir * 0.3 * w}px)` }, { transform: "none" }], { duration: ms, easing: EASE });
-    cover.animate([{ transform: "none" }, { transform: `translateX(${-dir * w}px)` }], { duration: ms, easing: EASE })
-      .finished.finally(() => cover.remove());
-  });
-}
-
-/** What a drag toward `dir` does: the change, how to take it back if it's let go of early, and whether it's a date (`slide`). */
-type Turn = { change: () => void; undo: () => void; slide?: boolean };
-
-const EASE = "cubic-bezier(.2,.7,.3,1)";
+/** What a drag toward `dir` does: the change, how to take it back if it's let go of early, and whether it's a date. */
+type Turn = { change: () => void; undo: () => void; mode: TurnMode };
+type Axis = "x" | "y";
 
 /**
- * Dragging sideways across `ref` follows the finger, then finishes when let go past a third of the
- * way (or flicked), or settles back (and is undone) if not. Either way, once the drag is clearly
- * sideways a copy of the page is laid over it and the change is made underneath:
- * - A page turn: the copy is dragged away (a small shadow under it), uncovering the next page, which
- *   drifts over from that side.
- * - A date slide: the copy slides and fades as the new date fades in under it.
- * Holds (which pick items up to drag them), pinches, mostly-vertical moves and things that scroll or
- * drag sideways themselves are left alone.
+ * Dragging across `ref` turns the page with the finger (see pageTurn): sideways, to the next or last
+ * page; up and down (with `vertical`, where `plan` allows it), to the next or last date. It finishes
+ * when let go past a third of the way (or flicked), or settles back (and is undone) if not. The change
+ * is made, under the copy of the old page, as soon as the drag's direction is clear.
+ * Holds (which pick items up to drag them), pinches, typing fields, diagonal moves and things that
+ * scroll sideways themselves are left alone. The pages scroll only up and down (touch-action: pan-y),
+ * so these listeners can be passive and never hold up scrolling.
  */
 function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HTMLElement>, page: React.RefObject<HTMLElement>,
-  plan: (dir: 1 | -1, startY: number) => Turn | null) {
+  plan: (axis: Axis, dir: 1 | -1, target: EventTarget | null) => Turn | null, vertical: boolean) {
   const planRef = useRef(plan);
   planRef.current = plan;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    type Drag = { x: number; y: number; t0: number; dir?: 1 | -1; turn?: Turn; cover?: HTMLElement; w: number; off: number; v: number; at: number; lastX: number };
+    type Drag = {
+      x: number; y: number; t0: number; target: EventTarget | null; sideways: boolean;
+      axis?: Axis; dir?: 1 | -1; turn?: Turn; s?: TurnState;
+      /** Where the drag took hold along its axis, how far it's gone, and how fast. */
+      o: number; off: number; v: number; at: number; last: number;
+    };
     let g: Drag | null = null;
-    let settling = false;
-    const current = () => main.current?.querySelector<HTMLElement>("[data-page]") ?? null;
-    const style = (node: HTMLElement | null, transform: string, opacity: string, ms: number) => {
-      if (!node) return;
-      node.style.transition = ms ? `transform ${ms}ms ${EASE}, opacity ${ms}ms ${EASE}` : "none";
-      node.style.transform = transform;
-      node.style.opacity = opacity;
-    };
-    // Where the copy and the page under it are, `off` along the way.
-    const place = (d: Drag, off: number, ms = 0) => {
-      const p = Math.min(1, Math.abs(off) / d.w), under = current();
-      if (d.turn!.slide) {
-        style(d.cover!, `translateX(${off}px)`, String(1 - p), ms);
-        style(under, `translateX(${d.dir! * 0.15 * d.w * (1 - p)}px)`, String(Math.min(1, p * 1.4)), ms);
-      } else {
-        style(d.cover!, `translateX(${off}px)`, "", ms);
-        style(under, p >= 1 ? "" : `translateX(${d.dir! * 0.3 * d.w * (1 - p)}px)`, "", ms);
-      }
-    };
+    const along = (d: Drag, t: Touch) => (d.axis === "y" ? t.clientY : t.clientX);
     // Moves come faster than frames: only the latest is drawn, once a frame.
-    let frame = 0;
-    const placeSoon = (d: Drag) => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => { frame = 0; if (g === d) place(d, d.off); });
+    let pending = 0;
+    const drawSoon = (d: Drag) => {
+      if (pending) return;
+      pending = requestAnimationFrame(() => { pending = 0; if (g === d) frame(d.s!, Math.min(1, Math.abs(d.off) / d.s!.size)); });
     };
     // The rest of a touch goes to the element it began on, even once the change takes that element
     // away with the old page (when it no longer reaches `el`), so it's listened to there.
@@ -293,81 +248,71 @@ function usePageDrag(ref: React.RefObject<HTMLElement>, main: React.RefObject<HT
       target?.removeEventListener("touchend", end);
       target?.removeEventListener("touchcancel", end);
       target = on;
-      on?.addEventListener("touchmove", move as EventListener, { passive: false });
+      on?.addEventListener("touchmove", move as EventListener, { passive: true });
       on?.addEventListener("touchend", end, { passive: true });
       on?.addEventListener("touchcancel", end, { passive: true });
     };
     const down = (e: TouchEvent) => {
       const t = e.touches[0];
       if (g?.turn) return; // a second finger mid-drag
-      g = !settling && e.touches.length === 1 && !sidewaysOwner(e.target, el)
-        ? { x: t.clientX, y: t.clientY, t0: e.timeStamp, w: 1, off: 0, v: 0, at: e.timeStamp, lastX: t.clientX } : null;
+      const typing = (e.target as HTMLElement | null)?.closest?.("input, textarea, [contenteditable=true]");
+      g = !turning() && e.touches.length === 1 && !typing
+        ? { x: t.clientX, y: t.clientY, t0: e.timeStamp, target: e.target, sideways: sidewaysOwner(e.target, el), o: 0, off: 0, v: 0, at: e.timeStamp, last: 0 }
+        : null;
       listen(g ? e.target : null);
     };
     function move(e: TouchEvent) {
       const d = g;
       if (!d) return;
       if (e.touches.length > 1) return end();
-      const t = e.touches[0], dx = t.clientX - d.x, dy = t.clientY - d.y;
+      const t = e.touches[0];
       if (!d.turn) {
+        const dx = t.clientX - d.x, dy = t.clientY - d.y;
         // A finger resting first is a hold (which picks an item up to drag it), not a swipe.
         if (e.defaultPrevented || e.timeStamp - d.t0 > 450) { g = null; return; }
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-        if (Math.abs(dx) < Math.abs(dy) * 1.5) { g = null; return; }
-        const dir = dx < 0 ? 1 : -1, turn = planRef.current(dir, d.y), m = main.current, p = page.current;
-        if (!turn || !m || !p) { g = null; return; }
-        // Measured from here on, so the page doesn't jump the few pixels it took to tell it's a swipe.
-        Object.assign(d, { dir, turn, w: p.offsetWidth, cover: coverOf(m, p), x: t.clientX });
-        // A date's copy is see-through, with no edge: the two dates simply crossfade.
-        if (turn.slide) {
-          Object.assign(d.cover!.style, { background: "transparent", boxShadow: "none" });
-          style(p, "", "0", 0);
+        const axis: Axis | null = Math.abs(dx) >= Math.abs(dy) * 1.5 ? "x" : Math.abs(dy) >= Math.abs(dx) * 1.5 ? "y" : null;
+        if (!axis || (axis === "x" && d.sideways) || (axis === "y" && !vertical)) { g = null; return; }
+        const dir = (axis === "x" ? dx : dy) < 0 ? 1 : -1;
+        const turn = planRef.current(axis, dir, d.target), m = main.current, p = page.current;
+        if (!turn || !m || !p || turning() || reducedMotion()) {
+          g = null;
+          // Without motion, a swipe still makes its change, all at once.
+          if (turn && !turning()) turn.change();
+          return;
         }
+        // Measured from here on, so the page doesn't jump the few pixels it took to tell it's a swipe.
+        Object.assign(d, { axis, dir, turn, s: startTurn(m, p, dir, turn.mode) });
+        d.o = d.last = along(d, t);
         // The copy shows first; the next page is drawn under it a frame later, so the drag starts at once.
         requestAnimationFrame(() => turn.change());
       }
-      if (e.cancelable) e.preventDefault();
       // Only toward the side it started; back past the start it just rests there.
-      const along = t.clientX - d.x;
-      d.off = d.dir! > 0 ? Math.min(0, along) : Math.max(0, along);
-      if (e.timeStamp > d.at) d.v = 0.6 * d.v + 0.4 * ((t.clientX - d.lastX) / (e.timeStamp - d.at));
+      const pos = along(d, t), gone = pos - d.o;
+      d.off = d.dir! > 0 ? Math.min(0, gone) : Math.max(0, gone);
+      if (e.timeStamp > d.at) d.v = 0.6 * d.v + 0.4 * ((pos - d.last) / (e.timeStamp - d.at));
       d.at = e.timeStamp;
-      d.lastX = t.clientX;
-      placeSoon(d);
+      d.last = pos;
+      drawSoon(d);
     }
     function end() {
       const d = g;
       g = null;
       listen(null);
       if (!d?.turn) return;
-      cancelAnimationFrame(frame);
-      frame = 0;
-      settling = true;
-      const side = -d.dir!; // the way the old page (or date) leaves
-      const done = Math.abs(d.off) > d.w / 3 ? d.v * side > -0.3 : d.v * side > 0.4;
-      const left = done ? d.w - Math.abs(d.off) : Math.abs(d.off);
-      const ms = Math.round(Math.max(140, Math.min(280, left * 0.85)));
-      if (d.turn.slide && done) {
-        // A date's copy only goes halfway, faded out by then, as the new date comes all the way in.
-        style(d.cover!, `translateX(${side * d.w * 0.5}px)`, "0", ms);
-        style(current(), "", "1", ms);
-      } else place(d, done ? side * d.w : 0, ms);
-      setTimeout(() => {
-        if (!done) d.turn!.undo();
-        // Back to as it was once the undone page is drawn under the copy.
-        setTimeout(() => {
-          d.cover!.remove();
-          style(current(), "", "", 0);
-          settling = false;
-        }, done ? 0 : 80);
-      }, ms + 20);
+      cancelAnimationFrame(pending);
+      pending = 0;
+      const size = d.s!.size, side = -d.dir!; // the way the old page (or date) leaves
+      const done = Math.abs(d.off) > size / 3 ? d.v * side > -0.3 : d.v * side > 0.4;
+      const left = done ? size - Math.abs(d.off) : Math.abs(d.off);
+      endTurn(d.s!, done, Math.round(Math.max(140, Math.min(280, left * 0.85))), d.turn.undo);
     }
     el.addEventListener("touchstart", down, { passive: true });
     return () => {
       el.removeEventListener("touchstart", down);
       listen(null);
     };
-  }, [ref, main, page]);
+  }, [ref, main, page, vertical]);
 }
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -377,30 +322,33 @@ export function Shell({ children }: { children: ReactNode }) {
   const page = pages.findIndex((n) => n.match(loc));
   const pageRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
-  // Dragging the bottom half of the page (or the bottom bar) goes to the next or previous page in the
-  // bar (in the user's order; the end pages go no further). Dragging the top half steps the page's
-  // date, pressing its own next or previous day (week, month) button, marked `data-swipe`; on a page
-  // without dates, the top half does nothing.
-  const plan = (dir: 1 | -1, startY: number): Turn | null => {
+  // Dragging sideways (on a page or the bottom bar) goes to the next or previous page in the bar (in
+  // the user's order; the end pages go no further). On a page whose dates go up and down (Today, the
+  // calendar's weeks and months: data-turn-body="y"), dragging up past the end of what scrolls goes to
+  // the next date, and down past the top to the last, pressing the page's own next or previous button
+  // (marked data-swipe).
+  const plan = (axis: Axis, dir: 1 | -1, target: EventTarget | null): Turn | null => {
     const main = mainRef.current;
     if (!main) return null;
-    const box = main.getBoundingClientRect();
-    const dateZone = startY < box.top + box.height / 2;
     const stepSel = `[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`;
     const before = window.location.hash;
     // Back the way it came: through history if the change moved there, else (a date the page keeps
     // itself, like the calendar's) its other step button.
     const undo = () => (window.location.hash !== before ? window.history.back()
       : main.querySelector<HTMLButtonElement>(`[data-swipe="${dir > 0 ? "prev" : "next"}"]`)?.click());
-    if (dateZone) return main.querySelector(stepSel) ? { change: () => main.querySelector<HTMLButtonElement>(stepSel)?.click(), undo, slide: true } : null;
+    if (axis === "y") {
+      if (!main.querySelector('[data-turn-body="y"]') || !main.querySelector(stepSel) || !atScrollEnd(target, main, dir)) return null;
+      return { change: () => main.querySelector<HTMLButtonElement>(stepSel)?.click(), undo, mode: "date" };
+    }
     const next = page < 0 ? undefined : pages[page + dir];
-    return next ? { change: () => nav(next.href), undo } : null;
+    return next ? { change: () => nav(next.href), undo, mode: "page" } : null;
   };
-  usePageDrag(mainRef, mainRef, pageRef, plan);
-  usePageDrag(barRef, mainRef, pageRef, plan);
+  // Taps and links turn the page too (pageTurn), in the bar's order.
+  setTurnOrder(pages);
+  usePageDrag(mainRef, mainRef, pageRef, plan, true);
+  usePageDrag(barRef, mainRef, pageRef, plan, false);
   const { settings } = useSettings();
   const { focus } = usePlanner();
-  const elapsed = useFocusElapsed();
   const inSettings = SETTINGS_NAV.match(loc);
   if (!inSettings) lastPage = loc;
 
@@ -434,7 +382,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <aside className="wellness-rail hidden md:flex w-56 shrink-0 flex-col overflow-y-auto bg-sidebar border-r z-20">
           <DrawerLinks />
         </aside>
-        <main ref={mainRef} className="relative flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
+        <main ref={mainRef} data-pages className="relative flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
           {/* Keyed by the page (not its place in the bar, which reordering the bar changes). */}
           <div key={pages[page]?.href ?? (inSettings ? "/settings" : "other")} ref={pageRef} data-page
             className="flex flex-1 min-h-0 flex-col">
@@ -453,20 +401,15 @@ export function Shell({ children }: { children: ReactNode }) {
             <Link
               key={n.href}
               href={n.href}
-              onClick={(ev) => {
-                const to = pages.indexOf(n), main = mainRef.current, el = pageRef.current;
-                if (on || page < 0 || to === page || !main || !el || ev.metaKey || ev.ctrlKey) return;
-                ev.preventDefault();
-                turnPage(main, el, to > page ? 1 : -1, () => nav(n.href));
-              }}
               className={cn("flex-1 min-w-0 flex flex-col items-center gap-0.5 py-2 text-[12px]", on || timer ? "text-primary font-semibold" : "text-muted-foreground")}
               aria-current={on ? "page" : undefined}
               data-testid={`link-mnav-${n.label.toLowerCase()}`}
             >
-              <span className={cn("grid h-7 w-11 place-items-center rounded-full transition-colors", on && "bg-primary/10")}>
-                <n.icon className="h-5 w-5" />
+              <span className={cn("grid h-7 w-11 place-items-center rounded-full transition-colors duration-300", on && "bg-primary/10")}>
+                {/* The page you're on: its icon grows a little, with a quick spring. */}
+                <n.icon className={cn("h-5 w-5 transition-transform duration-300 [transition-timing-function:cubic-bezier(.3,1.6,.5,1)] motion-reduce:transition-none", on && "scale-[1.18]")} />
               </span>
-              <span className="truncate max-w-full tnum">{timer ? clock(focus.plannedSec - elapsed) : n.label}</span>
+              <span className="truncate max-w-full tnum">{timer ? <FocusClock /> : n.label}</span>
             </Link>
           );
         })}
@@ -477,7 +420,8 @@ export function Shell({ children }: { children: ReactNode }) {
 
 export function PageHeader({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
   return (
-    <header className="grid gap-3 px-4 md:px-6 pt-5 md:pt-7 pb-1">
+    // data-turn-head: held as it is while a date slides (see pageTurn).
+    <header data-turn-head className="grid gap-3 px-4 md:px-6 pt-5 md:pt-7 pb-1">
       <div className="min-w-0">
         <h1 className="text-[26px] md:text-[31px] font-semibold tracking-tight leading-tight truncate" data-testid="text-page-title">
           {title}

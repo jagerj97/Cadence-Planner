@@ -93,7 +93,8 @@ final class PanelWidgets {
             any = true;
             for (int id : ids) render(context, manager, provider, id, snapshot);
             int list = listId(provider);
-            if (list != 0 && (lists || provider == Schedule.class)) manager.notifyAppWidgetViewDataChanged(ids, list);
+            // The timeline and agenda move on with the clock; the other lists only with the day.
+            if (list != 0 && (lists || provider == Schedule.class || provider == Agenda.class)) manager.notifyAppWidgetViewDataChanged(ids, list);
         }
         if (any) scheduleTick(context);
     }
@@ -179,7 +180,7 @@ final class PanelWidgets {
         if (provider == Now.class) views = renderNow(context, manager, id, theme, day);
         else if (provider == Day.class) views = renderDay(context, manager, id, theme, day);
         else if (provider == Schedule.class) views = renderSchedule(context, id, theme, day);
-        else if (provider == Agenda.class) views = renderAgenda(context, id, theme, snapshot);
+        else if (provider == Agenda.class) views = renderAgenda(context, id, theme);
         else if (provider == Journal.class) views = renderJournal(context, id, theme, snapshot);
         else views = renderList(context, id, provider == Tasks.class, theme, day);
         manager.updateAppWidget(id, views);
@@ -369,7 +370,7 @@ final class PanelWidgets {
 
     // ---- Agenda ----
 
-    private static RemoteViews renderAgenda(Context context, int id, WidgetTheme theme, JSONObject snapshot) {
+    private static RemoteViews renderAgenda(Context context, int id, WidgetTheme theme) {
         RemoteViews v = new RemoteViews(context.getPackageName(), R.layout.widget_agenda);
         paintCard(v, theme, theme.primary);
         v.setOnClickPendingIntent(R.id.card_root, openApp(context, 800043, "open:/"));
@@ -442,8 +443,8 @@ final class PanelWidgets {
                 refreshAll(context, true);
                 return;
             }
-            // Right now every minute; the rest every five minutes or when the day changes.
-            // The lists' rows only change with the day (the agenda and journal move on at midnight).
+            // Right now (and the timeline and agenda lists) every minute; the rest every five minutes or
+            // when the day changes. The other lists' rows only change with the day.
             if (newDay || LocalTime.now().getMinute() % 5 == 0) {
                 refreshAll(context, newDay);
                 return;
@@ -456,6 +457,9 @@ final class PanelWidgets {
             }
             int[] schedule = manager.getAppWidgetIds(new ComponentName(context, Schedule.class));
             if (schedule.length > 0) manager.notifyAppWidgetViewDataChanged(schedule, R.id.schedule_list);
+            // The agenda drops what's over as it ends.
+            int[] agenda = manager.getAppWidgetIds(new ComponentName(context, Agenda.class));
+            if (agenda.length > 0) manager.notifyAppWidgetViewDataChanged(agenda, R.id.agenda_list);
             scheduleTick(context);
         }
     }
@@ -701,21 +705,29 @@ final class PanelWidgets {
             rows.clear();
             JSONArray days = snapshot.optJSONArray("agenda");
             if (days == null) return;
+            long now = System.currentTimeMillis();
             boolean todayListed = false;
             try {
                 for (int d = 0; d < days.length(); d++) {
                     JSONObject day = days.optJSONObject(d);
                     String date = day == null ? "" : day.optString("day");
                     if (date.compareTo(today) < 0) continue;
-                    JSONArray entries = day.optJSONArray("entries");
+                    // Only what's coming up: not done (on this widget or another) and not over yet.
+                    JSONArray all = day.optJSONArray("entries");
+                    java.util.ArrayList<JSONObject> entries = new java.util.ArrayList<>();
+                    for (int e = 0; all != null && e < all.length(); e++) {
+                        JSONObject entry = all.optJSONObject(e);
+                        long until = entry == null ? 0 : entry.optLong("until", 0);
+                        if (entry != null && !entry.optBoolean("done") && (until == 0 || until > now)) entries.add(entry);
+                    }
                     boolean isToday = today.equals(date);
-                    if ((entries == null || entries.length() == 0) && !isToday) continue;
+                    if (entries.isEmpty() && !isToday) continue;
                     // A snapshot from before today began still starts with today, empty.
                     if (!todayListed && !isToday) { rows.add(new JSONObject().put("date", today)); rows.add(new JSONObject()); }
                     todayListed = true;
                     rows.add(new JSONObject().put("date", date));
-                    if (entries == null || entries.length() == 0) rows.add(new JSONObject());
-                    for (int e = 0; entries != null && e < entries.length(); e++) rows.add(new JSONObject().put("entry", entries.optJSONObject(e)));
+                    if (entries.isEmpty()) rows.add(new JSONObject());
+                    for (JSONObject entry : entries) rows.add(new JSONObject().put("entry", entry));
                 }
                 if (!todayListed) { rows.add(new JSONObject().put("date", today)); rows.add(new JSONObject()); }
             } catch (Exception ignored) {}
@@ -750,17 +762,14 @@ final class PanelWidgets {
                 int color = WidgetDraw.parse(entry.optString("color"), theme.primary);
                 String accentHex = entry.optString("accent");
                 int accent = accentHex.isEmpty() ? color : WidgetDraw.parse(accentHex, color);
-                boolean done = entry.optBoolean("done");
                 // A tint of the item's color over the card, as the app draws it (15%, 10% for sleep).
                 v.setInt(R.id.agenda_item_bg, "setColorFilter", mix(color, theme.card, "sleep".equals(kind) ? 0.10f : 0.15f));
                 v.setInt(R.id.agenda_item_edge, "setColorFilter", accent);
                 v.setImageViewResource(R.id.agenda_icon, WidgetDraw.kindIcon(kind));
                 v.setInt(R.id.agenda_icon, "setColorFilter", color);
-                String title = entry.optString("title");
-                SpannableStringBuilder t = new SpannableStringBuilder(title);
-                if (done) t.setSpan(new StrikethroughSpan(), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                v.setTextViewText(R.id.agenda_title, t);
-                v.setTextColor(R.id.agenda_title, done ? theme.mutedForeground : theme.foreground);
+                // Done ones aren't listed (see onDataSetChanged), so none is crossed out here.
+                v.setTextViewText(R.id.agenda_title, entry.optString("title"));
+                v.setTextColor(R.id.agenda_title, theme.foreground);
                 String sub = entry.optString("sub");
                 v.setTextViewText(R.id.agenda_sub, sub);
                 v.setViewVisibility(R.id.agenda_sub, sub.isEmpty() ? View.GONE : View.VISIBLE);

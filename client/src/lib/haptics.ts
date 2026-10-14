@@ -1,5 +1,6 @@
 import type { Settings } from "@shared/schema";
 import { queryClient } from "./queryClient";
+import { onDevice } from "./device";
 
 /**
  * hold     — an item was picked up to move
@@ -19,8 +20,7 @@ export function hapticsEnabled(): boolean {
 export function haptic(kind: Haptic, force = false) {
   if (!force && !hapticsEnabled()) return;
   try {
-    const bridge = window.CadenceAndroid;
-    if (bridge?.haptic) bridge.haptic(kind);
+    if (onDevice()) window.CadenceAndroid?.haptic?.(kind);
     else navigator.vibrate?.(WEB_PATTERNS[kind]);
   } catch {
     // Haptics are a nicety; never let them break an action.

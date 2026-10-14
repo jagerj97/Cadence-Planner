@@ -6,9 +6,9 @@ import { NavOrderEditor } from "@/components/navOrder";
 import { DayPicker } from "@/pages/calendar";
 import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
-import { usePlanner, useNow, Ring, StreakBadge } from "@/components/planner";
+import { usePlanner, useNow, useToday, Ring, StreakBadge } from "@/components/planner";
 import { HabitCheck, TaskCheck } from "@/components/checks";
-import { Morph, useGlide, useShown } from "@/components/motion";
+import { Morph, SlidePill, useGlide, useShown, useSlidePill } from "@/components/motion";
 import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
 import {
   KIND_META,
@@ -26,7 +26,6 @@ import {
   recLabel,
   recOf,
   routineSchedules,
-  toMin,
   todayStr,
   taskAvailableFrom,
 } from "@/lib/cal";
@@ -39,17 +38,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { accentOf, taskColor } from "@/components/taskTags";
 import { TODAY_PANELS, panelShown, panelToggle, allDayFor, dayBreakdown, habitRowsFor, taskRowsFor, todayPanelOrder, type TodayPanel } from "@/lib/today";
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Play, CornerDownLeft, SlidersHorizontal, GripVertical } from "lucide-react";
+import { ChevronDown, Plus, Play, CornerDownLeft, SlidersHorizontal, GripVertical, ChevronUp } from "lucide-react";
 
 export default function Today() {
   const [, params] = useRoute("/day/:date");
   const [, nav] = useLocation();
-  const day = params?.date ?? todayStr();
-  const isToday = day === todayStr();
+  // The page follows the date (at midnight too); only the Right now card keeps the time.
+  const today = useToday();
+  const day = params?.date ?? today;
+  const isToday = day === today;
   const { data: items, isLoading } = useItems();
   const { settings } = useSettings();
   const { openDetails, startFocus } = usePlanner();
-  const now = useNow(30000);
   const list = items ?? [];
 
   const shows = (panel: TodayPanel) => panelShown(settings, panel);
@@ -91,33 +91,34 @@ export default function Today() {
       >
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => nav(`/day/${addDays(day, -1)}`)} aria-label="Previous day" data-swipe="prev" data-testid="button-prev-day">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronDown className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => nav("/")} disabled={isToday} data-testid="button-today">
             Today
           </Button>
           <Button size="icon" variant="ghost" onClick={() => nav(`/day/${addDays(day, 1)}`)} aria-label="Next day" data-swipe="next" data-testid="button-next-day">
-            <ChevronRight className="h-4 w-4" />
+            <ChevronUp className="h-4 w-4" />
           </Button>
         </div>
       </PageHeader>
 
-      <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
+      {/* The day itself: what slides (up and down) when the day changes (data-turn-body, see pageTurn). */}
+      <div data-turn-body="y" className="flex-1 min-h-0 overflow-y-auto overscroll-y-none lg:overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4 md:p-6 lg:h-full">
           {/* left: timeline */}
           <section className={cn("contents lg:flex lg:flex-col lg:min-h-0 lg:gap-3", wholeDay && "lg:overflow-y-auto scroll-thin lg:pr-1")} aria-label="Day timeline">
-            {isToday && shows("now") && <div style={at("now")}><NowCard items={list} now={now} onStart={startFocus} /></div>}
+            {isToday && shows("now") && <div style={at("now")}><NowCard items={list} onStart={startFocus} /></div>}
             {shows("day") && <div style={at("day")}><DayBreakdown totals={breakdown.totals} spans={breakdown.spans} /></div>}
-            {shows("schedule") && (agenda ? (
-              <div className="card-md" style={at("schedule")} data-testid="card-day">
-                <DayViewToggle view={view} onPick={pickView} />
-                <div className="px-4 pb-4">
-                  <AgendaList list={agendaItems} from={day} days={1} compact dates={false} emptyToday="Nothing planned" always />
+            {/* One card for both views: switching keeps the toggle (its highlight slides) and fades the view in. */}
+            {shows("schedule") && (
+            <div className={cn("flex flex-col card-md overflow-hidden", !agenda && (wholeDay ? "shrink-0" : "flex-1 min-h-[420px]"))} style={at("schedule")} data-testid="card-day">
+              <DayViewToggle view={view} onPick={pickView} wholeDay={wholeDay} onWholeDay={agenda ? undefined : toggleWholeDay} />
+              {agenda ? (
+                <div key="agenda" className="px-4 pb-4 swap-in">
+                  <AgendaList list={agendaItems} from={day} days={1} compact dates={false} always />
                 </div>
-              </div>
-            ) : (
-            <div className={cn("flex flex-col card-md overflow-hidden", wholeDay ? "shrink-0" : "flex-1 min-h-[420px]")} style={at("schedule")} data-testid="card-day">
-              <DayViewToggle view={view} onPick={pickView} wholeDay={wholeDay} onWholeDay={toggleWholeDay} />
+              ) : (
+              <div key="timeline" className={cn("flex flex-col swap-in", !wholeDay && "flex-1")}>
               {/* All-day items and ones for anytime that day, inside the card above the timeline. */}
               {allDay.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 border-b px-2 pb-2" aria-label="All-day">
@@ -149,14 +150,14 @@ export default function Today() {
                     <DayColumn
                       day={day}
                       items={list}
-                      wakeMin={toMin(settings.wakeTime)}
-                      bedMin={toMin(settings.bedTime)}
                     />
                   </div>
                 </div>
               )}
               </div>
-            </div>))}
+              </div>
+              )}
+            </div>)}
           </section>
 
           {/* right rail */}
@@ -265,7 +266,8 @@ function GlideDur({ minutes }: { minutes: number }) {
   return <div className="font-semibold text-sm tnum">{fmtDur(Math.round(useGlide(minutes, 0, 700, true)))}</div>;
 }
 
-export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: string; appbar?: boolean; onDone?: () => void }) {
+/** The add menu's quick add: an item typed out ("#event Catnap every sat 1pm"), on `day` unless it says. */
+export function QuickAdd({ day = todayStr(), onDone }: { day?: string; onDone?: () => void }) {
   const [text, setText] = useState("");
   const { create } = useItemMutations();
   const { settings } = useSettings();
@@ -287,15 +289,15 @@ export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: s
     onDone?.();
   };
   return (
-    <div className={cn("relative bg-card text-card-foreground", appbar ? "rounded-full border" : "card-md !rounded-full")}>
-      <div className={cn("flex items-center", appbar ? "gap-1.5 px-3.5" : "gap-2 px-4")}>
+    <div className="relative rounded-full border bg-card text-card-foreground">
+      <div className="flex items-center gap-1.5 px-3.5">
         <Plus className="h-4 w-4 text-primary shrink-0" />
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
           placeholder={settings.plain ? "#event Art class every sat 1pm" : "#event Catnap every sat 1pm"}
-          className={cn("border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0", appbar ? "h-10 md:h-11" : "h-11")}
+          className="border-0 bg-transparent shadow-none placeholder:italic placeholder:text-[14px] focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-10 md:h-11"
           aria-label="Quick add"
           data-testid="input-quick-add"
         />
@@ -357,8 +359,9 @@ function CardHeaderLink({ to, title, testId, children }: { to: string; title: st
   );
 }
 
-function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: ReturnType<typeof usePlanner>["startFocus"] }) {
+function NowCard({ items, onStart }: { items: Item[]; onStart: ReturnType<typeof usePlanner>["startFocus"] }) {
   const { focus, openDetails } = usePlanner();
+  const now = useNow(30000);
   const nm = now.getHours() * 60 + now.getMinutes();
   const today = todayStr();
   const { settings } = useSettings();
@@ -508,13 +511,15 @@ function DayViewToggle({ view, onPick, wholeDay, onWholeDay }: {
   /** The timeline's whole-day chevron: all 24 hours at once instead of scrolling inside the card. */
   wholeDay?: boolean; onWholeDay?: () => void;
 }) {
+  const [tabs, pill] = useSlidePill<HTMLDivElement>(view);
   return (
     <div className="flex items-center justify-between gap-2 px-2 pt-2 pb-2">
-      <div className="inline-flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Show the day as">
+      <div ref={tabs} className="relative inline-flex rounded-full border bg-card p-0.5" role="tablist" aria-label="Show the day as">
+        <SlidePill box={pill} className="rounded-full bg-primary" />
         {(["timeline", "agenda"] as const).map((v) => (
           <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => onPick(v)}
-            className={cn("h-7 px-3 rounded-full text-xs font-medium transition-colors",
-              view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+            className={cn("relative h-7 px-3 rounded-full text-xs font-medium transition-colors duration-300",
+              view === v ? "text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
             data-testid={`tab-day-${v}`}>
             {v === "timeline" ? "Timeline" : "Agenda"}
           </button>

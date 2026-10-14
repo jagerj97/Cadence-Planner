@@ -98,19 +98,21 @@ export function dayBreakdown(items: Item[], settings: Settings, day: string) {
 
 /* ---------- agenda ---------- */
 
-export type AgendaEntry = { i: Item; occ: string; time: string; key: string; start: number; done: boolean };
+/** `start` and `end` are minutes into the day (-1 for all day or any time); a task is over at its time. */
+export type AgendaEntry = { i: Item; occ: string; time: string; key: string; start: number; end: number; done: boolean };
 
 /** One day's entries: all-day (and anytime) items, then timed ones, each piece of a multi-day item. */
 export function agendaFor(list: Item[], day: string): AgendaEntry[] {
   const untimed = untimedForDay(list, day).map((i) => {
     const occ = kindOf(i) === "task" && recOf(i).freq === "none" ? i.date : day;
-    return { i, occ, key: `${i.id}:${day}`, start: -1, time: kindOf(i) === "task" ? "" : "All day", done: kindOf(i) === "task" && completionsOf(i).has(occ) };
+    return { i, occ, key: `${i.id}:${day}`, start: -1, end: -1, time: kindOf(i) === "task" ? "" : "All day", done: kindOf(i) === "task" && completionsOf(i).has(occ) };
   });
   const timed = blocksForDay(list, day).map((b) => ({
     i: b.item,
     occ: b.occDate,
     key: b.key,
     start: b.continues === "before" || b.continues === "through" ? -1 : b.start,
+    end: kindOf(b.item) === "task" ? b.start : b.end,
     time: b.continues === "through" ? "All day"
       : b.continues === "before" ? `Until ${fmtTime(b.item.endTime, true)}`
       : `${fmtTime(b.start, true)} – ${b.continues === "after" ? fmtDate(addDays(day, 1), { month: "short", day: "numeric" }) + ", " + fmtTime(b.item.endTime, true) : fmtTime(b.end, true)}`,

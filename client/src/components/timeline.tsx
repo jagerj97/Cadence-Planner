@@ -55,21 +55,15 @@ export function DayColumn({
   items,
   hourPx = HOUR_PX,
   compact = false,
-  showNow = true,
-  showRoutines = true,
   labelContinued = true,
 }: {
   day: string;
   items: Item[];
   hourPx?: number;
   compact?: boolean;
-  showNow?: boolean;
-  showRoutines?: boolean;
   /** Label the part of an overnight item (or routine) carried on from the day before; the week view
    *  leaves it unlabelled after its first day, so a night reads as one item. */
   labelContinued?: boolean;
-  bedMin?: number;
-  wakeMin?: number;
 }) {
   const { settings } = useSettings();
   const sun = sunTimes(day, settings.lat, settings.lng);
@@ -79,7 +73,7 @@ export function DayColumn({
   // Overlaps are laid out like Google Calendar: an item that starts once the one under it has room
   // for its title and time (about 36px) is drawn on top, indented; closer starts go side by side.
   const blocks = useMemo(() => arrangeBlocks(blocksForDay(items, day), Math.ceil((36 / hourPx) * 60)), [items, day, hourPx]);
-  const routineBlocks = useMemo(() => showRoutines ? blocksForDay(routineSchedules(settings), day) : [], [showRoutines, settings, day]);
+  const routineBlocks = useMemo(() => blocksForDay(routineSchedules(settings), day), [settings, day]);
   const isToday = day === todayStr();
   // Only today's column keeps the time (other days have no now line to move).
   const [now, setNow] = useState(nowMin());
@@ -360,10 +354,10 @@ export function DayColumn({
                   label={b.done ? "Mark not done" : "Mark done"} testId={`button-check-${b.key}`} />
               )}
               {(labelContinued || (b.continues !== "before" && b.continues !== "through")) && <div className="min-w-0 flex-1 overflow-hidden">
-                <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm", b.done && "line-through")}>
+                <div className={cn("flex items-center gap-1 font-medium leading-tight", compact ? "text-xs" : "text-sm")}>
                   {!checkable && !compact && <M.icon className="h-3.5 w-3.5 shrink-0" style={{ color: colorOf(b.item) }} />}
                   {/* Narrow columns (the week) let a title take two lines when there's room. */}
-                  <span className={cn(compact && !tiny && h >= 44 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate whitespace-nowrap")}>{b.item.title}</span>
+                  <span className={cn(compact && !tiny && h >= 44 ? "line-clamp-2 [overflow-wrap:anywhere]" : "truncate whitespace-nowrap")}><span className="strike" data-on={b.done}>{b.item.title}</span></span>
                   {recurring && !compact && !tiny && <Repeat className="h-3 w-3 shrink-0 text-muted-foreground" />}
                   {b.item.autoTimer && !tiny && <Timer className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Timer starts automatically" />}
                 </div>
@@ -425,7 +419,7 @@ export function DayColumn({
         );
       })}
 
-      {isToday && showNow && (
+      {isToday && (
         <div className="pointer-events-none absolute inset-x-0 z-30 flex items-center" style={{ top: (now / 60) * hourPx }} aria-hidden>
           <div className="h-2.5 w-2.5 -ml-1 rounded-full bg-primary" />
           <div className="h-[1.5px] flex-1 bg-primary" />

@@ -3,6 +3,7 @@ import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { usePlanner, useToday } from "@/components/planner";
 import { leaveRow, TaskCheck } from "@/components/checks";
+import { SlidePill, useSlidePill } from "@/components/motion";
 import { TagManager, tagTint, taskColor, taskTagsOf } from "@/components/taskTags";
 import { TwoRows } from "@/components/twoRows";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
@@ -46,6 +47,7 @@ function nextOcc(i: Item, from: string): string | null {
 export default function TasksPage() {
   const { data: items, isLoading } = useItems();
   const [filter, setFilter] = useState<Filter>("today");
+  const [tabsRef, tabPill] = useSlidePill<HTMLDivElement>(filter);
   const [showOlder, setShowOlder] = useState(false);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [managing, setManaging] = useState(false);
@@ -125,7 +127,9 @@ export default function TasksPage() {
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="max-w-3xl grid grid-cols-1 gap-4">
           <TaskQuickAdd />
-          <div className="flex gap-1 card-md rounded-[20px] p-1 w-full sm:w-fit" role="tablist" aria-label="Filter tasks">
+          {/* The highlight slides over to the filter picked. */}
+          <div ref={tabsRef} className="relative flex gap-1 card-md rounded-[20px] p-1 w-full sm:w-fit" role="tablist" aria-label="Filter tasks">
+            <SlidePill box={tabPill} className="rounded-[15px] bg-primary" />
             {(
               [
                 ["today", "Today"],
@@ -140,8 +144,8 @@ export default function TasksPage() {
                 aria-selected={filter === k}
                 onClick={() => setFilter(k)}
                 className={cn(
-                  "flex-1 sm:flex-none min-w-0 min-h-12 flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 rounded-[15px] px-1.5 sm:px-3 py-1.5 text-[13px] sm:text-sm leading-tight transition-colors",
-                  filter === k ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover-elevate",
+                  "relative flex-1 sm:flex-none min-w-0 min-h-12 flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 rounded-[15px] px-1.5 sm:px-3 py-1.5 text-[13px] sm:text-sm leading-tight transition-colors duration-300",
+                  filter === k ? "text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted/60",
                 )}
                 data-testid={`tab-tasks-${k}`}
               >
@@ -176,6 +180,8 @@ export default function TasksPage() {
           </TwoRows>
           <TagManager open={managing} onOpenChange={setManaging} onRenamed={(from, to) => setTagFilter((f) => f.map((n) => (n === from ? to : n)))} />
 
+          {/* Changing the filter fades the new list in. */}
+          <div key={filter} className="grid grid-cols-1 gap-4 swap-in">
           {isLoading ? (
             <div className="grid gap-2">
               {[0, 1, 2].map((k) => (
@@ -205,8 +211,9 @@ export default function TasksPage() {
                     <>
                       <ul className="pb-1.5">
                         {shown.map((r) => (
-                          // Done, a task leaves every list but Today's (and a past day's, Today's too).
-                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} leaves={filter !== "today" || r.occ !== today} />
+                          // Whether checking (or, done, unchecking) it takes it out of this list: done, a task
+                          // leaves every list but Today's (and a past day's, Today's too); undone, Completed.
+                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} leaves={r.done ? filter === "done" : filter !== "today" || r.occ !== today} />
                         ))}
                       </ul>
                       {older > 0 && (
@@ -222,6 +229,7 @@ export default function TasksPage() {
               </section>
             ))
           )}
+          </div>
         </div>
       </div>
     </>
@@ -231,9 +239,9 @@ export default function TasksPage() {
 function TaskRow({ r, leaves }: { r: Row; leaves: boolean }) {
   const { i, occ } = r;
   const { toggle } = useItemMutations();
-  // Checked off but still here for a moment, while it bounces and leaves.
+  // Checked (or unchecked) but still here for a moment, while it bounces and leaves.
   const [leaving, setLeaving] = useState(false);
-  const done = r.done || leaving;
+  const done = leaving ? !r.done : r.done;
   const rowRef = useRef<HTMLLIElement>(null);
   const { openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
@@ -251,9 +259,9 @@ function TaskRow({ r, leaves }: { r: Row; leaves: boolean }) {
         onToggle={() => {
           if (leaving) return;
           const change = () => toggle.mutate({ id: i.id, date: recOf(i).freq === "none" ? i.date : occ });
-          if (done || !leaves) return change();
+          if (!leaves) return change();
           setLeaving(true);
-          void leaveRow(rowRef.current, change);
+          void leaveRow(rowRef.current, change, r.done ? 300 : 480);
         }} />
       <button onClick={() => openDetails(i, occ)} className="min-w-0 flex-1 text-left">
         <div className={cn("text-sm fade-truncate transition-colors", done && "text-muted-foreground")}><span className="strike" data-on={done}>{i.title}</span></div>

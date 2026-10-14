@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
 import { HabitCheck } from "@/components/checks";
-import { burst, useGlide } from "@/components/motion";
+import { burst, pulse, useGlide } from "@/components/motion";
+import { onDevice } from "@/lib/device";
 import { ReminderSelect, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
@@ -219,7 +220,6 @@ export function HabitsPage() {
                           {habits.map((h) => {
                             const due = occursOn(h, d);
                             const mk = markOf(h, d);
-                            const hit = mk === 2;
                             return (
                               <td key={h.id} className={cn("py-1 text-center", isT && "bg-primary/5")}>
                                 {due ? (
@@ -257,21 +257,58 @@ export function HabitsPage() {
   );
 }
 
-function Empty({ icon, title, body, children }: { icon: React.ReactNode; title: string; body?: string; children?: React.ReactNode }) {
+function Empty({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="mx-auto max-w-sm text-center py-16 grid gap-2 justify-items-center">
       <div className="h-10 w-10 rounded-full bg-muted grid place-items-center text-muted-foreground">{icon}</div>
       <div className="font-medium">{title}</div>
-      {body && <p className="text-sm text-muted-foreground">{body}</p>}
-      {children}
     </div>
   );
 }
 
 /* ====================== FOCUS ====================== */
+/**
+ * The timer's ring and time, the one part of the Focus page that changes each second (so the rest
+ * isn't drawn again with it). The ring is the time left: starting, it sweeps round to full, then winds
+ * down as the time runs; finishing, it bursts and the timer gives a little pulse. The time counts over
+ * to a new one (back to the set length, +5 min) rather than jumping; ticking by the second is as it is.
+ */
+function TimerFace({ idleSec, title }: { idleSec: number; title: string }) {
+  const { focus } = usePlanner();
+  const elapsed = useFocusElapsed();
+  const remaining = focus ? focus.plannedSec - elapsed : idleSec;
+  const pct = focus ? Math.max(0, remaining) / focus.plannedSec : 0;
+  const ringColor = "hsl(var(--k-focus))";
+  const shownRemaining = Math.round(useGlide(remaining, 2, 600));
+  const timerRef = useRef<HTMLDivElement>(null);
+  const hadFocus = useRef(!!focus);
+  useEffect(() => {
+    if (hadFocus.current && !focus && timerRef.current) {
+      burst(timerRef.current, ringColor, 6, 1.35);
+      pulse(timerRef.current, 1.04, 520);
+    }
+    hadFocus.current = !!focus;
+  }, [focus]);
+  return (
+    <div ref={timerRef} className="relative justify-self-center rounded-full">
+      <Ring pct={pct} size={236} stroke={12} color={ringColor} track="hsl(var(--k-focus) / .14)" />
+      <div className="absolute inset-0 grid place-items-center text-center">
+        <div className="grid justify-items-center gap-1.5">
+          <div className="text-[56px] font-semibold leading-none tracking-tight tnum" data-testid="text-timer">
+            {clock(shownRemaining)}
+          </div>
+          <div className="flex max-w-[170px] items-center gap-1 text-sm text-muted-foreground">
+            <Target className="h-3.5 w-3.5 shrink-0" style={{ color: ringColor }} aria-hidden />
+            <span className="truncate">{focus ? focus.title : title}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FocusPage() {
   const { focus, startFocus, pauseFocus, resumeFocus, stopFocus, addFocusTime } = usePlanner();
-  const elapsed = useFocusElapsed();
   const { settings } = useSettings();
   const { data: items } = useItems();
   const { data: sessions } = useSessions();
@@ -297,30 +334,6 @@ export function FocusPage() {
   const sessionWhen = (s: Session) =>
     `${new Date(s.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${fmtDur(s.actualSec / 60)}`;
   const totalToday = todays.reduce((a, s) => a + s.actualSec, 0) / 60;
-  const week = Array.from({ length: 7 }, (_, n) => addDays(today, n - 6)).map((d) => ({
-    d,
-    min: (sessions ?? []).filter((s) => s.date === d).reduce((a, s) => a + s.actualSec, 0) / 60,
-  }));
-  const maxWeek = Math.max(60, ...week.map((w) => w.min));
-
-  const remaining = focus ? focus.plannedSec - elapsed : (validDuration ? minutes : 0) * 60;
-  // The ring is the time left: starting, it sweeps round to full, then winds down as the time runs.
-  const pct = focus ? Math.max(0, remaining) / focus.plannedSec : 0;
-  const ringColor = "hsl(var(--k-focus))";
-  // The time shown counts over to a new one (a finished session's back to the set length, +5 min)
-  // rather than jumping; ticking by the second is as it is.
-  const shownRemaining = Math.round(useGlide(remaining, 2, 600));
-  // Finishing, the ring bursts and the timer gives a little pulse.
-  const timerRef = useRef<HTMLDivElement>(null);
-  const hadFocus = useRef(!!focus);
-  useEffect(() => {
-    if (hadFocus.current && !focus && timerRef.current) {
-      burst(timerRef.current, ringColor, 6, 1.35);
-      timerRef.current.animate?.([{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }],
-        { duration: 520, easing: "ease-out" });
-    }
-    hadFocus.current = !!focus;
-  }, [focus]);
 
   return (
     <>
@@ -329,20 +342,7 @@ export function FocusPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
           <section className="card-md focus-hero relative min-w-0 p-4 md:p-6 grid gap-5" aria-label="Timer">
             <h2 className="text-sm font-semibold tracking-tight">Timer</h2>
-            <div ref={timerRef} className="relative justify-self-center rounded-full">
-              <Ring pct={pct} size={236} stroke={12} color={ringColor} track="hsl(var(--k-focus) / .14)" />
-              <div className="absolute inset-0 grid place-items-center text-center">
-                <div className="grid justify-items-center gap-1.5">
-                  <div className="text-[56px] font-semibold leading-none tracking-tight tnum" data-testid="text-timer">
-                    {clock(shownRemaining)}
-                  </div>
-                  <div className="flex max-w-[170px] items-center gap-1 text-sm text-muted-foreground">
-                    <Target className="h-3.5 w-3.5 shrink-0" style={{ color: ringColor }} aria-hidden />
-                    <span className="truncate">{focus ? focus.title : label.trim() || "Focus session"}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <TimerFace idleSec={(validDuration ? minutes : 0) * 60} title={label.trim() || "Focus session"} />
 
             {focus ? (
               <div className="flex items-center justify-center gap-3">
@@ -430,24 +430,6 @@ export function FocusPage() {
                   ))}
                 </ul>
               )}
-            </div>
-
-            <div className="card-md p-4">
-              <h2 className="text-sm font-semibold mb-3">Last 7 days</h2>
-              <div className="flex items-end gap-2 h-28" role="img" aria-label="Focus minutes per day">
-                {week.map((w) => (
-                  <div key={w.d} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-                    <div
-                      className="w-full rounded-sm"
-                      style={{ height: `${Math.max(3, (w.min / maxWeek) * 100)}%`, background: w.min ? "hsl(var(--k-focus))" : "hsl(var(--border))" }}
-                      title={`${fmtDur(w.min)} on ${w.d}`}
-                    />
-                    <span className={cn("text-xs", w.d === today ? "text-foreground font-medium" : "text-muted-foreground")}>
-                      {DAY_SHORT[parseYmd(w.d).getDay()].slice(0, 2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="card-md">
@@ -1026,7 +1008,7 @@ export function SettingsPage() {
             </Field>
           </Section>
 
-          <Section title="Behavior" hint="How Cadence works for you">
+          <Section title="General">
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Week starts on">
                 <Select value={String(draft.weekStartsOn)} onValueChange={(v) => setDraft({ ...draft, weekStartsOn: Number(v) as WeekDay })}>
@@ -1085,45 +1067,101 @@ export function SettingsPage() {
                   onBlur={(m) => setDraft((d) => ({ ...d, focusMinutes: m && m <= 720 ? m : 30 }))} />
               </Field>
             </SubSection>
-          </Section>
-
-          <Section title="Sunrise & sunset">
-            <Row label="Show sunrise & sunset" hint="Colors the timeline to show daylight hours">
-              <Switch checked={draft.showSun} onCheckedChange={(v) => setDraft({ ...draft, showSun: v })} data-testid="switch-show-sun" />
-            </Row>
-            {draft.showSun && <>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Latitude">
-                <CoordInput value={draft.lat} limit={90} label="Latitude" onChange={(lat) => setDraft((d) => ({ ...d, lat }))} testId="input-lat" />
+            <SubSection title="Sunrise & sunset">
+              <Row label="Show sunrise & sunset" hint="Colors the timeline to show daylight hours">
+                <Switch checked={draft.showSun} onCheckedChange={(v) => setDraft({ ...draft, showSun: v })} data-testid="switch-show-sun" />
+              </Row>
+              {draft.showSun && <>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Latitude">
+                  <CoordInput value={draft.lat} limit={90} label="Latitude" onChange={(lat) => setDraft((d) => ({ ...d, lat }))} testId="input-lat" />
+                </Field>
+                <Field label="Longitude">
+                  <CoordInput value={draft.lng} limit={180} label="Longitude" onChange={(lng) => setDraft((d) => ({ ...d, lng }))} testId="input-lng" />
+                </Field>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={locating}
+                  onClick={async () => {
+                    setLocating(true);
+                    try {
+                      const { lat, lng } = await getDeviceLocation();
+                      setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4) }));
+                    } catch (err) {
+                      toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead`, variant: "destructive" });
+                    } finally {
+                      setLocating(false);
+                    }
+                  }}
+                  data-testid="button-use-location"
+                >
+                  <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                  {locating ? "Finding you…" : "Use my location"}
+                </Button>
+                <SunPreview lat={draft.lat} lng={draft.lng} />
+              </div>
+              </>}
+            </SubSection>
+            <SubSection title="Appearance">
+              <div className="flex flex-wrap gap-2" role="group" aria-label="App color theme">
+                {COLOR_THEMES.map((name) => (
+                  <button key={name} type="button" aria-pressed={draft.colorTheme === name}
+                    onClick={() => setDraft({ ...draft, colorTheme: name as ColorTheme })}
+                    className={cn("inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-foreground capitalize transition-colors", draft.colorTheme === name ? "border-primary bg-primary/10 font-semibold" : "hover:bg-muted")}
+                    data-testid={`button-theme-${name}`}>
+                    <span className="h-4 w-4 rounded-full" style={{ background: {
+                      ribbon: "#cf3517", carrot: "#e66b0a", butter: "#e0a80b", grass: "#6a8229",
+                      denim: "#4d60ab", plum: "#95549d", mouse: "#62676b",
+                    }[name] }} />
+                    {draft.plain ? PLAIN_THEME_NAMES[name] : name}
+                  </button>
+                ))}
+              </div>
+              <Field label="Display mode">
+                <Select value={draft.displayMode ?? draft.appearanceTheme ?? "dark"} onValueChange={(v) => {
+                  const next = v as DisplayMode;
+                  setDisplayMode(next);
+                  setDraft((current) => ({ ...current, displayMode: next }));
+                }}>
+                  <SelectTrigger data-testid="select-display-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dark">Dark mode</SelectItem>
+                    <SelectItem value="light">Light mode</SelectItem>
+                    <SelectItem value="system">System setting</SelectItem>
+                    <SelectItem value="sun">Sunrise/sunset</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
-              <Field label="Longitude">
-                <CoordInput value={draft.lng} limit={180} label="Longitude" onChange={(lng) => setDraft((d) => ({ ...d, lng }))} testId="input-lng" />
+              <Field label="Page order">
+                {/* Saved with the rest of the page's settings; also in Today's Customize window. */}
+                <NavOrderEditor order={draft.navOrder} onReorder={(next) => setDraft((d) => ({ ...d, navOrder: next }))} />
               </Field>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={locating}
-                onClick={async () => {
-                  setLocating(true);
-                  try {
-                    const { lat, lng } = await getDeviceLocation();
-                    setDraft((d) => ({ ...d, lat: +lat.toFixed(4), lng: +lng.toFixed(4) }));
-                  } catch (err) {
-                    toast({ title: "Couldn't get your location", description: `${(err as Error).message} You can enter latitude and longitude instead`, variant: "destructive" });
-                  } finally {
-                    setLocating(false);
-                  }
-                }}
-                data-testid="button-use-location"
-              >
-                <MapPin className="h-3.5 w-3.5 mr-1.5" />
-                {locating ? "Finding you…" : "Use my location"}
-              </Button>
-              <SunPreview lat={draft.lat} lng={draft.lng} />
-            </div>
-            </>}
+              <div className="grid gap-4 border-t pt-4">
+                <div className="text-sm font-medium">Let Cadence outside</div>
+                <p className="text-sm text-muted-foreground">
+                  Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to. (The app will close)
+                </p>
+                {/* On while Cadence is inside (the default); turning it off lets her out. */}
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground" data-testid="text-plain-state">
+                    {draft.plain ? "Cadence is outside. Let her back in?" : "Cadence is inside. Let her out?"}
+                  </span>
+                  <Switch checked={!draft.plain} onCheckedChange={async (inside) => {
+                    // Saved first, then the icons switch and the app closes (the same on every phone).
+                    const next = { ...latestDraft.current, plain: !inside };
+                    latestDraft.current = next;
+                    setDraft(next);
+                    try { await flushAndroidSettings(); } catch { return; }
+                    window.CadenceAndroid?.letOutside?.(!inside);
+                  }} aria-label="Cadence is inside" data-testid="switch-plain" />
+                </div>
+              </div>
+            </SubSection>
           </Section>
 
           <Section title="Reminders & notifications">
@@ -1176,62 +1214,6 @@ export function SettingsPage() {
             <BackupRestore beforeBackup={flushAndroidSettings} />
           </Section>
 
-          <Section title="Appearance">
-            <div className="flex flex-wrap gap-2" role="group" aria-label="App color theme">
-              {COLOR_THEMES.map((name) => (
-                <button key={name} type="button" aria-pressed={draft.colorTheme === name}
-                  onClick={() => setDraft({ ...draft, colorTheme: name as ColorTheme })}
-                  className={cn("inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm text-foreground capitalize transition-colors", draft.colorTheme === name ? "border-primary bg-primary/10 font-semibold" : "hover:bg-muted")}
-                  data-testid={`button-theme-${name}`}>
-                  <span className="h-4 w-4 rounded-full" style={{ background: {
-                    ribbon: "#cf3517", carrot: "#e66b0a", butter: "#e0a80b", grass: "#6a8229",
-                    denim: "#4d60ab", plum: "#95549d", mouse: "#62676b",
-                  }[name] }} />
-                  {draft.plain ? PLAIN_THEME_NAMES[name] : name}
-                </button>
-              ))}
-            </div>
-            <Field label="Display mode">
-              <Select value={draft.displayMode ?? draft.appearanceTheme ?? "dark"} onValueChange={(v) => {
-                const next = v as DisplayMode;
-                setDisplayMode(next);
-                setDraft((current) => ({ ...current, displayMode: next }));
-              }}>
-                <SelectTrigger data-testid="select-display-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dark">Dark mode</SelectItem>
-                  <SelectItem value="light">Light mode</SelectItem>
-                  <SelectItem value="system">System setting</SelectItem>
-                  <SelectItem value="sun">Sunrise/sunset</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Page order">
-              {/* Saved with the rest of the page's settings; also in Today's Customize window. */}
-              <NavOrderEditor order={draft.navOrder} onReorder={(next) => setDraft((d) => ({ ...d, navOrder: next }))} />
-            </Field>
-            <SubSection title="Let Cadence outside">
-              <p className="text-sm text-muted-foreground">
-                Not a cat person? Just want a plain app? That's okay, Cadence will come back whenever you want her to. (The app will close)
-              </p>
-              {/* On while Cadence is inside (the default); turning it off lets her out. */}
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-muted-foreground" data-testid="text-plain-state">
-                  {draft.plain ? "Cadence is outside. Let her back in?" : "Cadence is inside. Let her out?"}
-                </span>
-                <Switch checked={!draft.plain} onCheckedChange={async (inside) => {
-                  // Saved first, then the icons switch and the app closes (the same on every phone).
-                  const next = { ...latestDraft.current, plain: !inside };
-                  latestDraft.current = next;
-                  setDraft(next);
-                  try { await flushAndroidSettings(); } catch { return; }
-                  window.CadenceAndroid?.letOutside?.(!inside);
-                }} aria-label="Cadence is inside" data-testid="switch-plain" />
-              </div>
-            </SubSection>
-          </Section>
           <p className="pt-2 text-center text-xs text-muted-foreground tnum" data-testid="text-app-version">
             Cadence v{APP_VERSION}
           </p>
@@ -1240,8 +1222,8 @@ export function SettingsPage() {
     </>
   );
 }
-function Section({ title, hint, children, defaultOpen = false }: { title: string; hint?: string; children: React.ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
   const id = `section-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
     <section className="card-md overflow-hidden">
@@ -1254,7 +1236,7 @@ function Section({ title, hint, children, defaultOpen = false }: { title: string
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && <div id={id} className="grid grid-cols-1 gap-4 border-t px-4 pb-4 pt-4">{children}</div>}
+      {open && <div id={id} className="grid grid-cols-1 gap-4 border-t px-4 pb-4 pt-4 swap-in">{children}</div>}
     </section>
   );
 }
@@ -1273,7 +1255,7 @@ function SubSection({ title, hint, children }: { title: string; hint?: string; c
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
-      {open && <div id={id} className="grid grid-cols-1 gap-4 px-4 pt-4">{children}</div>}
+      {open && <div id={id} className="grid grid-cols-1 gap-4 px-4 pt-4 swap-in">{children}</div>}
     </div>
   );
 }
@@ -1324,7 +1306,7 @@ const LOCATION_ERRORS: Record<string, string> = {
 /** Uses the phone's native location on Android (more reliable than the WebView), else the browser. */
 function getDeviceLocation(): Promise<{ lat: number; lng: number }> {
   const bridge = window.CadenceAndroid;
-  if (bridge?.requestLocation) {
+  if (onDevice() && bridge?.requestLocation) {
     return new Promise((resolve, reject) => {
       const done = (fn: () => void) => { clearTimeout(timer); window.removeEventListener("cadence-location", onResult); fn(); };
       const onResult = (event: Event) => {

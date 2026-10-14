@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { TwoRows } from "@/components/twoRows";
 import { Linked } from "@/components/links";
-import { Archive, ArchiveRestore, ChevronDown, ChevronLeft, ChevronRight, Hash, Settings2, NotebookPen, Plus, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, Hash, Settings2, NotebookPen, Plus, Search, Trash2, X, ChevronUp } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -679,18 +679,19 @@ export default function JournalPage() {
         marked={entryDays} onPick={(d) => nav(d === todayStr() ? "/journal" : `/journal/${d}`)} />}>
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => nav(`/journal/${addDays(day, -1)}`)} aria-label="Previous day" data-swipe="prev" data-testid="button-journal-prev">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronDown className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => nav("/journal")} disabled={isToday} data-testid="button-journal-today">
             Today
           </Button>
           <Button size="icon" variant="ghost" onClick={() => nav(`/journal/${addDays(day, 1)}`)} aria-label="Next day" data-swipe="next" data-testid="button-journal-next">
-            <ChevronRight className="h-4 w-4" />
+            <ChevronUp className="h-4 w-4" />
           </Button>
         </div>
       </PageHeader>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* The day: what slides (up and down) when the day changes (data-turn-body, see pageTurn). */}
+      <div data-turn-body="y" className="flex-1 min-h-0 overflow-y-auto overscroll-y-none">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4 p-4 md:p-6 max-w-6xl">
           {/* search (top on phones) */}
           <aside className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-2" aria-label="Search and tags">
@@ -838,6 +839,8 @@ export default function JournalPage() {
             onRenamed={(from, to) => setQ((q) => toggleTerm(q, `#${from}`, to ? `#${to}` : null))} />
 
           <section className="grid min-w-0 grid-cols-1 content-start gap-4 lg:order-1" aria-label="Entries">
+            {/* Switching between the day, a search and the archive fades the new one in. */}
+            <div key={query ? "search" : inArchive ? "archive" : "day"} className="grid min-w-0 grid-cols-1 content-start gap-4 swap-in">
             {query ? (
               <>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
@@ -903,6 +906,7 @@ export default function JournalPage() {
                 )}
               </>
             )}
+            </div>
           </section>
         </div>
       </div>

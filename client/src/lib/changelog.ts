@@ -8,6 +8,20 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  */
 export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
+  "1.6.1-beta": {
+    fixes: [
+      "Smoother, quicker swiping",
+      "Bug fixes",
+    ],
+    changes: [
+      "Swipe left or right to change pages, and up or down to change the date on Today, the journal and the calendar",
+      "All-day items and tasks without a time can have reminders",
+      "The agenda widget shows only what's coming up",
+      "Tap anywhere in a day on the month view to open it",
+      "Settings has a General section",
+      "UI changes",
+    ],
+  },
   "1.6.0-beta": {
     changes: [
       "Swipe the top half of a page to change its date, and the bottom half to change pages",

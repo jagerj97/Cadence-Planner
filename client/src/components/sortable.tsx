@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
+import { reducedMotion } from "./motion";
 
 const HOLD_MS = 500; // Android's long press; a finger resting briefly before a scroll still scrolls
 const SLOP_PX = 8; // moving farther than this before the hold completes means the user is scrolling
@@ -10,8 +11,8 @@ type Drag = { index: number; startY: number; dy: number; over: number; mids: num
 
 /**
  * A list reordered by touch: hold an item until it lifts (it grows slightly), drag it into place, and
- * let go to drop it. A quick swipe still scrolls the page, and taps reach the item as usual. The list
- * runs down the page, or across it with `horizontal` (a row like the bottom bar).
+ * let go to drop it, gliding into its spot. A quick swipe still scrolls the page, and taps reach the
+ * item as usual. The list runs down the page, or across it with `horizontal` (a row like the bottom bar).
  */
 export function SortableList<T extends string | number>({ items, onReorder, render, className, itemClassName, as = "div", horizontal = false }: {
   items: T[];
@@ -22,7 +23,13 @@ export function SortableList<T extends string | number>({ items, onReorder, rend
   as?: "div" | "ul";
   horizontal?: boolean;
 }) {
+  // The order as shown: a drop shows at once, before the new order comes back from `onReorder`.
+  const [shown, setShown] = useState(items);
+  const itemsKey = items.join("\u0000");
+  useEffect(() => setShown(items), [itemsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const refs = useRef<(HTMLElement | null)[]>([]);
+  // A dropped item, where it was let go (its middle), to glide from there into its spot.
+  const dropped = useRef<{ item: T; x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const pending = useRef<{ index: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -50,6 +57,9 @@ export function SortableList<T extends string | number>({ items, onReorder, rend
     const [start, end, size] = horizontal ? (["left", "right", "width"] as const) : (["top", "bottom", "height"] as const);
     const gap = next ? Math.abs((index + 1 < rects.length ? next[start] - self[end] : self[start] - next[end])) : 0;
     haptic("hold");
+    // It grows as it lifts, with a little spring.
+    refs.current[index]?.animate([{ transform: "scale(1)" }, { transform: "scale(1.06)", offset: 0.6 }, { transform: "scale(1.04)" }],
+      { duration: 220, easing: "ease-out" });
     update({ index, startY: y, dy: 0, over: index, mids: rects.map((r) => (r ? r[start] + r[size] / 2 : 0)), step: self[size] + gap });
   };
 
@@ -77,16 +87,35 @@ export function SortableList<T extends string | number>({ items, onReorder, rend
     clearPending();
     const d = dragRef.current;
     if (!d) return;
+    const box = refs.current[d.index]?.getBoundingClientRect();
+    if (box) dropped.current = { item: shown[d.index], x: box.left + box.width / 2, y: box.top + box.height / 2 };
     update(null);
     suppressClick.current = true; // the release after a drag isn't a tap
     setTimeout(() => { suppressClick.current = false; }, 0);
     if (commit && d.over !== d.index) {
-      const next = [...items];
+      const next = [...shown];
       const [moved] = next.splice(d.index, 1);
       next.splice(d.over, 0, moved);
+      setShown(next);
       onReorder(next);
     }
   };
+  // Once drawn in its new place, the dropped item glides there from where it was let go, settling
+  // back to its size with a little bounce.
+  useLayoutEffect(() => {
+    const drop = dropped.current;
+    if (!drop || dragRef.current) return;
+    dropped.current = null;
+    const el = refs.current[shown.indexOf(drop.item)];
+    if (!el || reducedMotion()) return;
+    const box = el.getBoundingClientRect();
+    const dx = drop.x - (box.left + box.width / 2), dy = drop.y - (box.top + box.height / 2);
+    el.animate([
+      { transform: `translate(${dx}px, ${dy}px) scale(1.04)`, zIndex: 20 },
+      { transform: "translate(0, 0) scale(.98)", zIndex: 20, offset: 0.75 },
+      { transform: "none", zIndex: 20 },
+    ], { duration: 280, easing: "cubic-bezier(.2,.8,.3,1)" });
+  });
 
   const shift = (index: number) => {
     if (!drag || index === drag.index) return 0;
@@ -99,7 +128,7 @@ export function SortableList<T extends string | number>({ items, onReorder, rend
   const Item = as === "ul" ? "li" : "div";
   return (
     <Container className={className}>
-      {items.map((item, index) => {
+      {shown.map((item, index) => {
         const lifted = drag?.index === index;
         return (
           <Item
@@ -113,7 +142,7 @@ export function SortableList<T extends string | number>({ items, onReorder, rend
             onClickCapture={(event: React.MouseEvent) => { if (suppressClick.current) { event.stopPropagation(); event.preventDefault(); } }}
             className={cn(
               "relative select-none",
-              lifted ? "z-20 rounded-xl bg-card shadow-lg" : drag ? "transition-transform duration-150" : "",
+              lifted ? "z-20 rounded-xl bg-card shadow-lg transition-shadow duration-200" : drag ? "transition-transform duration-200 ease-out" : "",
               itemClassName,
             )}
             style={{ transform: lifted ? `${horizontal ? "translateX" : "translateY"}(${drag!.dy}px) scale(1.04)` : `${horizontal ? "translateX" : "translateY"}(${shift(index)}px)`, WebkitTouchCallout: "none" }}

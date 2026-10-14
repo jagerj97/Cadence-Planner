@@ -1,7 +1,7 @@
 import type { Item, JournalEntry, Settings } from "@shared/schema";
 import {
   KIND_META, addDays, colorOf, setTagColors, blocksForDay, fmtDate, fmtTime, isDeadlineTask, isTimed, kindOf, arrangeBlocks, recLabel, recOf,
-  routineSchedules, sunTimes, todayStr,
+  parseYmd, routineSchedules, sunTimes, todayStr,
 } from "./cal";
 import { agendaFor, dayBreakdown, habitRowsFor, taskRowsFor } from "./today";
 import { firstTagColor } from "@/components/taskTags";
@@ -145,18 +145,23 @@ export function widgetSnapshot(items: Item[], settings: Settings, journal: Journ
       })),
     };
   }
-  // The agenda widget: the next two weeks as the Today card's agenda lists them (no habits or sleep),
-  // skipping days with nothing on except today.
+  // The agenda widget: what's coming up in the next two weeks, as the Today card's agenda lists it
+  // (no habits or sleep), skipping days with nothing on except today. Done tasks and things already
+  // over are left out; `until` (when a timed one is over) lets the widget drop those as time goes on.
   const listed = items.filter((i) => kindOf(i) !== "habit" && kindOf(i) !== "sleep");
   const agenda = [];
+  const now = Date.now();
   for (let offset = 0; offset < AGENDA_DAYS; offset++) {
     const day = addDays(today, offset);
-    const entries = agendaFor(listed, day);
+    const date = parseYmd(day);
+    const entries = agendaFor(listed, day)
+      .map((e) => ({ e, until: e.end < 0 ? 0 : new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, e.end).getTime() }))
+      .filter(({ e, until }) => !e.done && (!until || until > now));
     if (!entries.length && offset > 0) continue;
     agenda.push({
       day,
-      entries: entries.map((e) => ({
-        id: e.i.id, occ: e.occ, title: e.i.title, kind: kindOf(e.i), done: e.done, color: hexOf(e.i),
+      entries: entries.map(({ e, until }) => ({
+        id: e.i.id, occ: e.occ, title: e.i.title, kind: kindOf(e.i), done: false, until, color: hexOf(e.i),
         accent: kindHexOf(e.i),
         sub: [e.time, e.i.location].filter(Boolean).join(" · "),
       })),
