@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
+import { burst } from "@/components/motion";
 
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -81,18 +82,6 @@ export function HabitCheck({ mark, color, onCycle, label, className, buttonClass
   className?: string; buttonClassName?: string; checkClassName?: string; style?: CSSProperties; testId?: string;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
-  const burst = () => {
-    const el = ref.current;
-    if (!el || reduced()) return;
-    const ring = document.createElement("span");
-    Object.assign(ring.style, {
-      position: "absolute", left: `${el.offsetLeft}px`, top: `${el.offsetTop}px`, width: `${el.offsetWidth}px`,
-      height: `${el.offsetHeight}px`, borderRadius: "50%", border: `2px solid ${color}`, pointerEvents: "none",
-    });
-    el.parentElement?.appendChild(ring);
-    ring.animate([{ transform: "scale(1)", opacity: 0.7 }, { transform: "scale(2.3)", opacity: 0 }], { duration: 520, easing: "ease-out" })
-      .finished.finally(() => ring.remove());
-  };
   return (
     <span className={cn("relative inline-grid shrink-0", className)}>
       <button ref={ref} type="button"
@@ -100,7 +89,7 @@ export function HabitCheck({ mark, color, onCycle, label, className, buttonClass
           e.stopPropagation();
           const next = (mark + 1) % 3;
           if (next) void bounce(ref.current, next === 1 ? 0.5 : 1);
-          if (next === 2) burst();
+          if (next === 2) burst(ref.current, color);
           onCycle();
         }}
         onPointerDown={(e) => e.stopPropagation()}

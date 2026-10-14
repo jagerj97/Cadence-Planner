@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shell";
 import { HabitCheck } from "@/components/checks";
+import { burst, useGlide } from "@/components/motion";
 import { ReminderSelect, usePlanner, useFocusElapsed, useNow, useToday, Ring, StreakBadge, clock, chime, JournalNotesCheckbox } from "@/components/planner";
 import { ColorSwatches, TAG_COLORS, TaskTagField } from "@/components/taskTags";
 import { TZ, useDeleteSession, useFeeds, useItemMutations, useItems, useSaveSettings, useSessions, useSettings } from "@/lib/data";
@@ -303,22 +304,37 @@ export function FocusPage() {
   const maxWeek = Math.max(60, ...week.map((w) => w.min));
 
   const remaining = focus ? focus.plannedSec - elapsed : (validDuration ? minutes : 0) * 60;
-  const pct = focus ? elapsed / focus.plannedSec : 0;
+  // The ring is the time left: starting, it sweeps round to full, then winds down as the time runs.
+  const pct = focus ? Math.max(0, remaining) / focus.plannedSec : 0;
   const ringColor = "hsl(var(--k-focus))";
+  // The time shown counts over to a new one (a finished session's back to the set length, +5 min)
+  // rather than jumping; ticking by the second is as it is.
+  const shownRemaining = Math.round(useGlide(remaining, 2, 600));
+  // Finishing, the ring bursts and the timer gives a little pulse.
+  const timerRef = useRef<HTMLDivElement>(null);
+  const hadFocus = useRef(!!focus);
+  useEffect(() => {
+    if (hadFocus.current && !focus && timerRef.current) {
+      burst(timerRef.current, ringColor, 6, 1.35);
+      timerRef.current.animate?.([{ transform: "scale(1)" }, { transform: "scale(1.04)", offset: 0.35 }, { transform: "scale(1)" }],
+        { duration: 520, easing: "ease-out" });
+    }
+    hadFocus.current = !!focus;
+  }, [focus]);
 
   return (
     <>
       <PageHeader title="Focus" sub={`${fmtDur(totalToday)} focused today · ${todays.length} session${todays.length === 1 ? "" : "s"}`} />
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4">
-          <section className="card-md focus-hero min-w-0 p-4 md:p-6 grid gap-5" aria-label="Timer">
+          <section className="card-md focus-hero relative min-w-0 p-4 md:p-6 grid gap-5" aria-label="Timer">
             <h2 className="text-sm font-semibold tracking-tight">Timer</h2>
-            <div className="relative justify-self-center">
+            <div ref={timerRef} className="relative justify-self-center rounded-full">
               <Ring pct={pct} size={236} stroke={12} color={ringColor} track="hsl(var(--k-focus) / .14)" />
               <div className="absolute inset-0 grid place-items-center text-center">
                 <div className="grid justify-items-center gap-1.5">
                   <div className="text-[56px] font-semibold leading-none tracking-tight tnum" data-testid="text-timer">
-                    {clock(remaining)}
+                    {clock(shownRemaining)}
                   </div>
                   <div className="flex max-w-[170px] items-center gap-1 text-sm text-muted-foreground">
                     <Target className="h-3.5 w-3.5 shrink-0" style={{ color: ringColor }} aria-hidden />

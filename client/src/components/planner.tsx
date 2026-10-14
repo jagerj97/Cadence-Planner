@@ -47,6 +47,7 @@ import {
 } from "@/lib/cal";
 import { cn } from "@/lib/utils";
 import { HabitCheck, TaskCheck, useStreakFlare } from "@/components/checks";
+import { useShown } from "@/components/motion";
 import { WeekdayPills, choicePill } from "@/components/pills";
 import { TwoRows } from "@/components/twoRows";
 import { Linked, LocationLink } from "@/components/links";
@@ -706,9 +707,18 @@ export function StreakBadge({ streak, className, zero = false }: { streak: numbe
   );
 }
 
+/**
+ * A progress ring. It sweeps in from empty when it first shows; a big change (a timer starting, a new
+ * item) eases over, while small steady ones (a clock ticking) move evenly.
+ */
 export function Ring({ pct, size = 44, stroke = 4, color, track = "hsl(var(--border))" }: { pct: number; size?: number; stroke?: number; color?: string; track?: string }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
+  const shown = useShown();
+  const value = shown ? Math.min(1, Math.max(0, pct)) : 0;
+  const was = useRef(0);
+  const big = Math.abs(value - was.current) > 0.05;
+  useEffect(() => { was.current = value; });
   return (
     <svg width={size} height={size} className="-rotate-90" aria-hidden>
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
@@ -721,8 +731,10 @@ export function Ring({ pct, size = 44, stroke = 4, color, track = "hsl(var(--bor
         strokeWidth={stroke}
         strokeLinecap="round"
         strokeDasharray={c}
-        strokeDashoffset={c * (1 - Math.min(1, Math.max(0, pct)))}
-        style={{ transition: "stroke-dashoffset .5s linear" }}
+        strokeDashoffset={c * (1 - value)}
+        // Empty, its rounded end would still show as a dot, so it fades out as it gets there.
+        strokeOpacity={value > 0 ? 1 : 0}
+        style={{ transition: `${big ? "stroke-dashoffset .8s cubic-bezier(.3,.7,.3,1)" : "stroke-dashoffset .5s linear"}, stroke-opacity .2s ${value > 0 ? "0s" : big ? ".6s" : ".3s"}` }}
       />
     </svg>
   );
@@ -1408,11 +1420,18 @@ function TimePill({ value, onChange, testId, label }: { value: string; onChange:
 export function useNow(intervalMs = 30000) {
   const [n, setN] = useState(() => new Date());
   useEffect(() => {
-    const t = setInterval(() => setN(new Date()), intervalMs);
+    // On the clock's own beat (every :00 and :30 for 30 seconds), so a new minute, and whatever
+    // starts in it, shows as it arrives.
+    let t: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setN(new Date());
+      t = setTimeout(tick, intervalMs - (Date.now() % intervalMs) + 20);
+    };
+    t = setTimeout(tick, intervalMs - (Date.now() % intervalMs) + 20);
     // Timers pause while the app is in the background, so catch up when it comes back.
     const back = () => { if (!document.hidden) setN(new Date()); };
     document.addEventListener("visibilitychange", back);
-    return () => { clearInterval(t); document.removeEventListener("visibilitychange", back); };
+    return () => { clearTimeout(t); document.removeEventListener("visibilitychange", back); };
   }, [intervalMs]);
   return n;
 }

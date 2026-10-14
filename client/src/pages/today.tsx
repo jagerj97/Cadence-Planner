@@ -8,6 +8,7 @@ import { AgendaList } from "@/components/agendaList";
 import { DayColumn, HourLabels, HOUR_PX } from "@/components/timeline";
 import { usePlanner, useNow, Ring, StreakBadge } from "@/components/planner";
 import { HabitCheck, TaskCheck } from "@/components/checks";
+import { Morph, useGlide, useShown } from "@/components/motion";
 import { blankItem, useItemMutations, useItems, useSaveSettings, useSettings } from "@/lib/data";
 import {
   KIND_META,
@@ -233,6 +234,9 @@ function CustomizeToday({ order }: { order: TodayPanel[] }) {
 }
 
 function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: number; length: number }[] }) {
+  // The bar grows in from the left when the card shows, and eases to a new day's (or a change's) shape;
+  // the totals count over to theirs.
+  const grown = useShown();
   const categories = [
     { label: "Free time", color: "hsl(var(--muted))", dot: "hsl(var(--muted-foreground))" },
     { label: "Routines", color: "hsl(var(--k-sleep) / .72)", dot: "hsl(var(--k-sleep))" },
@@ -242,18 +246,23 @@ function DayBreakdown({ totals, spans }: { totals: number[]; spans: { category: 
     <div className="card-md p-4 grid gap-3" data-testid="card-day-breakdown">
       <h2 className="text-sm font-semibold">Your day</h2>
       <div className="flex h-5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`Routines ${fmtDur(totals[1])}, planned ${fmtDur(totals[2])}, free ${fmtDur(totals[0])}`}>
-        {spans.map((span, index) => <div key={index} style={{ width: `${span.length / 1440 * 100}%`, background: categories[span.category].color }} />)}
+        {spans.map((span, index) => <div key={index} className="shrink-0 transition-[width,background-color] duration-700 ease-out motion-reduce:transition-none"
+          style={{ width: grown ? `${span.length / 1440 * 100}%` : 0, background: categories[span.category].color }} />)}
       </div>
       <div className="grid grid-cols-3 gap-1 text-center sm:text-left">
         {[1, 2, 0].map((category) => <div key={category} className="min-w-0" data-testid={`stat-${categories[category].label.toLowerCase().replace(" ", "-")}`}>
           <div className="flex items-center justify-center sm:justify-start gap-1 text-[12px] text-muted-foreground">
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: categories[category].dot }} />{categories[category].label}
           </div>
-          <div className="font-semibold text-sm tnum">{fmtDur(totals[category])}</div>
+          <GlideDur minutes={totals[category]} />
         </div>)}
       </div>
     </div>
   );
+}
+
+function GlideDur({ minutes }: { minutes: number }) {
+  return <div className="font-semibold text-sm tnum">{fmtDur(Math.round(useGlide(minutes, 0, 700, true)))}</div>;
 }
 
 export function QuickAdd({ day = todayStr(), appbar = false, onDone }: { day?: string; appbar?: boolean; onDone?: () => void }) {
@@ -367,11 +376,13 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
   // With nothing else on, a routine from Settings is named (no ring, and it's never "next").
   const routine = routines.find((b) => nm >= b.start && nm < b.end);
   return (
-    <div className="card-md wellness-now p-4 md:p-5 grid gap-3" data-testid="card-now">
+    // As things start and end, what's shown crossfades and the card eases to its new size.
+    <div className="card-md wellness-now p-4 md:p-5 flex flex-col" data-testid="card-now">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold tracking-tight">Right now</h2>
         <span className="rounded-full bg-white/70 dark:bg-white/10 px-2.5 py-1 text-xs text-muted-foreground tnum">{fmtTime(nm)}</span>
       </div>
+      <Morph className="mt-3" k={current ? `now-${current.key}` : routine ? `routine-${routine.key}` : tasksLeft ? "free-tasks" : "free"}>
       {current ? (
         <div className="flex items-center gap-3">
           {/* Tapping the item opens its details. */}
@@ -413,9 +424,11 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
             : tasksLeft ? "Nothing's happening right now... Maybe there's time for a task!" : "Looks like you've got some free time!"}
         </div>
       )}
+      </Morph>
+      <Morph k={next ? `next-${next.key}` : "none"}>
       {next && (
         <button type="button" onClick={() => openDetails(next.item, next.occDate)}
-          className="flex w-full items-center gap-2 border-t border-orange-200/70 dark:border-white/10 pt-3 text-left text-sm" data-testid="button-now-next">
+          className="mt-3 flex w-full items-center gap-2 border-t border-orange-200/70 dark:border-white/10 pt-3 text-left text-sm" data-testid="button-now-next">
           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: colorOf(next.item) }} />
           <span className="text-muted-foreground">Next</span>
           <span className="min-w-0 flex-1 font-medium fade-truncate">{next.item.title}</span>
@@ -424,6 +437,7 @@ function NowCard({ items, now, onStart }: { items: Item[]; now: Date; onStart: R
           </span>
         </button>
       )}
+      </Morph>
     </div>
   );
 }
