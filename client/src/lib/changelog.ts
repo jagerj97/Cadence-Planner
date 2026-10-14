@@ -8,6 +8,15 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  */
 export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
+  "1.6.0-beta": {
+    changes: [
+      "Swipe the top half of a page to change its date, and the bottom half to change pages",
+      "Pages follow your finger as you swipe",
+      "Tasks bounce as you check them off, and habits fill and burst when done",
+      "Smoother moving and resizing on the timeline",
+      "Smoother Right now, Your day and focus timer",
+    ],
+  },
   "1.5.9-beta": {
     fixes: [
       "Done tasks don't send reminders, even when checked off on a widget",
