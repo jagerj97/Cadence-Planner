@@ -164,8 +164,6 @@ export type Settings = {
   todayView?: "timeline" | "agenda";
   /** The pages in the bottom bar (and side menu), in the user's order, by path; Today still opens first. */
   navOrder?: string[];
-  /** What swiping left and right does: go to the next page in the bar (the default), or step the page's date. */
-  swipe?: "pages" | "dates";
   /** The Today timeline shows the whole day at once instead of scrolling inside its card. */
   timelineWholeDay?: boolean;
   taskTags: TaskTag[];

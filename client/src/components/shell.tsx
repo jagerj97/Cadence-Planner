@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Home,
@@ -195,21 +195,15 @@ function sidewaysOwner(target: EventTarget | null, root: HTMLElement) {
 }
 
 /**
- * Swiping left or right across a page goes to the next or previous page in the bar (in the user's
- * order); the end pages go no further. Set to dates in Settings, it presses the page's own next or
- * previous day (week, month) button instead, marked `data-swipe`; pages without one stay put.
- * Holds (which pick items up to drag them) and mostly-vertical moves are left alone.
+ * Calls `onSwipe` for a quick swipe left (1) or right (-1) on `el`, with whether it was on the page itself
+ * (rather than the bottom bar). Holds (which pick items up to drag them), pinches and mostly-vertical
+ * moves are left alone, as are swipes on things that scroll or drag sideways themselves.
  */
-function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typeof NAV)[number][], dates: boolean,
-  go: (href: string, dir: 1 | -1) => void, stepped: (dir: 1 | -1) => void) {
-  const locRef = useRef(loc);
-  locRef.current = loc;
-  const navRef = useRef(nav);
-  navRef.current = nav;
-  const datesRef = useRef(dates);
-  datesRef.current = dates;
+function useSwipe(ref: React.RefObject<HTMLElement>, onSwipe: (dir: 1 | -1) => void) {
+  const handler = useRef(onSwipe);
+  handler.current = onSwipe;
   useEffect(() => {
-    const el = main.current;
+    const el = ref.current;
     if (!el) return;
     let start: { x: number; y: number; t: number } | null = null;
     const down = (e: TouchEvent) => {
@@ -223,22 +217,12 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typ
       if (!s || !t || Date.now() - s.t > 700) return;
       const dx = t.clientX - s.x, dy = t.clientY - s.y;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      const dir = dx < 0 ? 1 : -1;
-      if (datesRef.current) {
-        const step = el.querySelector<HTMLButtonElement>(`[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`);
-        if (step) { step.click(); stepped(dir); }
-        return;
-      }
-      const pages = navRef.current;
-      const at = pages.findIndex((n) => n.match(locRef.current));
-      if (at < 0) return;
-      const next = pages[at + dir];
-      if (next) go(next.href, dir);
+      handler.current(dx < 0 ? 1 : -1);
     };
+    const cancel = () => { start = null; };
     el.addEventListener("touchstart", down, { passive: true });
     el.addEventListener("touchmove", move, { passive: true });
     el.addEventListener("touchend", up, { passive: true });
-    const cancel = () => { start = null; };
     el.addEventListener("touchcancel", cancel, { passive: true });
     return () => {
       el.removeEventListener("touchstart", down);
@@ -246,7 +230,47 @@ function usePageSwipe(main: React.RefObject<HTMLElement>, loc: string, nav: (typ
       el.removeEventListener("touchend", up);
       el.removeEventListener("touchcancel", cancel);
     };
-  }, [main, go, stepped]);
+  }, [ref]);
+}
+
+/** Gives a copied page the scroll positions of the original (copies start scrolled to the top). */
+function copyScroll(from: Element, to: Element) {
+  const a = document.createTreeWalker(from, NodeFilter.SHOW_ELEMENT), b = document.createTreeWalker(to, NodeFilter.SHOW_ELEMENT);
+  for (let x: Node | null = a.currentNode, y: Node | null = b.currentNode; x && y; x = a.nextNode(), y = b.nextNode()) {
+    const ex = x as Element, ey = y as Element;
+    if (ex.scrollTop || ex.scrollLeft) { ey.scrollTop = ex.scrollTop; ey.scrollLeft = ex.scrollLeft; }
+  }
+}
+
+/**
+ * A page turn: a picture of the page as it is (a copy, which can't be tapped) slides away toward
+ * `dir`'s side, uncovering the next page as `change` brings it in, which drifts over from that side
+ * underneath. Used for swipes between pages and between dates alike.
+ */
+function turnPage(main: HTMLElement, page: HTMLElement, dir: 1 | -1, change: () => void) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { change(); return; }
+  const cover = page.cloneNode(true) as HTMLElement;
+  cover.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+  cover.querySelectorAll("[data-testid]").forEach((el) => el.removeAttribute("data-testid"));
+  cover.removeAttribute("data-page");
+  cover.setAttribute("aria-hidden", "true");
+  cover.inert = true;
+  Object.assign(cover.style, {
+    position: "absolute", left: `${page.offsetLeft}px`, top: `${page.offsetTop}px`, width: `${page.offsetWidth}px`,
+    height: `${page.offsetHeight}px`, zIndex: "10", pointerEvents: "none", background: "hsl(var(--background))",
+    boxShadow: "0 0 24px rgb(0 0 0 / .25)",
+  });
+  main.appendChild(cover);
+  copyScroll(page, cover);
+  change();
+  const timing = { duration: 340, easing: "cubic-bezier(.25,.8,.25,1)" };
+  cover.animate([{ transform: "none" }, { transform: `translateX(${-dir * 100}%)` }], timing).finished
+    .finally(() => cover.remove());
+  // The next page (a new one once React has drawn it, or this one with its new date) drifts in beneath.
+  requestAnimationFrame(() => {
+    const next = main.querySelector<HTMLElement>("[data-page]");
+    next?.animate([{ transform: `translateX(${dir * 30}%)`, opacity: 0.6 }, { transform: "none", opacity: 1 }], timing);
+  });
 }
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -254,24 +278,23 @@ export function Shell({ children }: { children: ReactNode }) {
   const mainRef = useRef<HTMLElement>(null);
   const pages = useNav();
   const page = pages.findIndex((n) => n.match(loc));
-  // The page a swipe brings in slides in from that side.
-  const [slide, setSlide] = useState<{ dir: 1 | -1; to: string } | null>(null);
-  const slideTimer = useRef<ReturnType<typeof setTimeout>>();
-  const go = useCallback((href: string, dir: 1 | -1) => {
-    setSlide({ dir, to: href });
-    nav(href);
-    clearTimeout(slideTimer.current);
-    slideTimer.current = setTimeout(() => setSlide(null), 300);
-  }, [nav]);
-  // A date swipe keeps the page (and what's open on it), so it's nudged in from that side instead.
   const pageRef = useRef<HTMLDivElement>(null);
-  const stepped = useCallback((dir: 1 | -1) => {
-    pageRef.current?.animate([{ opacity: 0.4, transform: `translateX(${dir * 32}px)` }, { opacity: 1, transform: "none" }],
-      { duration: 200, easing: "ease-out" });
-  }, []);
+  const barRef = useRef<HTMLElement>(null);
+  // Swiping the bottom bar goes to the next or previous page in it (in the user's order; the end pages
+  // go no further). Swiping a page steps its date, pressing its own next or previous day (week, month)
+  // button, marked `data-swipe`; a page with no dates goes to the next page instead.
+  const swipe = (onPage: boolean) => (dir: 1 | -1) => {
+    const main = mainRef.current, el = pageRef.current;
+    if (!main || !el) return;
+    const step = onPage ? main.querySelector<HTMLButtonElement>(`[data-swipe="${dir > 0 ? "next" : "prev"}"]:not(:disabled)`) : null;
+    if (step) return turnPage(main, el, dir, () => step.click());
+    if (onPage && main.querySelector("[data-swipe]")) return; // dates, but none further that way
+    const next = page < 0 ? undefined : pages[page + dir];
+    if (next) turnPage(main, el, dir, () => nav(next.href));
+  };
+  useSwipe(mainRef, swipe(true));
+  useSwipe(barRef, swipe(false));
   const { settings } = useSettings();
-  usePageSwipe(mainRef, loc, pages, settings.swipe === "dates", go, stepped);
-  const slid = slide && pages[page]?.href === slide.to ? slide.dir : 0;
   const { focus } = usePlanner();
   const elapsed = useFocusElapsed();
   const inSettings = SETTINGS_NAV.match(loc);
@@ -307,10 +330,10 @@ export function Shell({ children }: { children: ReactNode }) {
         <aside className="wellness-rail hidden md:flex w-56 shrink-0 flex-col overflow-y-auto bg-sidebar border-r z-20">
           <DrawerLinks />
         </aside>
-        <main ref={mainRef} className="flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
+        <main ref={mainRef} className="relative flex-1 min-w-0 flex flex-col overflow-hidden pb-[calc(3.5rem+var(--safe-bottom,env(safe-area-inset-bottom,0px)))] md:pb-0">
           {/* Keyed by the page (not its place in the bar, which reordering the bar changes). */}
-          <div key={pages[page]?.href ?? (inSettings ? "/settings" : "other")} ref={pageRef}
-            className={cn("flex flex-1 min-h-0 flex-col", slid !== 0 && "animate-in fade-in duration-200", slid > 0 ? "slide-in-from-right-8" : slid < 0 && "slide-in-from-left-8")}>
+          <div key={pages[page]?.href ?? (inSettings ? "/settings" : "other")} ref={pageRef} data-page
+            className="flex flex-1 min-h-0 flex-col">
             {children}
           </div>
         </main>
@@ -318,7 +341,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       {/* bottom bar (phones) */}
       {/* Runs down behind the phone's navigation bar (--safe-bottom), its color filling that strip. */}
-      <nav className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[var(--safe-bottom,env(safe-area-inset-bottom,0px))]" aria-label="Main">
+      <nav ref={barRef} className="wellness-bottom md:hidden fixed bottom-0 inset-x-0 z-40 flex px-1 pb-[var(--safe-bottom,env(safe-area-inset-bottom,0px))]" aria-label="Main">
         {pages.map((n) => {
           const on = n.match(loc);
           const timer = n.href === "/focus" && focus;

@@ -472,6 +472,7 @@ final class PanelWidgets {
             SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             try {
                 JSONArray queue = new JSONArray(prefs.getString("actions", "[]"));
+                Boolean done = null; // the task's new state, once one of its rows is found
                 queue.put(new JSONObject().put("op", op).put("id", itemId).put("date", date));
                 JSONObject snapshot = snapshot(context);
                 JSONObject day = today(snapshot);
@@ -479,17 +480,24 @@ final class PanelWidgets {
                 for (int i = 0; rows != null && i < rows.length(); i++) {
                     JSONObject row = rows.getJSONObject(i);
                     if (row.optInt("id") != itemId) continue;
-                    if ("toggle".equals(op) && date.equals(row.optString("occ"))) row.put("done", !row.optBoolean("done"));
+                    if ("toggle".equals(op) && date.equals(row.optString("occ"))) {
+                        row.put("done", !row.optBoolean("done"));
+                        done = row.optBoolean("done");
+                    }
                     if ("cycle".equals(op)) row.put("mark", (row.optInt("mark") + 1) % 3);
                 }
                 // A timed task is on the timeline and agenda too, so it's checked off there as well.
                 if ("toggle".equals(op)) {
-                    if (day != null) flip(day.optJSONArray("blocks"), itemId, date);
+                    Boolean flipped = day == null ? null : flip(day.optJSONArray("blocks"), itemId, date);
+                    if (done == null) done = flipped;
                     JSONArray agenda = snapshot.optJSONArray("agenda");
                     for (int d = 0; agenda != null && d < agenda.length(); d++) {
                         JSONObject a = agenda.optJSONObject(d);
-                        if (a != null) flip(a.optJSONArray("entries"), itemId, date);
+                        flipped = a == null ? null : flip(a.optJSONArray("entries"), itemId, date);
+                        if (done == null) done = flipped;
                     }
+                    // Done tasks don't remind; this can't wait for the app to open.
+                    if (done != null) Notifications.taskToggled(context, itemId, date, done);
                 }
                 prefs.edit().putString("actions", queue.toString()).putString("snapshot", snapshot.toString()).apply();
             } catch (Exception ignored) {}
@@ -499,12 +507,17 @@ final class PanelWidgets {
         }
     }
 
-    /** Flips `done` on the entries for one occurrence of an item. */
-    private static void flip(JSONArray entries, int id, String occ) throws org.json.JSONException {
+    /** Flips `done` on the entries for one occurrence of an item; returns its new state, or null if it isn't there. */
+    private static Boolean flip(JSONArray entries, int id, String occ) throws org.json.JSONException {
+        Boolean done = null;
         for (int i = 0; entries != null && i < entries.length(); i++) {
             JSONObject e = entries.optJSONObject(i);
-            if (e != null && e.optInt("id", -1) == id && occ.equals(e.optString("occ"))) e.put("done", !e.optBoolean("done"));
+            if (e != null && e.optInt("id", -1) == id && occ.equals(e.optString("occ"))) {
+                e.put("done", !e.optBoolean("done"));
+                done = e.optBoolean("done");
+            }
         }
+        return done;
     }
 
     static String takeActions(Context context) {

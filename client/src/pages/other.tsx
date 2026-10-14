@@ -1023,18 +1023,6 @@ export function SettingsPage() {
 
           <Section title="Behavior" hint="How Cadence works for you">
             <div className="grid sm:grid-cols-2 gap-3">
-              <Field label="Swiping left and right">
-                {/* Dates: the day on Today and Journal, the week or month on Calendar. */}
-                <Select value={draft.swipe ?? "pages"} onValueChange={(v) => setDraft({ ...draft, swipe: v as "pages" | "dates" })}>
-                  <SelectTrigger data-testid="select-swipe">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pages">Changes the page</SelectItem>
-                    <SelectItem value="dates">Changes the date</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
               <Field label="Week starts on">
                 <Select value={String(draft.weekStartsOn)} onValueChange={(v) => setDraft({ ...draft, weekStartsOn: Number(v) as WeekDay })}>
                   <SelectTrigger data-testid="select-week-start">

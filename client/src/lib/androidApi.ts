@@ -256,8 +256,12 @@ async function refreshNotifications(remindersToo: boolean) {
     bridge.updateWidget?.(JSON.stringify(widgetSnapshot(items, await pref(), await list<JournalEntry>("journal"))));
   } catch { /* the widget is optional */ }
   if (!remindersToo) return;
-  // `start` lets the notification count down to it (older builds show `body` as it is).
-  const reminders: { at: number; start: number; title: string; body: string }[] = [];
+  // `start` lets the notification count down to it ("Due in" for tasks); `id` and `occ` let a task
+  // checked off on the widget stop its reminders before the app next opens. Done tasks are sent as
+  // `cancel`, to take back a countdown already showing.
+  type Reminder = { at: number; start: number; title: string; body: string; due?: boolean; id?: number; occ?: string; cancel?: boolean };
+  const reminders: Reminder[] = [];
+  const cancels: Reminder[] = [];
   const now = Date.now();
   // Far enough ahead that an item's longest reminder still falls within the next 31 days.
   const longest = Math.max(0, ...items.map((item) => remindersOf(item)[0] ?? 0));
@@ -268,6 +272,11 @@ async function refreshNotifications(remindersToo: boolean) {
       // Only the day an item starts gets its reminders (not the days it carries on through).
       if (block.continues === "before" || block.continues === "through" || !item.startTime || item.kind === "sleep") continue;
       const kind = item.kind ? `${item.kind[0].toUpperCase()}${item.kind.slice(1)}: ` : "";
+      const task = item.kind === "task";
+      if (task && block.done) {
+        cancels.push({ at: 0, start: localAt(date, block.start), title: kind + item.title, body: "", cancel: true });
+        continue;
+      }
       // Every timed item notifies as it starts, and at each reminder before that.
       for (const minutes of notifyTimesOf(item)) {
         const at = localAt(date, block.start - minutes);
@@ -276,7 +285,8 @@ async function refreshNotifications(remindersToo: boolean) {
           at,
           start: localAt(date, block.start),
           title: kind + item.title,
-          body: minutes === 0 ? (item.kind === "task" ? "Due now" : "Starting now") : `${item.kind === "task" ? "Due" : "Starts"} in ${fmtDur(minutes)}`,
+          body: minutes === 0 ? (task ? "Due now" : "Starting now") : `${task ? "Due" : "Starts"} in ${fmtDur(minutes)}`,
+          ...(task ? { due: true, id: item.id, occ: block.occDate } : {}),
         });
       }
     }
@@ -288,11 +298,12 @@ async function refreshNotifications(remindersToo: boolean) {
     for (const { item, at: minutes } of anytimeRemindersFor(items, date, settings)) {
       const at = localAt(date, minutes);
       if (at <= now) continue;
-      reminders.push({ at, start: at, title: `Task: ${item.title}`, body: "Due today" });
+      // No countdown (start 0): it just says "Due today".
+      reminders.push({ at, start: 0, title: `Task: ${item.title}`, body: "Due today", id: item.id, occ: recOf(item).freq === "none" ? item.date : date });
     }
   }
   reminders.sort((a, b) => a.at - b.at);
-  bridge.scheduleReminders(JSON.stringify(reminders.slice(0, 128)));
+  bridge.scheduleReminders(JSON.stringify([...reminders.slice(0, 128), ...cancels]));
 }
 
 /**
