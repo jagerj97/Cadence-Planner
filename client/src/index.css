@@ -221,17 +221,6 @@
  */
 @layer utilities {
   /* One line of text that fades out at the right edge instead of pushing its container wider */
-  /* A line drawn through a done title, sweeping in from the left. */
-  .strike {
-    background-image: linear-gradient(currentColor, currentColor);
-    background-repeat: no-repeat;
-    background-position: 0 55%;
-    background-size: 0% 1.5px;
-    transition: background-size .35s cubic-bezier(.3, .7, .3, 1);
-  }
-  .strike[data-on="true"] { background-size: 100% 1.5px; }
-  @media (prefers-reduced-motion: reduce) { .strike { transition: none; } }
-
   .fade-truncate {
     overflow: hidden;
     white-space: nowrap;

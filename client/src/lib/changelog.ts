@@ -8,6 +8,17 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  */
 export type ReleaseNotes = { fixes?: string[]; changes?: string[] };
 export const CHANGELOG: Record<string, ReleaseNotes> = {
+  "1.5.9-beta": {
+    fixes: [
+      "Done tasks don't send reminders, even when checked off on a widget",
+      "Archived journal entries stay in the archive",
+      "Right now changes as soon as something starts",
+    ],
+    changes: [
+      "Swipe the bottom bar to change pages, and swipe a page to change its date",
+      "A new Behavior section in Settings",
+    ],
+  },
   "1.5.8-beta": {
     fixes: [
       "Opening Cadence picks up where you left off instead of starting over",

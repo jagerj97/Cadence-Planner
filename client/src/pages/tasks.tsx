@@ -1,8 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Item } from "@shared/schema";
 import { PageHeader } from "@/components/shell";
 import { usePlanner, useToday } from "@/components/planner";
-import { leaveRow, TaskCheck } from "@/components/checks";
 import { TagManager, tagTint, taskColor, taskTagsOf } from "@/components/taskTags";
 import { TwoRows } from "@/components/twoRows";
 import { blankItem, useItemMutations, useItems, useSettings } from "@/lib/data";
@@ -29,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { Plus, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag, Hash, Settings2 } from "lucide-react";
+import { Plus, Check, Play, CornerDownLeft, CheckSquare, Timer, Repeat, Flag, Hash, Settings2 } from "lucide-react";
 
 type Row = { i: Item; occ: string; done: boolean };
 type Filter = "today" | "upcoming" | "open" | "done";
@@ -205,8 +204,7 @@ export default function TasksPage() {
                     <>
                       <ul className="pb-1.5">
                         {shown.map((r) => (
-                          // Done, a task leaves every list but Today's (and a past day's, Today's too).
-                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} leaves={filter !== "today" || r.occ !== today} />
+                          <TaskRow key={`${r.i.id}:${r.occ}`} r={r} />
                         ))}
                       </ul>
                       {older > 0 && (
@@ -228,13 +226,9 @@ export default function TasksPage() {
   );
 }
 
-function TaskRow({ r, leaves }: { r: Row; leaves: boolean }) {
-  const { i, occ } = r;
+function TaskRow({ r }: { r: Row }) {
+  const { i, occ, done } = r;
   const { toggle } = useItemMutations();
-  // Checked off but still here for a moment, while it bounces and leaves.
-  const [leaving, setLeaving] = useState(false);
-  const done = r.done || leaving;
-  const rowRef = useRef<HTMLLIElement>(null);
   const { openDetails, startFocus } = usePlanner();
   const { settings } = useSettings();
   const today = todayStr();
@@ -245,18 +239,18 @@ function TaskRow({ r, leaves }: { r: Row; leaves: boolean }) {
   const dur = isTimed(i) ? ((toMin(i.endTime) - toMin(i.startTime) + 1440) % 1440) || 30 : settings.focusMinutes;
 
   return (
-    <li ref={rowRef} className="group flex items-center gap-3 px-4 py-2 hover:bg-muted/50" data-testid={`row-task-${i.id}`}>
-      <TaskCheck done={done} color={taskColor(i, settings)} className="h-5 w-5 rounded-md border-[1.5px]" checkClassName="h-3.5 w-3.5"
-        label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`} testId={`button-toggle-task-${i.id}`}
-        onToggle={() => {
-          if (leaving) return;
-          const change = () => toggle.mutate({ id: i.id, date: recOf(i).freq === "none" ? i.date : occ });
-          if (done || !leaves) return change();
-          setLeaving(true);
-          void leaveRow(rowRef.current, change);
-        }} />
+    <li className="group flex items-center gap-3 px-4 py-2 hover:bg-muted/50" data-testid={`row-task-${i.id}`}>
+      <button
+        onClick={() => toggle.mutate({ id: i.id, date: recOf(i).freq === "none" ? i.date : occ })}
+        className="h-5 w-5 shrink-0 rounded-md grid place-items-center border-[1.5px] transition-colors"
+        style={{ borderColor: taskColor(i, settings), background: done ? taskColor(i, settings) : "transparent" }}
+        aria-label={done ? `Mark ${i.title} not done` : `Mark ${i.title} done`}
+        data-testid={`button-toggle-task-${i.id}`}
+      >
+        {done && <Check className="h-3.5 w-3.5 text-background" strokeWidth={3} />}
+      </button>
       <button onClick={() => openDetails(i, occ)} className="min-w-0 flex-1 text-left">
-        <div className={cn("text-sm fade-truncate transition-colors", done && "text-muted-foreground")}><span className="strike" data-on={done}>{i.title}</span></div>
+        <div className={cn("text-sm fade-truncate", done && "line-through text-muted-foreground")}>{i.title}</div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
           <span className={cn(occ < today && !done && "text-destructive")}>
             {isDeadlineTask(i) ? `Due ${dateLabel}` : i.endDate && i.endDate > i.date && recOf(i).freq === "none"
